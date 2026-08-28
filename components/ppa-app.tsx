@@ -275,6 +275,11 @@ function bookingNo(booking: Booking | null) {
   return booking?.booking_no || booking?.bookingNo || "";
 }
 
+function memberInitial(name: string | undefined) {
+  const trimmed = (name || "PPA").trim();
+  return trimmed.slice(0, 1).toUpperCase();
+}
+
 async function api<T>(url: string, init?: RequestInit) {
   const res = await fetch(url, {
     ...init,
@@ -599,7 +604,11 @@ export function PpaApp() {
       <section className="phone">
         <div className="statusbar">
           <span>9:41</span>
-          <span>▮▮▮ ⚡</span>
+          <button className="status-member-chip" onClick={() => go("profile")}>
+            <span>{memberInitial(data.user.displayName)}</span>
+            <b>{data.user.displayName || "PPA Member"}</b>
+            <i />
+          </button>
         </div>
         <div className="content">
           {screen === "splash" && (
@@ -985,7 +994,14 @@ export function PpaApp() {
             <div className="page">
               <Top title="สมาชิกของฉัน" onBack={() => go("home")} />
               <button className="member-card premium-card" onClick={() => go("scan")}>
-                <div><span>PREMIUM MEMBER</span><strong>{data.user.memberCode}</strong><small>QR เข้าใช้บริการและสิทธิ์ส่วนลด</small></div><div className="mini-qr">▦</div>
+                <div>
+                  <span>PREMIUM MEMBER</span>
+                  <strong>{data.user.memberCode}</strong>
+                  <small>{data.user.displayName || "PPA Member"} · QR เข้าใช้บริการและสิทธิ์ส่วนลด</small>
+                </div>
+                <div className="mini-qr">
+                  <div className="qr-mini-grid">{Array.from({ length: 81 }).map((_, i) => <i key={i} className={(i * 7 + qrSeconds) % 5 === 0 ? "w" : ""} />)}</div>
+                </div>
               </button>
               <div className="prototype-list">
                 <MenuItem icon="📦" title="แพ็กเกจของฉัน" onClick={() => go("plans")} />
