@@ -1,0 +1,35 @@
+{
+  "size": {
+    "width": 2500,
+    "height": 1686
+  },
+  "selected": true,
+  "name": "PPA main rich menu",
+  "chatBarText": "เมนู PPA",
+  "areas": [
+    {
+      "bounds": { "x": 0, "y": 0, "width": 834, "height": 843 },
+      "action": { "type": "uri", "label": "จองสนาม", "uri": "__PPA_LIFF_URL__?screen=sports" }
+    },
+    {
+      "bounds": { "x": 834, "y": 0, "width": 833, "height": 843 },
+      "action": { "type": "uri", "label": "สมาชิก", "uri": "__PPA_LIFF_URL__?screen=membership" }
+    },
+    {
+      "bounds": { "x": 1667, "y": 0, "width": 833, "height": 843 },
+      "action": { "type": "uri", "label": "วอลเล็ต", "uri": "__PPA_LIFF_URL__?screen=wallet" }
+    },
+    {
+      "bounds": { "x": 0, "y": 843, "width": 834, "height": 843 },
+      "action": { "type": "uri", "label": "คูปอง", "uri": "__PPA_LIFF_URL__?screen=coupon" }
+    },
+    {
+      "bounds": { "x": 834, "y": 843, "width": 833, "height": 843 },
+      "action": { "type": "uri", "label": "เทรนเนอร์", "uri": "__PPA_LIFF_URL__?screen=trainer" }
+    },
+    {
+      "bounds": { "x": 1667, "y": 843, "width": 833, "height": 843 },
+      "action": { "type": "uri", "label": "ช่วยเหลือ", "uri": "__PPA_LIFF_URL__?screen=help" }
+    }
+  ]
+}

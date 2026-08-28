@@ -1,0 +1,11 @@
+{
+    "schema_version": 1,
+    "commit": "bb06671ccff48346f79d34dea67a6d47fd2d564c",
+    "indexed_at": "2026-08-28T00:47:07Z",
+    "project": "Users-zeroline-Documents-ppa",
+    "nodes": 455,
+    "edges": 1044,
+    "original_size": 2883584,
+    "compressed_size": 453695,
+    "compression_level": 3
+}

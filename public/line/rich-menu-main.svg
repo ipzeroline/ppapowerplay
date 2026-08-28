@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2500" height="1686" viewBox="0 0 2500 1686">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#08090b"/>
+      <stop offset="0.56" stop-color="#121417"/>
+      <stop offset="1" stop-color="#07130c"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ff8a2a"/>
+      <stop offset="1" stop-color="#ff5a00"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#56e089"/>
+      <stop offset="1" stop-color="#16a35a"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="28" stdDeviation="26" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+    <style>
+      .brand { font: 900 98px Arial, sans-serif; letter-spacing: 0; fill: #f7f7f3; }
+      .dot { fill: #ff6a00; }
+      .sub { font: 700 34px Arial, sans-serif; fill: #a8adb5; }
+      .title { font: 900 58px Arial, "Noto Sans Thai", sans-serif; fill: #fbfbf5; }
+      .meta { font: 700 33px Arial, "Noto Sans Thai", sans-serif; fill: #aeb4bc; }
+      .icon { font: 900 92px Arial, "Noto Sans Thai", sans-serif; fill: #061008; }
+      .num { font: 900 42px Arial, sans-serif; fill: #111318; }
+    </style>
+  </defs>
+
+  <rect width="2500" height="1686" fill="url(#bg)"/>
+  <path d="M0 0h2500v1686H0z" fill="none" stroke="#2a2d33" stroke-width="6"/>
+  <path d="M118 132C348 72 569 76 789 142" fill="none" stroke="#ff6a00" stroke-width="20" stroke-linecap="round" opacity=".2"/>
+  <path d="M1772 1582c190-62 393-62 610 0" fill="none" stroke="#2ecc71" stroke-width="20" stroke-linecap="round" opacity=".16"/>
+
+  <text x="118" y="126" class="brand">PPA<tspan class="dot">.</tspan></text>
+  <text x="118" y="177" class="sub">POWER PLAY SPORT CLUB</text>
+  <text x="1390" y="122" text-anchor="middle" class="sub">แตะเมนูเพื่อเปิดบริการใน LINE</text>
+
+  <g transform="translate(86 250)" filter="url(#shadow)">
+    <rect width="700" height="590" rx="42" fill="#171a1f" stroke="#30343b" stroke-width="5"/>
+    <circle cx="116" cy="124" r="74" fill="url(#orange)"/>
+    <text x="116" y="154" text-anchor="middle" class="icon">1</text>
+    <text x="70" y="288" class="title">จองสนาม</text>
+    <text x="70" y="352" class="meta">เลือกกีฬา คอร์ท เวลา</text>
+    <path d="M70 470h560" stroke="#ff6a00" stroke-width="7" stroke-linecap="round"/>
+    <path d="M565 424l52 52-52 52" fill="none" stroke="#ff6a00" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(900 250)" filter="url(#shadow)">
+    <rect width="700" height="590" rx="42" fill="#171a1f" stroke="#30343b" stroke-width="5"/>
+    <circle cx="116" cy="124" r="74" fill="url(#green)"/>
+    <text x="116" y="154" text-anchor="middle" class="icon">2</text>
+    <text x="70" y="288" class="title">สมาชิก</text>
+    <text x="70" y="352" class="meta">QR เช็กอิน แพ็กเกจ</text>
+    <path d="M70 470h560" stroke="#2ecc71" stroke-width="7" stroke-linecap="round"/>
+    <path d="M565 424l52 52-52 52" fill="none" stroke="#2ecc71" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(1714 250)" filter="url(#shadow)">
+    <rect width="700" height="590" rx="42" fill="#171a1f" stroke="#30343b" stroke-width="5"/>
+    <circle cx="116" cy="124" r="74" fill="url(#orange)"/>
+    <text x="116" y="154" text-anchor="middle" class="icon">3</text>
+    <text x="70" y="288" class="title">วอลเล็ต</text>
+    <text x="70" y="352" class="meta">ยอดเงิน Coin Point</text>
+    <path d="M70 470h560" stroke="#ff6a00" stroke-width="7" stroke-linecap="round"/>
+    <path d="M565 424l52 52-52 52" fill="none" stroke="#ff6a00" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(86 930)" filter="url(#shadow)">
+    <rect width="700" height="590" rx="42" fill="#171a1f" stroke="#30343b" stroke-width="5"/>
+    <circle cx="116" cy="124" r="74" fill="url(#green)"/>
+    <text x="116" y="154" text-anchor="middle" class="icon">4</text>
+    <text x="70" y="288" class="title">คูปอง</text>
+    <text x="70" y="352" class="meta">โปรโมชันและสิทธิ์</text>
+    <path d="M70 470h560" stroke="#2ecc71" stroke-width="7" stroke-linecap="round"/>
+    <path d="M565 424l52 52-52 52" fill="none" stroke="#2ecc71" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(900 930)" filter="url(#shadow)">
+    <rect width="700" height="590" rx="42" fill="#171a1f" stroke="#30343b" stroke-width="5"/>
+    <circle cx="116" cy="124" r="74" fill="url(#orange)"/>
+    <text x="116" y="154" text-anchor="middle" class="icon">5</text>
+    <text x="70" y="288" class="title">เทรนเนอร์</text>
+    <text x="70" y="352" class="meta">PT ตาราง ราคา</text>
+    <path d="M70 470h560" stroke="#ff6a00" stroke-width="7" stroke-linecap="round"/>
+    <path d="M565 424l52 52-52 52" fill="none" stroke="#ff6a00" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(1714 930)" filter="url(#shadow)">
+    <rect width="700" height="590" rx="42" fill="#171a1f" stroke="#30343b" stroke-width="5"/>
+    <circle cx="116" cy="124" r="74" fill="url(#green)"/>
+    <text x="116" y="154" text-anchor="middle" class="icon">6</text>
+    <text x="70" y="288" class="title">ช่วยเหลือ</text>
+    <text x="70" y="352" class="meta">ติดต่อ PPA Power Play</text>
+    <path d="M70 470h560" stroke="#2ecc71" stroke-width="7" stroke-linecap="round"/>
+    <path d="M565 424l52 52-52 52" fill="none" stroke="#2ecc71" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
