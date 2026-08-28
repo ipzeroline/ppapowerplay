@@ -305,6 +305,7 @@ export function PpaApp() {
   const [pendingItem, setPendingItem] = useState<{ title: string; amount: number; back: Screen; save?: "coupon" | "topup" | "class"; couponId?: number } | null>(null);
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
+  const [lastPaymentStatus, setLastPaymentStatus] = useState<"paid" | "created">("paid");
   const [activeSlide, setActiveSlide] = useState(0);
   const [qrSeconds, setQrSeconds] = useState(20);
   const [groupName, setGroupName] = useState("");
@@ -450,33 +451,40 @@ export function PpaApp() {
     if (!pendingBooking && !pendingItem) return;
     setBusy(true);
     try {
+      let nextPaymentStatus: "paid" | "created" = method === "wallet" ? "paid" : "created";
       if (pendingBooking) {
-        await api("/api/payments", {
+        const payment = await api<{ status?: string }>("/api/payments", {
           method: "POST",
           body: JSON.stringify({
             bookingNo: bookingNo(pendingBooking),
             method,
-            markPaid: method === "promptpay",
             itemName: pendingBooking.title,
           }),
         });
+        nextPaymentStatus = payment.status === "created" ? "created" : "paid";
+        if (nextPaymentStatus === "created") notice("สร้างรายการชำระเงินแล้ว กรุณารอการยืนยันจากระบบ");
       } else if (pendingItem?.save === "coupon" && pendingItem.couponId) {
         await api("/api/coupons/buy", {
           method: "POST",
           body: JSON.stringify({ couponId: pendingItem.couponId, method }),
         });
       } else if (pendingItem?.save === "topup") {
-        await api("/api/wallet/topup", { method: "POST", body: JSON.stringify({ amount: pendingItem.amount }) });
+        const topupPayment = await api<{ status?: string }>("/api/wallet/topup", { method: "POST", body: JSON.stringify({ amount: pendingItem.amount }) });
+        nextPaymentStatus = topupPayment.status === "created" ? "created" : "paid";
+        if (nextPaymentStatus === "created") notice("สร้างรายการเติมเงินแล้ว กรุณารอการยืนยันจากระบบ");
       } else if (pendingItem) {
-        await api("/api/payments", {
+        const payment = await api<{ status?: string }>("/api/payments", {
           method: "POST",
-          body: JSON.stringify({ amount: pendingItem.amount, method, markPaid: method === "promptpay", itemName: pendingItem.title }),
+          body: JSON.stringify({ amount: pendingItem.amount, method, itemName: pendingItem.title }),
         });
+        nextPaymentStatus = payment.status === "created" ? "created" : "paid";
+        if (nextPaymentStatus === "created") notice("สร้างรายการชำระเงินแล้ว กรุณารอการยืนยันจากระบบ");
       }
       await refresh();
       if (pendingItem?.save === "coupon") await loadCoupons();
+      setLastPaymentStatus(nextPaymentStatus);
       go("success");
-      notice("ชำระเงินสำเร็จ");
+      if (method === "wallet") notice("ชำระเงินสำเร็จ");
     } catch (error) {
       notice((error as Error).message);
     } finally {
@@ -558,21 +566,14 @@ export function PpaApp() {
 
   if (lineBlocked || (requireLine && !lineReady)) {
     return (
-      <main className="line-block">
-        <div className="brand">PPA<span>.</span></div>
-        <h1>กรุณาเปิดผ่าน LINE เท่านั้น</h1>
-        <p>ระบบนี้ถูกออกแบบเป็น LINE LIFF App เพื่อยืนยันตัวตนและความปลอดภัยของสมาชิก</p>
-      </main>
+      <LineGate blocked={lineBlocked} liffId={process.env.NEXT_PUBLIC_LINE_LIFF_ID || ""} />
     );
   }
 
   if (!data) {
     return (
       <main className="phone-wrap">
-        <section className="phone loading">
-          <div className="brand">PPA<span>.</span></div>
-          <p>กำลังเชื่อมต่อ PPA Power Play</p>
-        </section>
+        <LineGate embedded />
       </main>
     );
   }
@@ -845,11 +846,11 @@ export function PpaApp() {
 
           {screen === "success" && (
             <div className="page centered">
-              <div className="check">✓</div>
-              <h2>สำเร็จแล้ว</h2>
-              <p>รายการถูกบันทึกแล้ว คุณสามารถดูประวัติหรือเปิด QR สำหรับเข้าใช้บริการได้ทันที</p>
+              <div className="check">{lastPaymentStatus === "paid" ? "✓" : "!"}</div>
+              <h2>{lastPaymentStatus === "paid" ? "สำเร็จแล้ว" : "รอการยืนยัน"}</h2>
+              <p>{lastPaymentStatus === "paid" ? "รายการถูกบันทึกแล้ว คุณสามารถดูประวัติหรือเปิด QR สำหรับเข้าใช้บริการได้ทันที" : "ระบบบันทึกรายการแล้ว แต่ยังไม่เปิดสิทธิ์จนกว่าการชำระเงินจะถูกยืนยัน"}</p>
               <button className="primary" onClick={() => go("mybooking")}>📋 ดูรายการของฉัน</button>
-              <button className="ghost" onClick={() => go("scan")}>▣ เปิด QR เข้าใช้บริการ</button>
+              {lastPaymentStatus === "paid" && <button className="ghost" onClick={() => go("scan")}>▣ เปิด QR เข้าใช้บริการ</button>}
             </div>
           )}
 
@@ -1239,6 +1240,46 @@ export function PpaApp() {
         {tutorial > 0 && <Tutorial step={tutorial} onNext={() => setTutorial(tutorial >= 4 ? 0 : tutorial + 1)} onSkip={() => setTutorial(0)} />}
         {toast && <div className="toast">{toast}</div>}
         {!tutorial && screen === "home" && <button className="guide-btn" onClick={() => setTutorial(1)}>?</button>}
+      </section>
+    </main>
+  );
+}
+
+function LineGate({ blocked = false, embedded = false, liffId = "" }: { blocked?: boolean; embedded?: boolean; liffId?: string }) {
+  const openUrl = liffId ? `https://liff.line.me/${liffId}` : "";
+  return (
+    <main className={embedded ? "phone line-gate embedded" : "line-gate"}>
+      <div className="gate-grid" />
+      <div className="gate-glow one" />
+      <div className="gate-glow two" />
+      <section className="gate-panel">
+        <div className="gate-mark">
+          <div className="gate-rings">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div className="gate-logo">PPA<span>.</span></div>
+        </div>
+        <div className="gate-copy">
+          <span className="gate-kicker">{blocked ? "LINE SECURE ACCESS" : "SPORT COMPLEX LOADING"}</span>
+          <h1>{blocked ? "เปิดผ่าน LINE เพื่อเข้าสู่ระบบสมาชิก" : "กำลังเตรียมสนามและข้อมูลสมาชิก"}</h1>
+          <p>
+            {blocked
+              ? "ยืนยันตัวตนด้วย LINE LIFF เพื่อเรียกข้อมูลเดิมของสมาชิกอย่างปลอดภัย แม้เปลี่ยนเครื่องก็ใช้บัญชีเดิมได้"
+              : "เชื่อมต่อโปรไฟล์ Wallet การจอง และสิทธิพิเศษของคุณแบบปลอดภัย"}
+          </p>
+        </div>
+        <div className="gate-status">
+          <div><b>LINE</b><small>{blocked ? "Required" : "Verifying"}</small></div>
+          <div><b>MEMBER</b><small>{blocked ? "Protected" : "Syncing"}</small></div>
+          <div><b>DATA</b><small>{blocked ? "Safe" : "Loading"}</small></div>
+        </div>
+        <div className="gate-progress"><span /></div>
+        <div className="gate-actions">
+          {blocked && openUrl ? <a href={openUrl}>เปิดใน LINE</a> : null}
+          <small>{blocked ? "หากเปิดจาก Rich Menu แล้วยังเห็นหน้านี้ ให้ปิดหน้านี้แล้วเปิดจากแชต LINE OA อีกครั้ง" : "Secure member access in progress"}</small>
+        </div>
       </section>
     </main>
   );

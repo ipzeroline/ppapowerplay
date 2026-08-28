@@ -3,6 +3,7 @@ import { z } from "zod";
 import { assertAdminRequest } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
+import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 const staffSchema = z.object({
   id: z.number().optional(),
@@ -29,7 +30,12 @@ export async function POST(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = staffSchema.extend({ password: z.string().min(8) }).parse(await request.json());
+  let body: z.infer<typeof staffSchema> & { password: string };
+  try {
+    body = await parseJsonBody(request, staffSchema.extend({ password: z.string().min(8) }));
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   const passwordHash = await hashPassword(body.password);
 
   await query(
@@ -48,7 +54,12 @@ export async function PUT(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = staffSchema.extend({ id: z.number().positive() }).parse(await request.json());
+  let body: z.infer<typeof staffSchema> & { id: number };
+  try {
+    body = await parseJsonBody(request, staffSchema.extend({ id: z.number().positive() }));
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   if (body.password) {
     const passwordHash = await hashPassword(body.password);
     await query(
@@ -80,4 +91,3 @@ export async function DELETE(request: NextRequest) {
   await query("INSERT INTO admin_audit_logs (action, target_type, target_id) VALUES ('staff.delete', 'admin_staff', ?)", [String(id)]);
   return GET(request);
 }
-

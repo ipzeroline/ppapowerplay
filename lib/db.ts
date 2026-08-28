@@ -1,3 +1,4 @@
+import "server-only";
 import mysql from "mysql2/promise";
 
 declare global {
@@ -47,6 +48,21 @@ export async function query<T>(sql: string, params: any[] = []) {
   }
 
   throw lastError;
+}
+
+export async function transaction<T>(work: (connection: mysql.PoolConnection) => Promise<T>) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const result = await work(connection);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export function createPublicId(prefix: string) {

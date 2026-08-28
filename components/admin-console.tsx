@@ -1873,7 +1873,7 @@ function adminFetch(adminKey: string, input: string, init: RequestInit) {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      "x-admin-key": adminKey,
+      ...(adminKey ? { "x-admin-key": adminKey } : {}),
       ...(init.headers || {}),
     },
   });

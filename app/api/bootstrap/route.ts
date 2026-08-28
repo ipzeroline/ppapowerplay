@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { assertApiUser, authErrorResponse } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { checkRateLimit, clientIp } from "@/lib/security";
 
 export async function GET() {
+  const limited = checkRateLimit({ key: `bootstrap:${await clientIp()}`, limit: 120, windowMs: 60_000 });
+  if (limited) return limited;
   let user;
   try {
     user = await assertApiUser();

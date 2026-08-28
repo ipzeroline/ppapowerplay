@@ -1,4 +1,7 @@
+import { cookies } from "next/headers";
+import { AdminLogin } from "@/components/admin-login";
 import { AdminConsole, type AdminConsoleData } from "@/components/admin-console";
+import { adminSessionCookieName, verifyAdminSession } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
 
 type AdminConsolePageProps = {
@@ -20,17 +23,19 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
   const adminKey = process.env.ADMIN_ACCESS_KEY || "";
   const allowDevOpen = process.env.NODE_ENV !== "production" && !adminKey;
   const resolvedSearchParams = await searchParams;
-  const providedKey = readSingle(resolvedSearchParams.key);
+  const providedKey = process.env.NODE_ENV !== "production" ? readSingle(resolvedSearchParams.key) : "";
   const reportSection = readSingle(resolvedSearchParams.report);
-  const canAccess = allowDevOpen || (Boolean(adminKey) && providedKey === adminKey);
+  const cookieStore = await cookies();
+  const adminSession = cookieStore.get(adminSessionCookieName())?.value || "";
+  const canAccess = allowDevOpen || (Boolean(adminKey) && providedKey === adminKey) || verifyAdminSession(adminSession);
 
   if (!canAccess) {
     return (
       <main className="admin admin-locked">
         <div className="brand">PPA<span>.</span></div>
         <h1>Admin Access</h1>
-        <p>เปิดผ่าน browser ได้โดยใช้ admin key สำหรับระบบจัดการ</p>
-        <code>/AdminConsole?key=YOUR_ADMIN_ACCESS_KEY</code>
+        <p>เข้าสู่ระบบด้วย admin key เพื่อเปิดระบบจัดการ</p>
+        <AdminLogin />
       </main>
     );
   }
@@ -249,5 +254,5 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     ],
   };
 
-  return <AdminConsole adminKey={providedKey || ""} data={data} initialReportSection={reportSection} initialTab={initialTab} />;
+  return <AdminConsole adminKey={process.env.NODE_ENV !== "production" ? providedKey || "" : ""} data={data} initialReportSection={reportSection} initialTab={initialTab} />;
 }

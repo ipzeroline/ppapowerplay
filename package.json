@@ -9,6 +9,8 @@
     "lint": "next lint",
     "db:init": "node scripts/db-init.mjs",
     "production:check": "node scripts/production-check.mjs",
+    "production:hardening:audit": "node scripts/production-hardening-audit.mjs",
+    "line:identity:audit": "node scripts/line-identity-audit.mjs",
     "line:rich-menu:image": "node -e \"const sharp=require('sharp'); sharp('public/line/rich-menu-main.svg').png().toFile('public/line/rich-menu-main.png')\"",
     "line:rich-menu:dry-run": "LINE_RICH_MENU_DRY_RUN=true node scripts/create-line-rich-menu.mjs",
     "line:rich-menu:create": "node scripts/create-line-rich-menu.mjs"

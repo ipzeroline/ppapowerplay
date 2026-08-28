@@ -3,6 +3,7 @@ import { z } from "zod";
 import { assertAdminRequest } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 const schema = z.object({
   staffId: z.number().positive(),
@@ -14,7 +15,12 @@ export async function PUT(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = schema.parse(await request.json());
+  let body: z.infer<typeof schema>;
+  try {
+    body = await parseJsonBody(request, schema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   const rows = await query<{ id: number; passwordHash: string; username: string }>(
     "SELECT id, password_hash passwordHash, username FROM admin_staff WHERE id = ? AND status = 'active'",
     [body.staffId],
@@ -36,4 +42,3 @@ export async function PUT(request: NextRequest) {
 
   return NextResponse.json({ ok: true });
 }
-

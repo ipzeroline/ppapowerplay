@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminRequest } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
+import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 type RoleRow = {
   id: number;
@@ -36,7 +37,12 @@ export async function POST(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = roleSchema.parse(await request.json());
+  let body: z.infer<typeof roleSchema>;
+  try {
+    body = await parseJsonBody(request, roleSchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   await query(
     "INSERT INTO admin_roles (code, name_th, name_en, description, level, is_system) VALUES (?, ?, ?, ?, ?, FALSE)",
     [body.code, body.nameTh, body.nameEn, body.description || null, body.level],
@@ -54,7 +60,12 @@ export async function PUT(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = roleSchema.extend({ id: z.number().positive() }).parse(await request.json());
+  let body: z.infer<typeof roleSchema> & { id: number };
+  try {
+    body = await parseJsonBody(request, roleSchema.extend({ id: z.number().positive() }));
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   await query("UPDATE admin_roles SET code = ?, name_th = ?, name_en = ?, description = ?, level = ? WHERE id = ?", [
     body.code,
     body.nameTh,

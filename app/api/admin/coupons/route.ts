@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminRequest } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
+import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 const couponSchema = z.object({
   id: z.number().positive().optional(),
@@ -24,7 +25,12 @@ export async function POST(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = couponSchema.parse(await request.json());
+  let body: z.infer<typeof couponSchema>;
+  try {
+    body = await parseJsonBody(request, couponSchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   await query(
     "INSERT INTO coupons (code, name, category, price, total_uses, validity_days, active) VALUES (?, ?, ?, ?, ?, ?, ?)",
     [body.code, body.name, body.category, body.price, body.totalUses, body.validityDays, body.active],
@@ -40,7 +46,12 @@ export async function PUT(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = couponSchema.extend({ id: z.number().positive() }).parse(await request.json());
+  let body: z.infer<typeof couponSchema> & { id: number };
+  try {
+    body = await parseJsonBody(request, couponSchema.extend({ id: z.number().positive() }));
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   await query(
     "UPDATE coupons SET code = ?, name = ?, category = ?, price = ?, total_uses = ?, validity_days = ?, active = ? WHERE id = ?",
     [body.code, body.name, body.category, body.price, body.totalUses, body.validityDays, body.active, body.id],

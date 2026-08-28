@@ -2,17 +2,25 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertApiUser, authErrorResponse } from "@/lib/auth";
 import { pool, query } from "@/lib/db";
+import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 const schema = z.object({ couponId: z.number().int().positive(), method: z.enum(["wallet", "promptpay"]).default("wallet") });
 
 export async function POST(req: Request) {
+  const limited = checkRateLimit({ key: `coupon-buy:${await clientIp()}`, limit: 20, windowMs: 60_000 });
+  if (limited) return limited;
   let user;
   try {
     user = await assertApiUser();
   } catch (error) {
     return authErrorResponse(error);
   }
-  const input = schema.parse(await req.json());
+  let input: z.infer<typeof schema>;
+  try {
+    input = await parseJsonBody(req, schema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   const coupon = (
     await query<{ id: number; price: number; totalUses: number; validityDays: number; name: string }>(
       "SELECT id, price, total_uses totalUses, validity_days validityDays, name FROM coupons WHERE id = ? AND active = TRUE LIMIT 1",
@@ -20,6 +28,9 @@ export async function POST(req: Request) {
     )
   )[0];
   if (!coupon) return NextResponse.json({ message: "ไม่พบคูปอง" }, { status: 404 });
+  if (input.method !== "wallet") {
+    return NextResponse.json({ message: "คูปองจะออกสิทธิ์ได้หลังชำระเงินจริงผ่านระบบที่ยืนยันแล้วเท่านั้น" }, { status: 402 });
+  }
 
   const conn = await pool.getConnection();
   try {

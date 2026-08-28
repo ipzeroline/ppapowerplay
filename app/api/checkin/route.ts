@@ -2,17 +2,25 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertApiUser, authErrorResponse } from "@/lib/auth";
 import { query } from "@/lib/db";
+import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 const schema = z.object({ bookingNo: z.string().min(4), qrSecret: z.string().min(4) });
 
 export async function POST(req: Request) {
+  const limited = checkRateLimit({ key: `checkin:${await clientIp()}`, limit: 40, windowMs: 60_000 });
+  if (limited) return limited;
   let user;
   try {
     user = await assertApiUser();
   } catch (error) {
     return authErrorResponse(error);
   }
-  const input = schema.parse(await req.json());
+  let input: z.infer<typeof schema>;
+  try {
+    input = await parseJsonBody(req, schema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   const booking = (
     await query<{ id: number }>(
       "SELECT id FROM bookings WHERE booking_no = ? AND qr_secret = ? AND user_id = ? AND status = 'paid' LIMIT 1",

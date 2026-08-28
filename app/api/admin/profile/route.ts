@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminRequest } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
+import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 const profileSchema = z.object({
   staffId: z.number().positive(),
@@ -15,7 +16,12 @@ export async function PUT(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = profileSchema.parse(await request.json());
+  let body: z.infer<typeof profileSchema>;
+  try {
+    body = await parseJsonBody(request, profileSchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   const duplicate = await query<{ id: number }>("SELECT id FROM admin_staff WHERE username = ? AND id <> ? AND status <> 'deleted' LIMIT 1", [
     body.username,
     body.staffId,

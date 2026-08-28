@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminRequest } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
+import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 const trainerSchema = z.object({
   id: z.number().optional(),
@@ -33,7 +34,12 @@ export async function POST(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = trainerSchema.parse(await request.json());
+  let body: z.infer<typeof trainerSchema>;
+  try {
+    body = await parseJsonBody(request, trainerSchema);
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   await query(
     "INSERT INTO trainers (slug, name, nickname, role, avatar, image_url, experience, zodiac, birth_year, blood_type, contact_phone, start_price, certifications, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
@@ -65,7 +71,12 @@ export async function PUT(request: NextRequest) {
   const denied = assertAdminRequest(request);
   if (denied) return denied;
 
-  const body = trainerSchema.extend({ id: z.number().positive() }).parse(await request.json());
+  let body: z.infer<typeof trainerSchema> & { id: number };
+  try {
+    body = await parseJsonBody(request, trainerSchema.extend({ id: z.number().positive() }));
+  } catch (error) {
+    return validationErrorResponse(error);
+  }
   await query(
     "UPDATE trainers SET slug = ?, name = ?, nickname = ?, role = ?, avatar = ?, image_url = ?, experience = ?, zodiac = ?, birth_year = ?, blood_type = ?, contact_phone = ?, start_price = ?, certifications = ?, active = ? WHERE id = ?",
     [
