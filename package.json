@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 2344",
     "lint": "next lint",
     "db:init": "node scripts/db-init.mjs",
     "production:check": "node scripts/production-check.mjs",
