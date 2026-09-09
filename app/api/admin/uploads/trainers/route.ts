@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { assertAdminRequest } from "@/lib/admin-auth";
+import { secureResponse } from "@/lib/security";
 
 const allowedTypes = new Map([
   ["image/jpeg", "jpg"],
@@ -17,13 +18,13 @@ export async function POST(request: NextRequest) {
 
   const data = await request.formData();
   const file = data.get("file");
-  if (!(file instanceof File)) return NextResponse.json({ message: "Missing file" }, { status: 400 });
-  if (!allowedTypes.has(file.type)) return NextResponse.json({ message: "Only JPG, PNG, or WEBP images are allowed" }, { status: 415 });
-  if (file.size > maxBytes) return NextResponse.json({ message: "Image must be 3MB or smaller" }, { status: 413 });
+  if (!(file instanceof File)) return secureResponse(NextResponse.json({ message: "Missing file" }, { status: 400 }));
+  if (!allowedTypes.has(file.type)) return secureResponse(NextResponse.json({ message: "Only JPG, PNG, or WEBP images are allowed" }, { status: 415 }));
+  if (file.size > maxBytes) return secureResponse(NextResponse.json({ message: "Image must be 3MB or smaller" }, { status: 413 }));
 
   const bytes = Buffer.from(await file.arrayBuffer());
   if (!isAllowedImage(bytes, file.type)) {
-    return NextResponse.json({ message: "Invalid image file" }, { status: 415 });
+    return secureResponse(NextResponse.json({ message: "Invalid image file" }, { status: 415 }));
   }
 
   const extension = allowedTypes.get(file.type);
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
   await mkdir(uploadDir, { recursive: true });
   await writeFile(path.join(uploadDir, filename), bytes);
 
-  return NextResponse.json({ imageUrl: `/uploads/trainers/${filename}` });
+  return secureResponse(NextResponse.json({ imageUrl: `/uploads/trainers/${filename}` }));
 }
 
 function isAllowedImage(bytes: Buffer, mimeType: string) {

@@ -12,7 +12,9 @@ export async function GET() {
   } catch (error) {
     return authErrorResponse(error);
   }
-  const [wallet, sports, bookings, coupons, trainers, groups, notifications] = await Promise.all([
+  await query("UPDATE memberships SET status = 'expired' WHERE status = 'active' AND ends_at < NOW()");
+  await query("UPDATE user_entitlements SET status = 'expired' WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at < NOW()");
+  const [wallet, sports, bookings, coupons, trainers, groups, notifications, contentItems, memberships, entitlements] = await Promise.all([
     query<{ balance: number; coinBalance: number; pointBalance: number }>(
       "SELECT balance, coin_balance coinBalance, point_balance pointBalance FROM wallet_accounts WHERE user_id = ? LIMIT 1",
       [user.id],
@@ -26,13 +28,16 @@ export async function GET() {
       "SELECT uc.id, c.name, c.category, uc.remaining_uses remainingUses, uc.expires_at expiresAt FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id WHERE uc.user_id = ? AND uc.status = 'active' ORDER BY uc.created_at DESC",
       [user.id],
     ),
-    query("SELECT id, slug, name, nickname, role, avatar, image_url imageUrl, experience, zodiac, birth_year birthYear, blood_type bloodType, contact_phone contactPhone, start_price startPrice, CAST(certifications AS CHAR) certifications FROM trainers WHERE active = TRUE ORDER BY id"),
+    query("SELECT id, slug, name, nickname, role, avatar, image_url imageUrl, experience, zodiac, birth_year birthYear, blood_type bloodType, contact_phone contactPhone, bio, CAST(specialties AS CHAR) specialties, CAST(packages AS CHAR) packages, CAST(weekly_schedule AS CHAR) weeklySchedule, social_line socialLine, start_price startPrice, CAST(certifications AS CHAR) certifications FROM trainers WHERE active = TRUE ORDER BY sort_order, id"),
     query(
       "SELECT g.id, g.name, g.level_name levelName, s.name_th sportName FROM groups_clubs g JOIN sports s ON s.id = g.sport_id WHERE g.status = 'active' ORDER BY g.created_at DESC LIMIT 8",
     ),
     query("SELECT id, title, body, status, created_at createdAt FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 10", [
       user.id,
     ]),
+    query("SELECT id, content_type contentType, slug, title, subtitle, body, icon, image_url imageUrl, action_label actionLabel, target_screen targetScreen, price, CAST(metadata AS CHAR) metadata, sort_order sortOrder FROM app_content_items WHERE active = TRUE ORDER BY content_type, sort_order, id LIMIT 500"),
+    query("SELECT id, plan_name planName, starts_at startsAt, ends_at endsAt, status FROM memberships WHERE user_id = ? AND status = 'active' ORDER BY ends_at DESC LIMIT 5", [user.id]),
+    query("SELECT id, entitlement_type entitlementType, title, remaining_uses remainingUses, starts_at startsAt, ends_at endsAt, status, CAST(metadata AS CHAR) metadata FROM user_entitlements WHERE user_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 30", [user.id]),
   ]);
 
   return NextResponse.json({
@@ -44,5 +49,8 @@ export async function GET() {
     trainers,
     groups,
     notifications,
+    contentItems,
+    memberships,
+    entitlements,
   });
 }

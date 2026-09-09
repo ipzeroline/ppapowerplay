@@ -16,7 +16,7 @@ type RateLimitEntry = {
 const buckets = new Map<string, RateLimitEntry>();
 
 export function jsonError(message: string, status = 400) {
-  return NextResponse.json({ message }, { status });
+  return secureResponse(NextResponse.json({ message }, { status }));
 }
 
 export async function parseJsonBody<T>(request: Request, schema: ZodSchema<T>) {

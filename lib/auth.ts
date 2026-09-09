@@ -4,6 +4,7 @@ import type mysql from "mysql2/promise";
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { query, transaction } from "@/lib/db";
+import { secureResponse } from "@/lib/security";
 
 export type CurrentUser = {
   id: number;
@@ -36,7 +37,7 @@ export function isLineRequired() {
 
 export function authErrorResponse(error: unknown) {
   if (error instanceof ApiUnauthorizedError) {
-    return NextResponse.json({ message: "กรุณาเปิดผ่าน LINE เท่านั้น" }, { status: 401 });
+    return secureResponse(NextResponse.json({ message: "กรุณาเปิดผ่าน LINE เท่านั้น" }, { status: 401 }));
   }
   throw error;
 }

@@ -3,12 +3,15 @@ import { z } from "zod";
 import { assertApiUser, authErrorResponse } from "@/lib/auth";
 import { createPublicId, pool, query } from "@/lib/db";
 import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
+import { expirePendingBookings } from "@/lib/booking-rules";
+import { grantPaidEntitlement } from "@/lib/entitlements";
 
 const schema = z.object({
   bookingNo: z.string().optional(),
   method: z.enum(["wallet", "promptpay", "card", "line_pay", "cash"]),
   amount: z.number().positive().optional(),
-  itemName: z.string().optional(),
+  itemName: z.string().trim().max(180).optional(),
+  itemType: z.string().trim().max(64).optional(),
 });
 
 export async function POST(req: Request) {
@@ -26,14 +29,17 @@ export async function POST(req: Request) {
   } catch (error) {
     return validationErrorResponse(error);
   }
+  await expirePendingBookings();
   const booking = input.bookingNo
     ? (
-        await query<{ id: number; amount: number }>(
-          "SELECT id, amount FROM bookings WHERE booking_no = ? AND user_id = ? LIMIT 1",
+        await query<{ id: number; amount: number; status: string }>(
+          "SELECT id, amount, status FROM bookings WHERE booking_no = ? AND user_id = ? LIMIT 1",
           [input.bookingNo, user.id],
         )
       )[0]
     : null;
+  if (input.bookingNo && !booking) return NextResponse.json({ message: "ไม่พบรายการจอง" }, { status: 404 });
+  if (booking && !["hold", "pending_payment"].includes(booking.status)) return NextResponse.json({ message: "รายการนี้ไม่สามารถชำระเงินได้" }, { status: 409 });
   const amount = Number(booking?.amount ?? input.amount ?? 0);
   if (!amount) return NextResponse.json({ message: "ยอดชำระไม่ถูกต้อง" }, { status: 400 });
 
@@ -59,12 +65,21 @@ export async function POST(req: Request) {
       );
     }
     const paid = input.method === "wallet";
-    await conn.execute(
-      "INSERT INTO payments (payment_no, user_id, booking_id, method, amount, status, provider_ref, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [paymentNo, user.id, booking?.id ?? null, input.method, amount, paid ? "paid" : "created", createPublicId("REF"), paid ? new Date() : null],
+    const [paymentResult] = await conn.execute(
+      "INSERT INTO payments (payment_no, user_id, booking_id, method, amount, status, provider_ref, metadata, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, JSON_OBJECT('itemName', ?, 'itemType', ?), ?)",
+      [paymentNo, user.id, booking?.id ?? null, input.method, amount, paid ? "paid" : "created", createPublicId("REF"), input.itemName || null, input.itemType || (booking ? "booking" : null), paid ? new Date() : null],
     );
     if (booking && paid) {
       await conn.execute("UPDATE bookings SET status = 'paid' WHERE id = ?", [booking.id]);
+    }
+    if (!booking && paid) {
+      await grantPaidEntitlement(conn, {
+        amount,
+        itemName: input.itemName || "PPA package",
+        itemType: input.itemType,
+        paymentId: Number((paymentResult as { insertId?: number }).insertId || 0) || null,
+        userId: user.id,
+      });
     }
     await conn.commit();
     return NextResponse.json({ paymentNo, status: paid ? "paid" : "created" }, { status: 201 });

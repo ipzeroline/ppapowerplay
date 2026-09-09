@@ -8,7 +8,7 @@ type AdminConsolePageProps = {
   searchParams: Promise<{ key?: string | string[]; report?: string | string[] }>;
 };
 
-export const adminConsoleSections = ["dashboard", "members", "staff", "roles", "reports", "coupons", "bookings", "trainers", "audit", "security", "system", "analysis"] as const;
+export const adminConsoleSections = ["dashboard", "members", "staff", "roles", "reports", "content", "coupons", "bookings", "trainers", "audit", "security", "system", "analysis"] as const;
 export type AdminConsoleSection = (typeof adminConsoleSections)[number];
 
 function readSingle(value: string | string[] | undefined) {
@@ -55,6 +55,7 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     roles,
     permissions,
     auditLogs,
+    contentItems,
     activeMemberships,
     walletAccounts,
     notifications,
@@ -68,7 +69,7 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
       "SELECT id, display_name displayName, member_code memberCode, phone, email, status, created_at createdAt FROM users ORDER BY created_at DESC LIMIT 80",
     ),
     query<AdminConsoleData["bookings"][number]>(
-      "SELECT b.booking_no bookingNo, b.title, u.display_name displayName, b.starts_at startsAt, b.amount, b.status FROM bookings b JOIN users u ON u.id = b.user_id ORDER BY b.starts_at DESC LIMIT 80",
+      "SELECT b.id, b.booking_no bookingNo, b.title, u.display_name displayName, s.name_th sportName, c.name courtName, b.starts_at startsAt, b.ends_at endsAt, b.players, b.amount, b.status, b.expires_at expiresAt, b.cancel_reason cancelReason, b.checked_in_at checkedInAt FROM bookings b JOIN users u ON u.id = b.user_id JOIN sports s ON s.id = b.sport_id LEFT JOIN courts c ON c.id = b.court_id ORDER BY b.starts_at DESC LIMIT 200",
     ),
     query<AdminConsoleData["payments"][number]>(
       "SELECT p.payment_no paymentNo, u.display_name displayName, p.method, p.amount, p.status, p.paid_at paidAt FROM payments p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 80",
@@ -77,10 +78,10 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
       "SELECT id, code, name, category, price, total_uses totalUses, validity_days validityDays, active FROM coupons ORDER BY id DESC LIMIT 80",
     ),
     query<AdminConsoleData["trainers"][number]>(
-      "SELECT id, slug, name, nickname, role, avatar, image_url imageUrl, experience, zodiac, birth_year birthYear, blood_type bloodType, contact_phone contactPhone, start_price startPrice, CAST(certifications AS CHAR) certifications, active FROM trainers ORDER BY id DESC LIMIT 80",
+      "SELECT id, slug, name, nickname, role, avatar, image_url imageUrl, experience, zodiac, birth_year birthYear, blood_type bloodType, contact_phone contactPhone, bio, CAST(specialties AS CHAR) specialties, CAST(packages AS CHAR) packages, CAST(weekly_schedule AS CHAR) weeklySchedule, social_line socialLine, start_price startPrice, CAST(certifications AS CHAR) certifications, active, sort_order sortOrder FROM trainers ORDER BY active DESC, sort_order, id DESC LIMIT 120",
     ),
     query<AdminConsoleData["courts"][number]>(
-      "SELECT c.id, s.name_th sportName, c.name, c.zone, c.status FROM courts c JOIN sports s ON s.id = c.sport_id ORDER BY s.sort_order, c.id LIMIT 120",
+      "SELECT c.id, c.sport_id sportId, s.name_th sportName, c.name, c.zone, c.capacity, c.surface, c.hourly_rate hourlyRate, c.sort_order sortOrder, c.notes, c.status FROM courts c JOIN sports s ON s.id = c.sport_id ORDER BY s.sort_order, c.sort_order, c.id LIMIT 300",
     ),
     query<AdminConsoleData["staff"][number]>(
       "SELECT s.id, s.username, s.display_name displayName, s.email, s.phone, s.status, s.role_id roleId, r.code roleCode, r.name_th roleNameTh, r.name_en roleNameEn, s.created_at createdAt FROM admin_staff s JOIN admin_roles r ON r.id = s.role_id WHERE s.status <> 'deleted' ORDER BY s.id DESC",
@@ -97,6 +98,9 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     ),
     query<AdminConsoleData["auditLogs"][number]>(
       "SELECT l.id, s.display_name staffName, s.username, l.action, l.target_type targetType, l.target_id targetId, CAST(l.metadata AS CHAR) metadataText, l.created_at createdAt FROM admin_audit_logs l LEFT JOIN admin_staff s ON s.id = l.staff_id ORDER BY l.created_at DESC LIMIT 120",
+    ),
+    query<AdminConsoleData["contentItems"][number]>(
+      "SELECT id, content_type contentType, slug, title, subtitle, body, icon, image_url imageUrl, action_label actionLabel, target_screen targetScreen, price, CAST(metadata AS CHAR) metadata, active, sort_order sortOrder, created_at createdAt, updated_at updatedAt FROM app_content_items ORDER BY active DESC, content_type, sort_order, id DESC LIMIT 500",
     ),
     query<{ total: number }>("SELECT COUNT(*) total FROM memberships WHERE status = 'active'"),
     query<{ total: number }>("SELECT COUNT(*) total FROM wallet_accounts"),
@@ -131,6 +135,7 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     permissions,
     currentAdmin: staff.find((admin) => admin.username === "zeroline") || staff.find((admin) => admin.roleCode === "super_admin") || staff[0] || null,
     auditLogs,
+    contentItems,
     securityItems: [
       {
         key: "line-only",

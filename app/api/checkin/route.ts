@@ -3,6 +3,7 @@ import { z } from "zod";
 import { assertApiUser, authErrorResponse } from "@/lib/auth";
 import { query } from "@/lib/db";
 import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
+import { expirePendingBookings } from "@/lib/booking-rules";
 
 const schema = z.object({ bookingNo: z.string().min(4), qrSecret: z.string().min(4) });
 
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
   } catch (error) {
     return validationErrorResponse(error);
   }
+  await expirePendingBookings();
   const booking = (
     await query<{ id: number }>(
       "SELECT id FROM bookings WHERE booking_no = ? AND qr_secret = ? AND user_id = ? AND status = 'paid' LIMIT 1",
@@ -28,6 +30,6 @@ export async function POST(req: Request) {
     )
   )[0];
   if (!booking) return NextResponse.json({ message: "QR ไม่ถูกต้องหรือยังไม่ได้ชำระเงิน" }, { status: 404 });
-  await query("UPDATE bookings SET status = 'checked_in' WHERE id = ?", [booking.id]);
+  await query("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE id = ?", [booking.id]);
   return NextResponse.json({ ok: true });
 }

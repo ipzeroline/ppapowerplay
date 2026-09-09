@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertApiUser, authErrorResponse } from "@/lib/auth";
 import { createPublicId, pool } from "@/lib/db";
-import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
+import { checkRateLimit, clientIp, parseJsonBody, secureResponse, validationErrorResponse } from "@/lib/security";
 
 const schema = z.object({ amount: z.number().int().min(50).max(50000) });
 
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       [createPublicId("PAY"), user.id, input.amount, createPublicId("REF")],
     );
     await conn.commit();
-    return NextResponse.json({ ok: true, status: "created" });
+    return secureResponse(NextResponse.json({ ok: true, status: "created" }));
   } catch (error) {
     await conn.rollback();
     throw error;

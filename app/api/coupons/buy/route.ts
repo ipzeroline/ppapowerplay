@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { assertApiUser, authErrorResponse } from "@/lib/auth";
-import { pool, query } from "@/lib/db";
+import { createPublicId, pool, query } from "@/lib/db";
 import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 const schema = z.object({ couponId: z.number().int().positive(), method: z.enum(["wallet", "promptpay"]).default("wallet") });
@@ -28,10 +28,6 @@ export async function POST(req: Request) {
     )
   )[0];
   if (!coupon) return NextResponse.json({ message: "ไม่พบคูปอง" }, { status: 404 });
-  if (input.method !== "wallet") {
-    return NextResponse.json({ message: "คูปองจะออกสิทธิ์ได้หลังชำระเงินจริงผ่านระบบที่ยืนยันแล้วเท่านั้น" }, { status: 402 });
-  }
-
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -51,13 +47,18 @@ export async function POST(req: Request) {
         "INSERT INTO wallet_ledger (user_id, kind, amount, coin_delta, point_delta, note) VALUES (?, 'payment', ?, 1, ?, ?)",
         [user.id, -Number(coupon.price), Math.floor(Number(coupon.price)), `ซื้อคูปอง ${coupon.name}`],
       );
+      await conn.execute(
+        "INSERT INTO user_coupons (user_id, coupon_id, remaining_uses, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))",
+        [user.id, coupon.id, coupon.totalUses, coupon.validityDays],
+      );
+    } else {
+      await conn.execute(
+        "INSERT INTO payments (payment_no, user_id, method, amount, status, provider_ref, metadata) VALUES (?, ?, 'promptpay', ?, 'created', ?, JSON_OBJECT('itemName', ?, 'itemType', 'coupon', 'couponId', ?))",
+        [createPublicId("PAY"), user.id, coupon.price, createPublicId("REF"), coupon.name, coupon.id],
+      );
     }
-    await conn.execute(
-      "INSERT INTO user_coupons (user_id, coupon_id, remaining_uses, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))",
-      [user.id, coupon.id, coupon.totalUses, coupon.validityDays],
-    );
     await conn.commit();
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, status: input.method === "wallet" ? "paid" : "created" });
   } catch (error) {
     await conn.rollback();
     throw error;

@@ -29,6 +29,44 @@ CREATE TABLE IF NOT EXISTS memberships (
   CONSTRAINT fk_memberships_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+ALTER TABLE memberships ADD COLUMN IF NOT EXISTS payment_id BIGINT UNSIGNED NULL AFTER user_id;
+ALTER TABLE memberships ADD COLUMN IF NOT EXISTS metadata JSON NULL AFTER status;
+ALTER TABLE memberships ADD INDEX IF NOT EXISTS idx_memberships_ends (status, ends_at);
+
+CREATE TABLE IF NOT EXISTS user_entitlements (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  payment_id BIGINT UNSIGNED NULL,
+  entitlement_type VARCHAR(64) NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  remaining_uses INT NULL,
+  starts_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ends_at DATETIME NULL,
+  status ENUM('active','used','expired','cancelled') NOT NULL DEFAULT 'active',
+  metadata JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_entitlements_user_status (user_id, status),
+  KEY idx_entitlements_type_status (entitlement_type, status),
+  CONSTRAINT fk_entitlements_user FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS qr_tokens (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  purpose ENUM('member','booking','coupon','entitlement','payment') NOT NULL,
+  ref_id VARCHAR(80) NULL,
+  token_hash CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_qr_token_hash (token_hash),
+  KEY idx_qr_user_purpose (user_id, purpose, expires_at),
+  CONSTRAINT fk_qr_user FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS admin_roles (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   code VARCHAR(64) NOT NULL,
@@ -115,8 +153,13 @@ CREATE TABLE IF NOT EXISTS courts (
   name VARCHAR(120) NOT NULL,
   zone VARCHAR(80) NULL,
   capacity INT NOT NULL DEFAULT 4,
+  surface VARCHAR(80) NULL,
+  hourly_rate DECIMAL(10,2) NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  notes TEXT NULL,
   status ENUM('available','maintenance','hidden') NOT NULL DEFAULT 'available',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_courts_sport (sport_id),
   UNIQUE KEY uq_courts_sport_name (sport_id, name),
@@ -124,6 +167,12 @@ CREATE TABLE IF NOT EXISTS courts (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE courts ADD UNIQUE KEY IF NOT EXISTS uq_courts_sport_name (sport_id, name);
+ALTER TABLE courts ADD COLUMN IF NOT EXISTS surface VARCHAR(80) NULL AFTER capacity;
+ALTER TABLE courts ADD COLUMN IF NOT EXISTS hourly_rate DECIMAL(10,2) NULL AFTER surface;
+ALTER TABLE courts ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0 AFTER hourly_rate;
+ALTER TABLE courts ADD COLUMN IF NOT EXISTS notes TEXT NULL AFTER sort_order;
+ALTER TABLE courts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at;
+ALTER TABLE courts ADD INDEX IF NOT EXISTS idx_courts_sport_status_sort (sport_id, status, sort_order, id);
 
 CREATE TABLE IF NOT EXISTS bookings (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -139,6 +188,9 @@ CREATE TABLE IF NOT EXISTS bookings (
   status ENUM('hold','pending_payment','paid','checked_in','cancelled','expired') NOT NULL DEFAULT 'pending_payment',
   qr_secret VARCHAR(96) NOT NULL,
   expires_at DATETIME NULL,
+  cancelled_at DATETIME NULL,
+  cancel_reason VARCHAR(255) NULL,
+  checked_in_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -150,6 +202,11 @@ CREATE TABLE IF NOT EXISTS bookings (
   CONSTRAINT fk_bookings_sport FOREIGN KEY (sport_id) REFERENCES sports(id),
   CONSTRAINT fk_bookings_court FOREIGN KEY (court_id) REFERENCES courts(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at DATETIME NULL AFTER expires_at;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancel_reason VARCHAR(255) NULL AFTER cancelled_at;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checked_in_at DATETIME NULL AFTER cancel_reason;
+ALTER TABLE bookings ADD INDEX IF NOT EXISTS idx_bookings_expiry (status, expires_at);
 
 CREATE TABLE IF NOT EXISTS payments (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -238,11 +295,18 @@ CREATE TABLE IF NOT EXISTS trainers (
   birth_year INT NULL,
   blood_type VARCHAR(8) NULL,
   contact_phone VARCHAR(32) NULL,
+  bio TEXT NULL,
+  specialties JSON NULL,
+  packages JSON NULL,
+  weekly_schedule JSON NULL,
+  social_line VARCHAR(120) NULL,
   start_price DECIMAL(10,2) NOT NULL,
   certifications JSON NULL,
   active BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INT NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_trainers_slug (slug)
+  UNIQUE KEY uq_trainers_slug (slug),
+  KEY idx_trainers_active_sort (active, sort_order, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 ALTER TABLE trainers ADD COLUMN IF NOT EXISTS image_url TEXT NULL AFTER avatar;
@@ -250,6 +314,13 @@ ALTER TABLE trainers ADD COLUMN IF NOT EXISTS zodiac VARCHAR(40) NULL AFTER expe
 ALTER TABLE trainers ADD COLUMN IF NOT EXISTS birth_year INT NULL AFTER zodiac;
 ALTER TABLE trainers ADD COLUMN IF NOT EXISTS blood_type VARCHAR(8) NULL AFTER birth_year;
 ALTER TABLE trainers ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(32) NULL AFTER blood_type;
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS bio TEXT NULL AFTER contact_phone;
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS specialties JSON NULL AFTER bio;
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS packages JSON NULL AFTER specialties;
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS weekly_schedule JSON NULL AFTER packages;
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS social_line VARCHAR(120) NULL AFTER weekly_schedule;
+ALTER TABLE trainers ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0 AFTER active;
+ALTER TABLE trainers ADD INDEX IF NOT EXISTS idx_trainers_active_sort (active, sort_order, id);
 
 CREATE TABLE IF NOT EXISTS groups_clubs (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -276,6 +347,28 @@ CREATE TABLE IF NOT EXISTS notifications (
   PRIMARY KEY (id),
   KEY idx_notifications_user (user_id, status, created_at),
   CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_content_items (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  content_type VARCHAR(64) NOT NULL,
+  slug VARCHAR(96) NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  subtitle VARCHAR(255) NULL,
+  body TEXT NULL,
+  icon VARCHAR(16) NOT NULL DEFAULT '📌',
+  image_url TEXT NULL,
+  action_label VARCHAR(80) NULL,
+  target_screen VARCHAR(64) NULL,
+  price DECIMAL(10,2) NOT NULL DEFAULT 0,
+  metadata JSON NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_app_content_type_slug (content_type, slug),
+  KEY idx_app_content_active_sort (content_type, active, sort_order, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO sports (slug, name_th, icon, description, requires_booking, base_rate, sort_order)
@@ -314,14 +407,48 @@ VALUES
   ('TENNIS-COACH-DAY-10', 'เทนนิส Coach กลางวัน 10 ครั้ง', 'tennis', 11000, 10, 60)
 ON DUPLICATE KEY UPDATE price = VALUES(price), total_uses = VALUES(total_uses);
 
-INSERT INTO trainers (slug, name, nickname, role, avatar, experience, start_price, certifications)
+INSERT INTO trainers (slug, name, nickname, role, avatar, experience, zodiac, birth_year, blood_type, contact_phone, bio, specialties, packages, weekly_schedule, social_line, start_price, certifications, sort_order)
 VALUES
-  ('alex', 'Alex Tan', 'อเล็กซ์', 'HYROX Coach', '🧑‍🦱', '6 ปี', 1500, JSON_ARRAY('HYROX Master Trainer Academy','NASM Certified Personal Trainer')),
-  ('chai', 'สมชาย ใจดี', 'โค้ชชาย', 'Strength & Conditioning', '🧔', '10 ปี', 1300, JSON_ARRAY('ACE Certified Personal Trainer','FIT Thailand Strength Course')),
-  ('mind', 'วรินทร สุขใจ', 'ครูมายด์', 'Pilates Instructor', '👩‍🦰', '4 ปี', 1200, JSON_ARRAY('STOTT Pilates','AFAA Group Fitness')),
-  ('may', 'ณัฐธิดา พรหมมา', 'ครูเมย์', 'Yoga Instructor', '🧘‍♀️', '7 ปี', 1000, JSON_ARRAY('RYT-200 Yoga Alliance','Yin Yoga Certification')),
-  ('zack', 'Zack Lee', 'แซค', 'CrossFit Coach', '🧑‍🦲', '8 ปี', 1400, JSON_ARRAY('CrossFit Level 2 Trainer','TRX Suspension Training'))
-ON DUPLICATE KEY UPDATE role = VALUES(role), start_price = VALUES(start_price);
+  ('alex', 'Alex Tan', 'อเล็กซ์', 'HYROX Coach', '🧑‍🦱', '6 ปี', 'เมษ', 2535, 'O', '02-123-4567', 'โค้ช HYROX และ functional training สำหรับสมาชิกที่ต้องการพัฒนา endurance, strength และ race pace แบบเป็นระบบ', JSON_ARRAY('HYROX','Functional Training','Weight Loss'), JSON_ARRAY(JSON_OBJECT('title','รายวัน','text','1 ครั้ง · 1 ชม.','price',1500),JSON_OBJECT('title','รายสัปดาห์','text','5 ครั้ง/สัปดาห์','price',6750),JSON_OBJECT('title','รายเดือน','text','20 ครั้ง/เดือน','price',25000)), JSON_ARRAY(JSON_OBJECT('day','จันทร์','date','13','slots',JSON_ARRAY(JSON_OBJECT('time','08:00','status','available'),JSON_OBJECT('time','18:00','status','available'))),JSON_OBJECT('day','พุธ','date','15','slots',JSON_ARRAY(JSON_OBJECT('time','09:30','status','available'),JSON_OBJECT('time','19:30','status','full'))),JSON_OBJECT('day','เสาร์','date','18','slots',JSON_ARRAY(JSON_OBJECT('time','11:00','status','available'),JSON_OBJECT('time','16:00','status','available')))), '@ppa_alex', 1500, JSON_ARRAY('HYROX Master Trainer Academy','NASM Certified Personal Trainer'), 10),
+  ('chai', 'สมชาย ใจดี', 'โค้ชชาย', 'Strength & Conditioning', '🧔', '10 ปี', 'สิงห์', 2529, 'B', '02-123-4567', 'วางโปรแกรม strength and conditioning สำหรับนักกีฬาและผู้เริ่มต้น โดยเน้นท่าปลอดภัยและ progression ที่วัดผลได้', JSON_ARRAY('Strength','Conditioning','Athlete Performance'), JSON_ARRAY(JSON_OBJECT('title','รายวัน','text','1 ครั้ง · 1 ชม.','price',1300),JSON_OBJECT('title','รายสัปดาห์','text','5 ครั้ง/สัปดาห์','price',5850),JSON_OBJECT('title','รายเดือน','text','20 ครั้ง/เดือน','price',21700)), JSON_ARRAY(JSON_OBJECT('day','อังคาร','date','14','slots',JSON_ARRAY(JSON_OBJECT('time','08:00','status','available'),JSON_OBJECT('time','17:00','status','available'))),JSON_OBJECT('day','พฤหัสฯ','date','16','slots',JSON_ARRAY(JSON_OBJECT('time','11:00','status','full'),JSON_OBJECT('time','18:00','status','available'))),JSON_OBJECT('day','อาทิตย์','date','19','slots',JSON_ARRAY(JSON_OBJECT('time','09:30','status','available'),JSON_OBJECT('time','14:00','status','available')))), '@ppa_chai', 1300, JSON_ARRAY('ACE Certified Personal Trainer','FIT Thailand Strength Course'), 20),
+  ('mind', 'วรินทร สุขใจ', 'ครูมายด์', 'Pilates Instructor', '👩‍🦰', '4 ปี', 'ตุล', 2538, 'A', '02-123-4567', 'ครู Pilates สำหรับ posture, core strength และ mobility เหมาะกับสมาชิกที่ต้องการฟื้นฟูร่างกายอย่างนุ่มนวล', JSON_ARRAY('Pilates','Mobility','Posture'), JSON_ARRAY(JSON_OBJECT('title','Private','text','1 ครั้ง · Reformer/Mat','price',1200),JSON_OBJECT('title','Duo','text','2 คน · 1 ชม.','price',2000),JSON_OBJECT('title','10 Sessions','text','แพ็ก 10 ครั้ง','price',10500)), JSON_ARRAY(JSON_OBJECT('day','จันทร์','date','13','slots',JSON_ARRAY(JSON_OBJECT('time','09:30','status','available'),JSON_OBJECT('time','14:00','status','available'))),JSON_OBJECT('day','ศุกร์','date','17','slots',JSON_ARRAY(JSON_OBJECT('time','11:00','status','available'),JSON_OBJECT('time','18:00','status','full'))),JSON_OBJECT('day','เสาร์','date','18','slots',JSON_ARRAY(JSON_OBJECT('time','08:00','status','available'),JSON_OBJECT('time','15:30','status','available')))), '@ppa_mind', 1200, JSON_ARRAY('STOTT Pilates','AFAA Group Fitness'), 30),
+  ('may', 'ณัฐธิดา พรหมมา', 'ครูเมย์', 'Yoga Instructor', '🧘‍♀️', '7 ปี', 'มีน', 2532, 'AB', '02-123-4567', 'สอน yoga, breathwork และ recovery class สำหรับสมดุลร่างกายหลังฝึกหนัก', JSON_ARRAY('Yoga','Recovery','Breathwork'), JSON_ARRAY(JSON_OBJECT('title','Drop-in','text','1 ครั้ง · 75 นาที','price',1000),JSON_OBJECT('title','5 Sessions','text','แพ็ก 5 ครั้ง','price',4500),JSON_OBJECT('title','Monthly','text','คลาสส่วนตัวรายเดือน','price',16000)), JSON_ARRAY(JSON_OBJECT('day','อังคาร','date','14','slots',JSON_ARRAY(JSON_OBJECT('time','08:00','status','available'),JSON_OBJECT('time','19:30','status','available'))),JSON_OBJECT('day','พฤหัสฯ','date','16','slots',JSON_ARRAY(JSON_OBJECT('time','09:30','status','available'),JSON_OBJECT('time','16:00','status','full'))),JSON_OBJECT('day','อาทิตย์','date','19','slots',JSON_ARRAY(JSON_OBJECT('time','11:00','status','available'),JSON_OBJECT('time','18:00','status','available')))), '@ppa_may', 1000, JSON_ARRAY('RYT-200 Yoga Alliance','Yin Yoga Certification'), 40),
+  ('zack', 'Zack Lee', 'แซค', 'CrossFit Coach', '🧑‍🦲', '8 ปี', 'ธนู', 2533, 'O', '02-123-4567', 'โค้ช CrossFit และ metabolic conditioning สำหรับผู้ที่ต้องการเพิ่ม power, agility และ body composition', JSON_ARRAY('CrossFit','Metcon','Power'), JSON_ARRAY(JSON_OBJECT('title','รายวัน','text','1 ครั้ง · 1 ชม.','price',1400),JSON_OBJECT('title','รายสัปดาห์','text','5 ครั้ง/สัปดาห์','price',6300),JSON_OBJECT('title','รายเดือน','text','20 ครั้ง/เดือน','price',23400)), JSON_ARRAY(JSON_OBJECT('day','พุธ','date','15','slots',JSON_ARRAY(JSON_OBJECT('time','08:00','status','available'),JSON_OBJECT('time','18:00','status','available'))),JSON_OBJECT('day','ศุกร์','date','17','slots',JSON_ARRAY(JSON_OBJECT('time','14:00','status','available'),JSON_OBJECT('time','20:30','status','full'))),JSON_OBJECT('day','เสาร์','date','18','slots',JSON_ARRAY(JSON_OBJECT('time','09:30','status','available'),JSON_OBJECT('time','17:00','status','available')))), '@ppa_zack', 1400, JSON_ARRAY('CrossFit Level 2 Trainer','TRX Suspension Training'), 50)
+ON DUPLICATE KEY UPDATE role = VALUES(role), start_price = VALUES(start_price), bio = VALUES(bio), specialties = VALUES(specialties), packages = VALUES(packages), weekly_schedule = VALUES(weekly_schedule), social_line = VALUES(social_line), sort_order = VALUES(sort_order);
+
+INSERT INTO app_content_items (content_type, slug, title, subtitle, body, icon, action_label, target_screen, price, metadata, sort_order)
+VALUES
+  ('home_slide', 'hyrox-challenge-2026', 'PPA HYROX Challenge 2026', 'สมัครแข่งวันนี้ - 30 มิ.ย. · รับเสื้อ Finisher ฟรี', 'อีเวนต์แข่งขัน HYROX สำหรับสมาชิกและบุคคลทั่วไป', '🏆', 'สมัคร', 'hyrox', 0, JSON_OBJECT('tag','EVENT','tone','event'), 10),
+  ('home_slide', 'badminton-shop-deal', 'รองเท้าแบด ลดสูงสุด 40%', 'PPA Pro Shop · เฉพาะสมาชิก ถึง 31 พ.ค.', 'ดีลอุปกรณ์กีฬาในคลับสำหรับสมาชิก PPA', '🛍️', 'ดูดีล', 'promotion', 0, JSON_OBJECT('tag','PROMOTION','tone','shop'), 20),
+  ('home_slide', 'ppa-cafe-deal', 'ส่วนลดร้านอาหาร 15%', 'PPA Cafe & Restaurant · โชว์ QR สมาชิกรับสิทธิ์', 'ส่วนลดอาหารและเครื่องดื่มหลังเล่นกีฬา', '🍜', 'รับสิทธิ์', 'coupon', 0, JSON_OBJECT('tag','FOOD','tone','food'), 30),
+  ('home_slide', 'airfit-trial', 'เปิดคลาส Airfit ใหม่', 'ทดลองเรียนครั้งแรก 199 ฿ · จองผ่านแอปเท่านั้น', 'คลาส Airfit สำหรับผู้เริ่มต้นและผู้เล่นประจำ', '🪂', 'จอง', 'airfit', 199, JSON_OBJECT('tag','NEW','tone','airfit'), 40),
+  ('service_package', 'fitness-pack', 'Fitness Pack', 'Day pass, monthly access และ PT starter', 'เข้าใช้ Fitness และบริการเสริมของ Gymnos', '💪', 'ซื้อแพ็กเกจ', 'fitness', 299, JSON_OBJECT('category','gymnos'), 10),
+  ('service_package', 'hyrox-simulation', 'HYROX Simulation', 'แข่งจำลองพร้อม coach station', 'ซ้อมสนามจำลอง HYROX พร้อมโค้ชประจำ station', '🔥', 'จองคลาส', 'hyrox', 1300, JSON_OBJECT('category','hyrox'), 20),
+  ('service_package', 'pilates-group-10', 'Pilates Group 10', 'Reformer group class 10 ครั้ง', 'แพ็กเกจ Pilates group สำหรับสมาชิก', '🤸', 'ซื้อคูปอง', 'pilates', 8500, JSON_OBJECT('category','pilates'), 30),
+  ('service_package', 'airfit-trial-class', 'Airfit Trial', 'ทดลองเรียน 1 ครั้ง', 'คลาสทดลอง Airfit แบบจองล่วงหน้า', '🪂', 'จองทดลอง', 'airfit', 199, JSON_OBJECT('category','airfit'), 40),
+  ('live_tv', 'arena-court-a', 'Court A Live', 'กำลังถ่ายทอด', 'Basketball Open Run · Court A', '🏀', 'ดูสด', 'livetv', 0, JSON_OBJECT('status','live','zone','Court A'), 10),
+  ('live_tv', 'badminton-buffet-rank', 'Badminton Buffet Rank', 'เริ่ม 18:00', 'ถ่ายทอดสดกิจกรรม Buffet Rank', '🏸', 'ดูรายการ', 'livetv', 0, JSON_OBJECT('status','scheduled','zone','Main'), 20),
+  ('live_tv', 'hyrox-training-replay', 'HYROX Training', 'Replay ล่าสุด', 'ย้อนหลังการซ้อม HYROX', '🔥', 'ดูย้อนหลัง', 'livetv', 0, JSON_OBJECT('status','replay','zone','Arena'), 30),
+  ('class_schedule', 'hyrox-evening', 'HYROX Class', '18:30 · ว่าง', 'คลาส HYROX รอบเย็น', '🔥', 'จอง', 'hyrox', 700, JSON_OBJECT('time','18:30','status','available'), 10),
+  ('class_schedule', 'pilates-reformer', 'Pilates Reformer', '15:30 · ว่าง', 'Reformer group class', '🤸', 'จอง', 'pilates', 950, JSON_OBJECT('time','15:30','status','available'), 20),
+  ('class_schedule', 'airfit-trial-slot', 'Airfit Trial', '17:00 · ว่าง', 'ทดลองเรียน Airfit', '🪂', 'จอง', 'airfit', 199, JSON_OBJECT('time','17:00','status','available'), 30),
+  ('membership_plan', 'monthly', 'แพ็กเกจ Monthly', 'เข้าใช้บริการตามสิทธิ์สมาชิก', 'เหมาะสำหรับสมาชิกที่ใช้บริการรายเดือน', '📦', 'ซื้อแพ็กเกจ', 'plans', 1900, JSON_OBJECT('duration','monthly'), 10),
+  ('membership_plan', 'quarterly', 'แพ็กเกจ Quarterly', 'เข้าใช้บริการตามสิทธิ์สมาชิก', 'คุ้มกว่าสำหรับสมาชิกประจำ', '📦', 'ซื้อแพ็กเกจ', 'plans', 5100, JSON_OBJECT('duration','quarterly'), 20),
+  ('membership_plan', 'annual', 'แพ็กเกจ Annual', 'เข้าใช้บริการตามสิทธิ์สมาชิก', 'สมาชิกทั้งปีพร้อมสิทธิพิเศษ', '💎', 'ซื้อแพ็กเกจ', 'plans', 18000, JSON_OBJECT('duration','annual'), 30),
+  ('feature_screen', 'classhub', 'คลาสออกกำลังกาย', 'รวม Yoga, Pilates, HYROX, Airfit และบริการเสริม', 'เลือกคลาสและแพ็กเกจจากข้อมูลที่จัดการในหลังบ้าน', '🧘', 'ดูคลาส', 'classhub', 0, JSON_OBJECT('screens',JSON_ARRAY('svcclass','svcdetail','classes','classschedule')), 10),
+  ('feature_screen', 'profile-tools', 'ข้อมูลสมาชิก', 'Personal, Visits, Buy History, Coupons, Status และ Notification Settings', 'หน้าสมาชิกเชื่อมกับข้อมูลจริงของผู้ใช้และรายการซื้อในระบบ', '👤', 'จัดการ', 'profile', 0, JSON_OBJECT('screens',JSON_ARRAY('personal','visits','buyhistory','mycoupons','mystatus','notisettings')), 20),
+  ('feature_screen', 'groups-kuan', 'Find Your Game & Buffet Rank', 'Open Run, ก๊วน, Ranking, Vote และ Reward', 'ระบบก๊วนเชื่อมการสร้างกลุ่มจริง ส่วน ranking/vote/reward แสดงเป็น managed feature พร้อมต่อ backend เฉพาะได้', '👥', 'เปิด', 'groups', 0, JSON_OBJECT('screens',JSON_ARRAY('orprofile','kuanprofile','groupcreate','groupdetail','groupchat','groupranking','kuanvote','kuanresult','kuanredeem','playerprofile','coinshop','kuanroster','kuanpairs')), 30)
+ON DUPLICATE KEY UPDATE
+  title = VALUES(title),
+  subtitle = VALUES(subtitle),
+  body = VALUES(body),
+  icon = VALUES(icon),
+  action_label = VALUES(action_label),
+  target_screen = VALUES(target_screen),
+  price = VALUES(price),
+  metadata = VALUES(metadata),
+  active = TRUE,
+  sort_order = VALUES(sort_order);
 
 INSERT INTO admin_roles (code, name_th, name_en, description, level, is_system)
 VALUES
@@ -347,6 +474,7 @@ VALUES
   ('coupons.manage', 'จัดการคูปอง', 'Manage coupons', 'coupons'),
   ('bookings.manage', 'จัดการการจอง', 'Manage bookings', 'bookings'),
   ('trainers.manage', 'จัดการเทรนเนอร์', 'Manage trainers', 'trainers'),
+  ('content.manage', 'จัดการเนื้อหาแอป', 'Manage app content', 'content'),
   ('payments.manage', 'จัดการการเงิน', 'Manage payments', 'payments'),
   ('settings.manage', 'ตั้งค่าระบบ', 'Manage system settings', 'settings')
 ON DUPLICATE KEY UPDATE
@@ -363,7 +491,7 @@ WHERE r.code = 'super_admin';
 INSERT IGNORE INTO admin_role_permissions (role_id, permission_id)
 SELECT r.id, p.id
 FROM admin_roles r
-JOIN admin_permissions p ON p.code IN ('dashboard.view','members.manage','staff.manage','reports.view','coupons.manage','bookings.manage','trainers.manage')
+JOIN admin_permissions p ON p.code IN ('dashboard.view','members.manage','staff.manage','reports.view','coupons.manage','bookings.manage','trainers.manage','content.manage')
 WHERE r.code = 'manager';
 
 INSERT IGNORE INTO admin_role_permissions (role_id, permission_id)

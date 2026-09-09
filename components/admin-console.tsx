@@ -6,7 +6,22 @@ type Lang = "th" | "en";
 type Theme = "dark" | "light";
 type AdminMetric = { label: string; value: number | string; hint: string };
 type AdminUser = { id: number; displayName: string; memberCode: string; phone?: string | null; email?: string | null; status: string; createdAt?: string };
-type AdminBooking = { bookingNo: string; title: string; displayName: string; startsAt: string; amount: number; status: string };
+type AdminBooking = {
+  id?: number;
+  bookingNo: string;
+  title: string;
+  displayName: string;
+  sportName?: string | null;
+  courtName?: string | null;
+  startsAt: string;
+  endsAt?: string | null;
+  players?: number | null;
+  amount: number;
+  status: string;
+  expiresAt?: string | null;
+  cancelReason?: string | null;
+  checkedInAt?: string | null;
+};
 type AdminCoupon = { id: number; code: string; name: string; category: string; price: number; totalUses: number; validityDays: number; active: number | boolean };
 type AdminTrainer = {
   id: number;
@@ -21,12 +36,20 @@ type AdminTrainer = {
   birthYear?: number | null;
   bloodType?: string | null;
   contactPhone?: string | null;
+  bio?: string | null;
+  specialties?: string[] | string | null;
+  packages?: TrainerPackage[] | string | null;
+  weeklySchedule?: TrainerScheduleDay[] | string | null;
+  socialLine?: string | null;
   certifications?: string[] | string | null;
   startPrice: number;
+  sortOrder?: number | null;
   active: number | boolean;
 };
+type TrainerPackage = { title: string; text: string; price: number };
+type TrainerScheduleDay = { day: string; date?: string; slots: { time: string; status: "available" | "full" | "off" }[] };
 type AdminPayment = { paymentNo: string; displayName: string; method: string; amount: number; status: string; paidAt?: string | null };
-type AdminCourt = { id: number; sportName: string; name: string; zone?: string | null; status: string };
+type AdminCourt = { id: number; sportId?: number; sportName: string; name: string; zone?: string | null; capacity?: number | null; surface?: string | null; hourlyRate?: number | null; sortOrder?: number | null; notes?: string | null; status: string };
 type AdminStaff = {
   id: number;
   username: string;
@@ -71,6 +94,24 @@ type AdminSystemItem = {
   hintTh: string;
   hintEn: string;
 };
+type AdminContentItem = {
+  id: number;
+  contentType: string;
+  slug: string;
+  title: string;
+  subtitle?: string | null;
+  body?: string | null;
+  icon: string;
+  imageUrl?: string | null;
+  actionLabel?: string | null;
+  targetScreen?: string | null;
+  price: number;
+  metadata?: string | Record<string, unknown> | null;
+  active: number | boolean;
+  sortOrder?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 export type AdminConsoleData = {
   metrics: AdminMetric[];
@@ -85,6 +126,7 @@ export type AdminConsoleData = {
   permissions: AdminPermission[];
   currentAdmin: AdminStaff | null;
   auditLogs: AdminAuditLog[];
+  contentItems: AdminContentItem[];
   systemHealth: AdminSystemItem[];
   securityItems: AdminSystemItem[];
 };
@@ -128,6 +170,7 @@ const copy = {
     coupons: "ระบบคูปอง",
     bookings: "ระบบจอง",
     trainers: "เทรนเนอร์",
+    content: "App Content",
     audit: "ตรวจสอบระบบ",
     security: "ความปลอดภัย",
     system: "สถานะระบบ",
@@ -136,6 +179,30 @@ const copy = {
     recentPayments: "ชำระเงินล่าสุด",
     revenueTrend: "กราฟรายได้",
     bookingStatus: "สถานะการจอง",
+    bookingManager: "จัดการการจองและสนาม",
+    bookingSearch: "ค้นหา booking / สมาชิก / กีฬา / สนาม",
+    bookingUpdated: "อัปเดตรายการจองแล้ว",
+    bookingCancelled: "ยกเลิกรายการจองแล้ว",
+    bookingCheckin: "เช็คอิน",
+    bookingMarkPaid: "ชำระแล้ว",
+    paymentMarkPaid: "ยืนยันชำระ",
+    paymentUpdated: "อัปเดต payment แล้ว",
+    bookingExpire: "หมดอายุ",
+    cancelReason: "เหตุผลยกเลิก",
+    courtManager: "จัดการสนาม",
+    addCourt: "เพิ่มสนาม",
+    editCourt: "แก้ไขสนาม",
+    courtCreated: "เพิ่มสนามแล้ว",
+    courtUpdated: "อัปเดตสนามแล้ว",
+    courtDeleted: "ซ่อนสนามแล้ว",
+    courtSearch: "ค้นหาสนาม / กีฬา / โซน",
+    sport: "กีฬา",
+    courtName: "ชื่อสนาม",
+    zone: "โซน",
+    capacity: "ความจุ",
+    surface: "พื้นสนาม",
+    hourlyRate: "ราคาเฉพาะสนาม",
+    notes: "หมายเหตุ",
     courtMix: "สนามแยกตามกีฬา",
     operationsPulse: "สัญญาณการทำงานวันนี้",
     financialReport: "รายงานการเงิน",
@@ -289,6 +356,29 @@ const copy = {
     birthYear: "ปีเกิด",
     bloodType: "กรุ๊ปเลือด",
     contactPhone: "เบอร์ติดต่อ",
+    bio: "ประวัติ/แนวทางสอน",
+    specialties: "ความเชี่ยวชาญ",
+    specialtiesHint: "ใส่ 1 รายการต่อ 1 บรรทัด เช่น HYROX",
+    packages: "แพ็กเกจเทรน",
+    packagesHint: "รูปแบบ: ชื่อ | รายละเอียด | ราคา",
+    weeklySchedule: "ตารางว่างรายสัปดาห์",
+    weeklyScheduleHint: "รูปแบบ: วัน | วันที่ | เวลา | สถานะ เช่น จันทร์ | 13 | 08:00 | available",
+    socialLine: "LINE / ช่องทางติดต่อ",
+    sortOrder: "ลำดับแสดงผล",
+    addContent: "เพิ่มคอนเทนต์",
+    editContent: "แก้ไขคอนเทนต์",
+    contentList: "คอนเทนต์ในแอป",
+    contentCreated: "เพิ่มคอนเทนต์แล้ว",
+    contentUpdated: "อัปเดตคอนเทนต์แล้ว",
+    contentDeleted: "ปิดใช้งานคอนเทนต์แล้ว",
+    contentSearch: "ค้นหา type / slug / title / target",
+    contentType: "ประเภท",
+    title: "หัวข้อ",
+    subtitle: "คำโปรย",
+    body: "รายละเอียด",
+    actionLabel: "ปุ่มกระทำ",
+    targetScreen: "Screen ปลายทาง",
+    metadata: "Metadata JSON",
     certifications: "เกียรติบัตร",
     certificationsHint: "ใส่ 1 รายการต่อ 1 บรรทัด",
     active: "เปิดใช้งาน",
@@ -368,6 +458,7 @@ const copy = {
     coupons: "Coupons",
     bookings: "Bookings",
     trainers: "Trainers",
+    content: "App Content",
     audit: "Audit",
     security: "Security",
     system: "System",
@@ -376,6 +467,30 @@ const copy = {
     recentPayments: "Recent Payments",
     revenueTrend: "Revenue Trend",
     bookingStatus: "Booking Status",
+    bookingManager: "Booking and court manager",
+    bookingSearch: "Search booking / member / sport / court",
+    bookingUpdated: "Booking updated",
+    bookingCancelled: "Booking cancelled",
+    bookingCheckin: "Check in",
+    bookingMarkPaid: "Mark paid",
+    paymentMarkPaid: "Confirm paid",
+    paymentUpdated: "Payment updated",
+    bookingExpire: "Expire",
+    cancelReason: "Cancel reason",
+    courtManager: "Court manager",
+    addCourt: "Add court",
+    editCourt: "Edit court",
+    courtCreated: "Court created",
+    courtUpdated: "Court updated",
+    courtDeleted: "Court hidden",
+    courtSearch: "Search court / sport / zone",
+    sport: "Sport",
+    courtName: "Court name",
+    zone: "Zone",
+    capacity: "Capacity",
+    surface: "Surface",
+    hourlyRate: "Court rate",
+    notes: "Notes",
     courtMix: "Courts by Sport",
     operationsPulse: "Operations Pulse",
     financialReport: "Financial Report",
@@ -529,6 +644,29 @@ const copy = {
     birthYear: "Birth year",
     bloodType: "Blood type",
     contactPhone: "Contact phone",
+    bio: "Bio / Coaching approach",
+    specialties: "Specialties",
+    specialtiesHint: "One item per line, e.g. HYROX",
+    packages: "Training packages",
+    packagesHint: "Format: Title | Detail | Price",
+    weeklySchedule: "Weekly availability",
+    weeklyScheduleHint: "Format: Day | Date | Time | Status, e.g. Monday | 13 | 08:00 | available",
+    socialLine: "LINE / contact channel",
+    sortOrder: "Display order",
+    addContent: "Add content",
+    editContent: "Edit content",
+    contentList: "App content",
+    contentCreated: "Content created",
+    contentUpdated: "Content updated",
+    contentDeleted: "Content disabled",
+    contentSearch: "Search type / slug / title / target",
+    contentType: "Type",
+    title: "Title",
+    subtitle: "Subtitle",
+    body: "Body",
+    actionLabel: "Action label",
+    targetScreen: "Target screen",
+    metadata: "Metadata JSON",
     certifications: "Certifications",
     certificationsHint: "One item per line",
     active: "Active",
@@ -578,6 +716,7 @@ const tabs = [
   ["staff", "Staff", "staff", "🧑‍💼"],
   ["roles", "Roles", "roles", "🛡️"],
   ["reports", "Reports", "reports", "📈"],
+  ["content", "Content", "content", "🧩"],
   ["coupons", "Coupons", "coupons", "🎟️"],
   ["bookings", "Bookings", "bookings", "📅"],
   ["trainers", "Trainers", "trainers", "🏋️"],
@@ -594,7 +733,7 @@ type AdminNavGroup = { labelTh: string; labelEn: string; items: AdminTab[] };
 const reportSectionIds = ["overview", "finance", "bookings", "members", "coupons", "trainers", "courts", "engagement", "audit"] as const;
 const adminNavGroups: AdminNavGroup[] = [
   { labelTh: "ภาพรวม", labelEn: "Overview", items: ["dashboard"] },
-  { labelTh: "งานบริการหลัก", labelEn: "Core Operations", items: ["bookings", "members", "trainers", "coupons"] },
+  { labelTh: "งานบริการหลัก", labelEn: "Core Operations", items: ["bookings", "members", "trainers", "coupons", "content"] },
   { labelTh: "รายงานและวิเคราะห์", labelEn: "Reports & Analytics", items: ["reports", "analysis"] },
   { labelTh: "ทีมงานและสิทธิ์", labelEn: "Team & Access", items: ["staff", "roles"] },
   { labelTh: "ระบบและความปลอดภัย", labelEn: "System & Security", items: ["audit", "security", "system"] },
@@ -607,6 +746,7 @@ function pageDescription(tab: AdminTab, lang: Lang) {
       members: "ค้นหาและตรวจสอบข้อมูลสมาชิก สถานะ และช่องทางติดต่อ",
       bookings: "ติดตามรายการจอง เวลาใช้งาน ยอดชำระ และสถานะสนาม",
       trainers: "จัดการโปรไฟล์ รูปภาพ ราคา และสถานะเทรนเนอร์ของสปอร์ตคอมเพล็กซ์",
+      content: "จัดการ banner, promotion, class schedule, live TV, membership และ screen จาก prototype",
       coupons: "ตรวจสอบคูปอง หมวดหมู่ ราคา และการใช้งาน",
       reports: "วิเคราะห์ข้อมูลรายงานพร้อมตัวกรอง สรุปรวม และส่งออก CSV",
       analysis: "รายการตรวจสอบและข้อเสนอแนะเพื่อยกระดับ production",
@@ -621,6 +761,7 @@ function pageDescription(tab: AdminTab, lang: Lang) {
       members: "Search and review member profiles, status, and contact data.",
       bookings: "Track bookings, session times, payments, and court states.",
       trainers: "Manage trainer profiles, photos, prices, and active status.",
+      content: "Manage banners, promotions, class schedules, live TV, membership, and prototype screens.",
       coupons: "Review coupons, categories, pricing, and usage.",
       reports: "Analyze reports with filters, summaries, and CSV export.",
       analysis: "Production checklist and recommendations for system maturity.",
@@ -737,9 +878,13 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
   const [query, setQuery] = useState("");
   const [lang, setLang] = useState<Lang>("th");
   const [theme, setTheme] = useState<Theme>("dark");
+  const [bookingRows, setBookingRows] = useState(data.bookings);
+  const [courtRows, setCourtRows] = useState(data.courts);
+  const [paymentRows, setPaymentRows] = useState(data.payments);
   const [staffRows, setStaffRows] = useState(data.staff);
   const [couponRows, setCouponRows] = useState(data.coupons);
   const [trainerRows, setTrainerRows] = useState(data.trainers);
+  const [contentRows, setContentRows] = useState(data.contentItems);
   const [roleRows, setRoleRows] = useState(data.roles);
   const [permissionRows, setPermissionRows] = useState(data.permissions);
   const [adminMessage, setAdminMessage] = useState("");
@@ -888,7 +1033,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
           </div>
         </header>
 
-        {tab === "dashboard" && <Dashboard data={data} lang={lang} t={t} />}
+        {tab === "dashboard" && <Dashboard adminKey={adminKey} data={{ ...data, payments: paymentRows }} lang={lang} onPaymentsChange={setPaymentRows} t={t} />}
         {tab === "members" && <Panel title={t.members}><MemberTable rows={filteredUsers} lang={lang} t={t} /></Panel>}
         {tab === "staff" && (
           <StaffManager
@@ -915,9 +1060,10 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
             t={t}
           />
         )}
-        {tab === "reports" && <Reports data={data} lang={lang} section={reportSection} t={t} />}
+        {tab === "reports" && <Reports adminKey={adminKey} data={{ ...data, payments: paymentRows }} lang={lang} onPaymentsChange={setPaymentRows} section={reportSection} t={t} />}
+        {tab === "content" && <ContentManager adminKey={adminKey} lang={lang} message={adminMessage} rows={contentRows} setMessage={setAdminMessage} setRows={setContentRows} t={t} />}
         {tab === "coupons" && <CouponManager adminKey={adminKey} lang={lang} message={adminMessage} rows={couponRows} setMessage={setAdminMessage} setRows={setCouponRows} t={t} />}
-        {tab === "bookings" && <Panel title={t.bookings}><BookingTable rows={data.bookings} lang={lang} t={t} /></Panel>}
+        {tab === "bookings" && <BookingManager adminKey={adminKey} courts={courtRows} lang={lang} message={adminMessage} rows={bookingRows} setCourts={setCourtRows} setMessage={setAdminMessage} setRows={setBookingRows} t={t} />}
         {tab === "trainers" && (
           <TrainerManager
             adminKey={adminKey}
@@ -1066,7 +1212,7 @@ function Segment({ label, value, options, onChange }: { label: string; value: st
   );
 }
 
-function Dashboard({ data, lang, t }: { data: AdminConsoleData; lang: Lang; t: typeof copy[Lang] }) {
+function Dashboard({ adminKey, data, lang, onPaymentsChange, t }: { adminKey: string; data: AdminConsoleData; lang: Lang; onPaymentsChange: (rows: AdminPayment[]) => void; t: typeof copy[Lang] }) {
   const revenue = useMemo(() => buildRevenueBars(data.payments, lang), [data.payments, lang]);
   const bookingActivity = useMemo(() => buildBookingActivityBars(data.bookings, lang), [data.bookings, lang]);
   const statuses = useMemo(() => buildStatusBars(data.bookings), [data.bookings]);
@@ -1193,7 +1339,7 @@ function Dashboard({ data, lang, t }: { data: AdminConsoleData; lang: Lang; t: t
 
       <div className="admin-panels">
         <Panel title={t.recentBookings}><BookingTable rows={data.bookings.slice(0, 6)} lang={lang} t={t} /></Panel>
-        <Panel title={t.recentPayments}><PaymentTable rows={data.payments.slice(0, 6)} lang={lang} t={t} /></Panel>
+        <Panel title={t.recentPayments}><PaymentTable adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={data.payments.slice(0, 6)} lang={lang} t={t} /></Panel>
       </div>
     </>
   );
@@ -1208,19 +1354,198 @@ function MemberTable({ rows, lang, t }: { rows: AdminUser[]; lang: Lang; t: type
 }
 
 function BookingTable({ rows, lang, t }: { rows: AdminBooking[]; lang: Lang; t: typeof copy[Lang] }) {
-  return <table><thead><tr><th>{t.cols.booking}</th><th>{t.cols.member}</th><th>{t.cols.time}</th><th>{t.cols.amount}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.bookingNo}><td>{r.title}<small>{r.bookingNo}</small></td><td>{r.displayName}</td><td>{formatDate(r.startsAt, lang)}</td><td>{money(r.amount, lang)} ฿</td><td><Badge tone={r.status === "paid" ? "good" : "warn"}>{statusLabel(r.status, t)}</Badge></td></tr>)}</tbody></table>;
+  return <table><thead><tr><th>{t.cols.booking}</th><th>{t.cols.member}</th><th>{t.cols.time}</th><th>{t.cols.amount}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.bookingNo}><td>{r.title}<small>{r.bookingNo} · {r.sportName || "-"} · {r.courtName || "-"}</small></td><td>{r.displayName}<small>{r.players || 1} players</small></td><td>{formatDate(r.startsAt, lang)}<small>{r.endsAt ? formatDate(r.endsAt, lang) : ""}</small></td><td>{money(r.amount, lang)} ฿</td><td><Badge tone={r.status === "paid" || r.status === "checked_in" ? "good" : r.status === "cancelled" || r.status === "expired" ? "bad" : "warn"}>{statusLabel(r.status, t)}</Badge></td></tr>)}</tbody></table>;
 }
 
 function CouponTable({ rows, lang, t }: { rows: AdminCoupon[]; lang: Lang; t: typeof copy[Lang] }) {
   return <table><thead><tr><th>{t.cols.coupon}</th><th>{t.cols.category}</th><th>{t.cols.price}</th><th>{t.cols.usage}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td>{r.name}<small>{r.code}</small></td><td>{r.category}</td><td>{money(r.price, lang)} ฿</td><td>{r.totalUses} / {r.validityDays}d</td><td><Badge tone={r.active ? "good" : "bad"}>{statusLabel(r.active ? "active" : "off", t)}</Badge></td></tr>)}</tbody></table>;
 }
 
+function BookingManager({
+  adminKey,
+  courts,
+  lang,
+  message,
+  rows,
+  setCourts,
+  setMessage,
+  setRows,
+  t,
+}: {
+  adminKey: string;
+  courts: AdminCourt[];
+  lang: Lang;
+  message: string;
+  rows: AdminBooking[];
+  setCourts: (rows: AdminCourt[]) => void;
+  setMessage: (message: string) => void;
+  setRows: (rows: AdminBooking[]) => void;
+  t: typeof copy[Lang];
+}) {
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+  const [courtModalOpen, setCourtModalOpen] = useState(false);
+  const [editingCourtId, setEditingCourtId] = useState<number | null>(null);
+  const [courtSearch, setCourtSearch] = useState("");
+  const sportOptions = useMemo(() => uniqueSports(courts), [courts]);
+  const [courtForm, setCourtForm] = useState({
+    sportId: sportOptions[0]?.id || 1,
+    name: "",
+    zone: "Main",
+    capacity: 4,
+    surface: "",
+    hourlyRate: 0,
+    sortOrder: 0,
+    notes: "",
+    status: "available",
+  });
+  const filteredBookings = useMemo(() => {
+    const needle = bookingSearch.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter((row) => `${row.bookingNo} ${row.title} ${row.displayName} ${row.sportName || ""} ${row.courtName || ""} ${row.status}`.toLowerCase().includes(needle));
+  }, [bookingSearch, rows]);
+  const filteredCourts = useMemo(() => {
+    const needle = courtSearch.trim().toLowerCase();
+    if (!needle) return courts;
+    return courts.filter((row) => `${row.sportName} ${row.name} ${row.zone || ""} ${row.status}`.toLowerCase().includes(needle));
+  }, [courtSearch, courts]);
+
+  const updateBooking = async (booking: AdminBooking, status: string) => {
+    setMessage("");
+    const response = await adminFetch(adminKey, "/api/admin/bookings", {
+      method: "PUT",
+      body: JSON.stringify({ bookingNo: booking.bookingNo, status, reason: cancelReason }),
+    });
+    const result = await response.json();
+    if (!response.ok) return setMessage(result.message || t.saveFailed);
+    setRows(result.bookings);
+    setCancelReason("");
+    setMessage(status === "cancelled" ? t.bookingCancelled : t.bookingUpdated);
+  };
+  const resetCourt = () => {
+    setEditingCourtId(null);
+    setCourtForm({ sportId: sportOptions[0]?.id || 1, name: "", zone: "Main", capacity: 4, surface: "", hourlyRate: 0, sortOrder: 0, notes: "", status: "available" });
+  };
+  const editCourt = (court: AdminCourt) => {
+    setEditingCourtId(court.id);
+    setCourtForm({ sportId: court.sportId || sportOptions[0]?.id || 1, name: court.name, zone: court.zone || "Main", capacity: Number(court.capacity || 4), surface: court.surface || "", hourlyRate: Number(court.hourlyRate || 0), sortOrder: Number(court.sortOrder || 0), notes: court.notes || "", status: court.status });
+    setCourtModalOpen(true);
+  };
+  const submitCourt = async () => {
+    setMessage("");
+    const response = await adminFetch(adminKey, "/api/admin/courts", { method: editingCourtId ? "PUT" : "POST", body: JSON.stringify({ ...courtForm, id: editingCourtId || undefined }) });
+    const result = await response.json();
+    if (!response.ok) return setMessage(result.message || t.saveFailed);
+    setCourts(result.courts);
+    setMessage(editingCourtId ? t.courtUpdated : t.courtCreated);
+    resetCourt();
+    setCourtModalOpen(false);
+  };
+  const removeCourt = async (court: AdminCourt) => {
+    setMessage("");
+    const response = await adminFetch(adminKey, `/api/admin/courts?id=${court.id}`, { method: "DELETE" });
+    const result = await response.json();
+    if (!response.ok) return setMessage(result.message || t.deleteFailed);
+    setCourts(result.courts);
+    setMessage(t.courtDeleted);
+  };
+
+  return (
+    <div className="admin-trainer-layout">
+      <Panel title={t.bookingManager}>
+        <div className="admin-list-toolbar">
+          <input placeholder={t.bookingSearch} value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} />
+          <label className="admin-inline-field">{t.cancelReason}<input value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></label>
+          <span>{t.rowsShowing} {filteredBookings.length} / {rows.length}</span>
+        </div>
+        <div className="admin-booking-cards">
+          {filteredBookings.slice(0, 80).map((booking) => (
+            <article key={booking.bookingNo}>
+              <div><b>{booking.title}</b><span>{booking.bookingNo} · {booking.displayName}</span><small>{booking.sportName || "-"} · {booking.courtName || "-"} · {formatDate(booking.startsAt, lang)}</small><small>{booking.cancelReason || ""}</small></div>
+              <Badge tone={booking.status === "paid" || booking.status === "checked_in" ? "good" : booking.status === "cancelled" || booking.status === "expired" ? "bad" : "warn"}>{statusLabel(booking.status, t)}</Badge>
+              <div className="admin-row-actions">
+                <button type="button" disabled={!["hold", "pending_payment"].includes(booking.status)} onClick={() => updateBooking(booking, "paid")}>{t.bookingMarkPaid}</button>
+                <button type="button" disabled={booking.status !== "paid"} onClick={() => updateBooking(booking, "checked_in")}>{t.bookingCheckin}</button>
+                <button type="button" disabled={["checked_in", "cancelled", "expired"].includes(booking.status)} onClick={() => updateBooking(booking, "expired")}>{t.bookingExpire}</button>
+                <button type="button" className="danger" disabled={["checked_in", "cancelled", "expired"].includes(booking.status)} onClick={() => updateBooking(booking, "cancelled")}>{t.cancel}</button>
+              </div>
+            </article>
+          ))}
+        </div>
+        {message ? <p className="admin-message">{message}</p> : null}
+      </Panel>
+      <Panel title={t.courtManager}>
+        <div className="admin-list-toolbar">
+          <input placeholder={t.courtSearch} value={courtSearch} onChange={(event) => setCourtSearch(event.target.value)} />
+          <button type="button" onClick={() => { resetCourt(); setCourtModalOpen(true); }}>{t.addCourt}</button>
+          <span>{t.rowsShowing} {filteredCourts.length} / {courts.length}</span>
+        </div>
+        <div className="admin-court-grid">
+          {filteredCourts.map((court) => (
+            <article key={court.id}>
+              <div><b>{court.name}</b><span>{court.sportName} · {court.zone || "-"}</span><small>{t.capacity} {court.capacity || 0} · {court.surface || "-"} · {court.hourlyRate ? `${money(court.hourlyRate, lang)} ฿` : "-"}</small></div>
+              <Badge tone={court.status === "available" ? "good" : court.status === "maintenance" ? "warn" : "bad"}>{statusLabel(court.status, t)}</Badge>
+              <div className="admin-row-actions"><button type="button" onClick={() => editCourt(court)}>{t.edit}</button><button className="danger" type="button" onClick={() => removeCourt(court)}>{t.delete}</button></div>
+            </article>
+          ))}
+        </div>
+      </Panel>
+      {courtModalOpen ? (
+        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+          <section className="admin-modal">
+            <header><div><small>{t.courtManager}</small><h2>{editingCourtId ? t.editCourt : t.addCourt}</h2></div><button type="button" onClick={() => { resetCourt(); setCourtModalOpen(false); }}>×</button></header>
+            <div className="admin-form">
+              <label>{t.sport}<select value={courtForm.sportId} onChange={(event) => setCourtForm({ ...courtForm, sportId: Number(event.target.value) })}>{sportOptions.map((sport) => <option key={sport.id} value={sport.id}>{sport.name}</option>)}</select></label>
+              <label>{t.courtName}<input value={courtForm.name} onChange={(event) => setCourtForm({ ...courtForm, name: event.target.value })} /></label>
+              <label>{t.zone}<input value={courtForm.zone} onChange={(event) => setCourtForm({ ...courtForm, zone: event.target.value })} /></label>
+              <label>{t.capacity}<input type="number" value={courtForm.capacity} onChange={(event) => setCourtForm({ ...courtForm, capacity: Number(event.target.value) })} /></label>
+              <label>{t.surface}<input value={courtForm.surface} onChange={(event) => setCourtForm({ ...courtForm, surface: event.target.value })} /></label>
+              <label>{t.hourlyRate}<input type="number" value={courtForm.hourlyRate} onChange={(event) => setCourtForm({ ...courtForm, hourlyRate: Number(event.target.value) })} /></label>
+              <label>{t.sortOrder}<input type="number" value={courtForm.sortOrder} onChange={(event) => setCourtForm({ ...courtForm, sortOrder: Number(event.target.value) })} /></label>
+              <label>{t.status}<select value={courtForm.status} onChange={(event) => setCourtForm({ ...courtForm, status: event.target.value })}><option value="available">{t.statuses.available}</option><option value="maintenance">{t.statuses.maintenance}</option><option value="hidden">{t.statuses.hidden}</option></select></label>
+              <label className="wide">{t.notes}<textarea value={courtForm.notes} onChange={(event) => setCourtForm({ ...courtForm, notes: event.target.value })} /></label>
+              <div className="admin-form-actions"><button type="button" onClick={submitCourt}>{t.save}</button><button type="button" className="ghost" onClick={() => { resetCourt(); setCourtModalOpen(false); }}>{t.cancel}</button></div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TrainerTable({ rows, lang, t }: { rows: AdminTrainer[]; lang: Lang; t: typeof copy[Lang] }) {
   return <table><thead><tr><th>{t.imagePreview}</th><th>{t.cols.trainer}</th><th>{t.cols.role}</th><th>{t.experience}</th><th>{t.cols.startPrice}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td><TrainerPhoto row={r} /></td><td>{r.name}<small>{r.nickname} · {r.slug}</small></td><td>{r.role}</td><td>{r.experience}</td><td>{money(r.startPrice, lang)} ฿</td><td><Badge tone={r.active ? "good" : "bad"}>{statusLabel(r.active ? "active" : "off", t)}</Badge></td></tr>)}</tbody></table>;
 }
 
-function PaymentTable({ rows, lang, t }: { rows: AdminPayment[]; lang: Lang; t: typeof copy[Lang] }) {
-  return <table><thead><tr><th>{t.cols.payment}</th><th>{t.cols.member}</th><th>{t.cols.method}</th><th>{t.cols.amount}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.paymentNo}><td>{r.paymentNo}<small>{formatDate(r.paidAt || "", lang)}</small></td><td>{r.displayName}</td><td>{r.method}</td><td>{money(r.amount, lang)} ฿</td><td><Badge tone={r.status === "paid" ? "good" : "warn"}>{statusLabel(r.status, t)}</Badge></td></tr>)}</tbody></table>;
+function PaymentTable({ adminKey, rows, lang, onPaymentsChange, t }: { adminKey?: string; rows: AdminPayment[]; lang: Lang; onPaymentsChange?: (rows: AdminPayment[]) => void; t: typeof copy[Lang] }) {
+  const [message, setMessage] = useState("");
+  const updatePayment = async (paymentNo: string, status: "paid" | "failed" | "cancelled") => {
+    if (!adminKey || !onPaymentsChange) return;
+    setMessage("");
+    const response = await adminFetch(adminKey, "/api/admin/payments", { method: "PUT", body: JSON.stringify({ paymentNo, status }) });
+    const result = await response.json();
+    if (!response.ok) return setMessage(result.message || t.saveFailed);
+    onPaymentsChange(result.payments);
+    setMessage(t.paymentUpdated);
+  };
+  return (
+    <>
+      <table>
+        <thead><tr><th>{t.cols.payment}</th><th>{t.cols.member}</th><th>{t.cols.method}</th><th>{t.cols.amount}</th><th>{t.cols.status}</th><th>{t.action}</th></tr></thead>
+        <tbody>{rows.map((r) => (
+          <tr key={r.paymentNo}>
+            <td>{r.paymentNo}<small>{formatDate(r.paidAt || "", lang)}</small></td>
+            <td>{r.displayName}</td>
+            <td>{r.method}</td>
+            <td>{money(r.amount, lang)} ฿</td>
+            <td><Badge tone={r.status === "paid" ? "good" : r.status === "failed" || r.status === "cancelled" ? "bad" : "warn"}>{statusLabel(r.status, t)}</Badge></td>
+            <td><button type="button" disabled={r.status !== "created" || !adminKey} onClick={() => updatePayment(r.paymentNo, "paid")}>{t.paymentMarkPaid}</button></td>
+          </tr>
+        ))}</tbody>
+      </table>
+      {message ? <p className="admin-message">{message}</p> : null}
+    </>
+  );
 }
 
 function ReportDataList<T>({
@@ -1436,6 +1761,161 @@ function CouponManager({
   );
 }
 
+function ContentManager({
+  adminKey,
+  lang,
+  message,
+  rows,
+  setMessage,
+  setRows,
+  t,
+}: {
+  adminKey: string;
+  lang: Lang;
+  message: string;
+  rows: AdminContentItem[];
+  setMessage: (message: string) => void;
+  setRows: (rows: AdminContentItem[]) => void;
+  t: typeof copy[Lang];
+}) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [contentSearch, setContentSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const perPage = 10;
+  const [form, setForm] = useState({
+    contentType: "feature_screen",
+    slug: "",
+    title: "",
+    subtitle: "",
+    body: "",
+    icon: "📌",
+    imageUrl: "",
+    actionLabel: "",
+    targetScreen: "",
+    price: 0,
+    metadataText: "{}",
+    active: true,
+    sortOrder: 0,
+  });
+  const filteredRows = useMemo(() => {
+    const needle = contentSearch.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter((row) => `${row.contentType} ${row.slug} ${row.title} ${row.subtitle || ""} ${row.targetScreen || ""}`.toLowerCase().includes(needle));
+  }, [contentSearch, rows]);
+  const totalPages = Math.max(Math.ceil(filteredRows.length / perPage), 1);
+  const currentPage = Math.min(page, totalPages);
+  const pagedRows = filteredRows.slice((currentPage - 1) * perPage, currentPage * perPage);
+
+  const reset = () => {
+    setEditingId(null);
+    setForm({ contentType: "feature_screen", slug: "", title: "", subtitle: "", body: "", icon: "📌", imageUrl: "", actionLabel: "", targetScreen: "", price: 0, metadataText: "{}", active: true, sortOrder: 0 });
+  };
+  const openCreate = () => {
+    reset();
+    setMessage("");
+    setModalOpen(true);
+  };
+  const edit = (row: AdminContentItem) => {
+    setEditingId(row.id);
+    setForm({
+      contentType: row.contentType,
+      slug: row.slug,
+      title: row.title,
+      subtitle: row.subtitle || "",
+      body: row.body || "",
+      icon: row.icon || "📌",
+      imageUrl: row.imageUrl || "",
+      actionLabel: row.actionLabel || "",
+      targetScreen: row.targetScreen || "",
+      price: Number(row.price || 0),
+      metadataText: formatMetadata(row.metadata),
+      active: Boolean(row.active),
+      sortOrder: Number(row.sortOrder || 0),
+    });
+    setMessage("");
+    setModalOpen(true);
+  };
+  const submit = async () => {
+    setMessage("");
+    let metadata: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(form.metadataText || "{}") as unknown;
+      metadata = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch {
+      setMessage(`${t.metadata} ไม่ถูกต้อง`);
+      return;
+    }
+    const response = await adminFetch(adminKey, "/api/admin/content", { method: editingId ? "PUT" : "POST", body: JSON.stringify({ ...form, metadata, id: editingId || undefined }) });
+    const result = await response.json();
+    if (!response.ok) return setMessage(result.message || t.saveFailed);
+    setRows(result.contentItems);
+    setMessage(editingId ? t.contentUpdated : t.contentCreated);
+    reset();
+    setModalOpen(false);
+  };
+  const remove = async (row: AdminContentItem) => {
+    setMessage("");
+    const response = await adminFetch(adminKey, `/api/admin/content?id=${row.id}`, { method: "DELETE" });
+    const result = await response.json();
+    if (!response.ok) return setMessage(result.message || t.deleteFailed);
+    setRows(result.contentItems);
+    setMessage(t.contentDeleted);
+  };
+
+  return (
+    <div className="admin-coupon-layout">
+      <Panel title={t.contentList}>
+        <div className="admin-list-toolbar">
+          <input placeholder={t.contentSearch} value={contentSearch} onChange={(event) => { setContentSearch(event.target.value); setPage(1); }} />
+          <button type="button" onClick={openCreate}>{t.addContent}</button>
+          <span>{t.rowsShowing} {pagedRows.length} / {filteredRows.length}</span>
+        </div>
+        <div className="admin-coupon-cards">
+          {pagedRows.map((row) => (
+            <article key={row.id}>
+              <div className="admin-content-icon">{row.icon}</div>
+              <div><b>{row.title}</b><span>{row.contentType} · {row.slug}</span><small>{row.subtitle || row.body || "-"}</small><small>{row.targetScreen || "-"} · {money(row.price, lang)} ฿</small></div>
+              <Badge tone={row.active ? "good" : "bad"}>{statusLabel(row.active ? "active" : "off", t)}</Badge>
+              <div className="admin-row-actions"><button type="button" onClick={() => edit(row)}>{t.edit}</button><button className="danger" type="button" onClick={() => remove(row)}>{t.delete}</button></div>
+            </article>
+          ))}
+        </div>
+        <div className="admin-pagination">
+          <button disabled={currentPage <= 1} type="button" onClick={() => setPage((value) => Math.max(value - 1, 1))}>{t.previousPage}</button>
+          <span>{t.pageLabel} {currentPage} / {totalPages}</span>
+          <button disabled={currentPage >= totalPages} type="button" onClick={() => setPage((value) => Math.min(value + 1, totalPages))}>{t.nextPage}</button>
+        </div>
+        {message ? <p className="admin-message">{message}</p> : null}
+      </Panel>
+      {modalOpen ? (
+        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+          <section className="admin-modal">
+            <header><div><small>{t.content}</small><h2>{editingId ? t.editContent : t.addContent}</h2></div><button type="button" onClick={() => { reset(); setModalOpen(false); }}>×</button></header>
+            <div className="admin-form">
+              <label>{t.contentType}<input value={form.contentType} onChange={(event) => setForm({ ...form, contentType: event.target.value.trim().toLowerCase() })} /></label>
+              <label>{t.slug}<input value={form.slug} onChange={(event) => setForm({ ...form, slug: slugify(event.target.value) })} /></label>
+              <label>{t.title}<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
+              <label>{t.subtitle}<input value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></label>
+              <label>{t.avatar}<input value={form.icon} onChange={(event) => setForm({ ...form, icon: event.target.value })} /></label>
+              <label>{t.imageUrl}<input value={form.imageUrl} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} /></label>
+              <label>{t.actionLabel}<input value={form.actionLabel} onChange={(event) => setForm({ ...form, actionLabel: event.target.value })} /></label>
+              <label>{t.targetScreen}<input value={form.targetScreen} onChange={(event) => setForm({ ...form, targetScreen: event.target.value })} /></label>
+              <label>{t.cols.price}<input type="number" value={form.price} onChange={(event) => setForm({ ...form, price: Number(event.target.value) })} /></label>
+              <label>{t.sortOrder}<input type="number" value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) })} /></label>
+              <label>{t.status}<select value={form.active ? "active" : "off"} onChange={(event) => setForm({ ...form, active: event.target.value === "active" })}><option value="active">{t.active}</option><option value="off">{t.inactive}</option></select></label>
+              <label className="wide">{t.body}<textarea value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} /></label>
+              <label className="wide">{t.metadata}<textarea value={form.metadataText} onChange={(event) => setForm({ ...form, metadataText: event.target.value })} /></label>
+              <div className="admin-form-actions"><button type="button" onClick={submit}>{t.save}</button><button type="button" className="ghost" onClick={() => { reset(); setModalOpen(false); }}>{t.cancel}</button></div>
+              {message ? <p className="admin-message">{message}</p> : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const couponCategories = ["food", "promotion", "fitness", "court", "trainer", "tennis", "badminton", "pickleball", "padel", "hyrox", "pilates"];
 
 function CouponPreview({ coupon, lang }: { coupon: Pick<AdminCoupon, "name" | "category" | "price" | "totalUses" | "validityDays">; lang: Lang }) {
@@ -1485,8 +1965,14 @@ function TrainerManager({
     birthYear: 2537,
     bloodType: "O",
     contactPhone: "02-123-4567",
+    bio: "",
+    specialtiesText: "",
+    packagesText: "รายวัน | 1 ครั้ง · 1 ชม. | 1200\nรายสัปดาห์ | 5 ครั้ง/สัปดาห์ | 5400\nรายเดือน | 20 ครั้ง/เดือน | 20000",
+    weeklyScheduleText: "จันทร์ | 13 | 08:00 | available\nจันทร์ | 13 | 18:00 | available\nพุธ | 15 | 19:30 | full",
+    socialLine: "",
     certificationsText: "",
     startPrice: 0,
+    sortOrder: 0,
     active: true,
   });
   const [uploading, setUploading] = useState(false);
@@ -1496,7 +1982,7 @@ function TrainerManager({
   const filteredRows = useMemo(() => {
     const needle = trainerSearch.trim().toLowerCase();
     if (!needle) return rows;
-    return rows.filter((row) => `${row.name} ${row.nickname} ${row.role} ${row.slug} ${row.experience} ${row.zodiac || ""} ${row.birthYear || ""} ${row.bloodType || ""} ${trainerCertifications(row).join(" ")}`.toLowerCase().includes(needle));
+    return rows.filter((row) => `${row.name} ${row.nickname} ${row.role} ${row.slug} ${row.experience} ${row.zodiac || ""} ${row.birthYear || ""} ${row.bloodType || ""} ${row.bio || ""} ${trainerSpecialties(row).join(" ")} ${trainerCertifications(row).join(" ")}`.toLowerCase().includes(needle));
   }, [rows, trainerSearch]);
   const totalPages = Math.max(Math.ceil(filteredRows.length / perPage), 1);
   const currentPage = Math.min(page, totalPages);
@@ -1504,7 +1990,7 @@ function TrainerManager({
 
   const reset = () => {
     setEditingId(null);
-    setForm({ slug: "", name: "", nickname: "", role: "", avatar: "🏋️", imageUrl: "", experience: "", zodiac: "", birthYear: 2537, bloodType: "O", contactPhone: "02-123-4567", certificationsText: "", startPrice: 0, active: true });
+    setForm({ slug: "", name: "", nickname: "", role: "", avatar: "🏋️", imageUrl: "", experience: "", zodiac: "", birthYear: 2537, bloodType: "O", contactPhone: "02-123-4567", bio: "", specialtiesText: "", packagesText: "รายวัน | 1 ครั้ง · 1 ชม. | 1200\nรายสัปดาห์ | 5 ครั้ง/สัปดาห์ | 5400\nรายเดือน | 20 ครั้ง/เดือน | 20000", weeklyScheduleText: "จันทร์ | 13 | 08:00 | available\nจันทร์ | 13 | 18:00 | available\nพุธ | 15 | 19:30 | full", socialLine: "", certificationsText: "", startPrice: 0, sortOrder: 0, active: true });
   };
 
   const openCreate = () => {
@@ -1527,8 +2013,14 @@ function TrainerManager({
       birthYear: Number(row.birthYear || 2537),
       bloodType: row.bloodType || "O",
       contactPhone: row.contactPhone || "02-123-4567",
+      bio: row.bio || "",
+      specialtiesText: trainerSpecialties(row).join("\n"),
+      packagesText: formatTrainerPackages(row),
+      weeklyScheduleText: formatTrainerSchedule(row),
+      socialLine: row.socialLine || "",
       certificationsText: trainerCertifications(row).join("\n"),
       startPrice: Number(row.startPrice || 0),
+      sortOrder: Number(row.sortOrder || 0),
       active: Boolean(row.active),
     });
     setMessage("");
@@ -1543,6 +2035,9 @@ function TrainerManager({
       body: JSON.stringify({
         ...form,
         birthYear: form.birthYear || null,
+        specialties: form.specialtiesText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+        packages: parseTrainerPackages(form.packagesText),
+        weeklySchedule: parseTrainerSchedule(form.weeklyScheduleText),
         certifications: form.certificationsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
         id: editingId || undefined,
       }),
@@ -1593,7 +2088,7 @@ function TrainerManager({
           {pagedRows.map((row) => (
             <article key={row.id}>
               <TrainerPhoto row={row} />
-              <div><b>{row.name}</b><span>{row.nickname} · {row.role}</span><small>{row.experience} · {row.zodiac || "-"} · {row.birthYear || "-"} · {row.bloodType || "-"}</small><small>{trainerCertifications(row).slice(0, 2).join(" · ") || "-"}</small></div>
+              <div><b>{row.name}</b><span>{row.nickname} · {row.role}</span><small>{row.experience} · {row.zodiac || "-"} · {row.birthYear || "-"} · {row.bloodType || "-"}</small><small>{trainerSpecialties(row).slice(0, 3).join(" · ") || trainerCertifications(row).slice(0, 2).join(" · ") || "-"}</small></div>
               <Badge tone={row.active ? "good" : "bad"}>{statusLabel(row.active ? "active" : "off", t)}</Badge>
               <div className="admin-row-actions"><button type="button" onClick={() => edit(row)}>{t.edit}</button><button className="danger" type="button" onClick={() => remove(row)}>{t.delete}</button></div>
             </article>
@@ -1621,9 +2116,15 @@ function TrainerManager({
               <label>{t.birthYear}<input type="number" value={form.birthYear} onChange={(event) => setForm({ ...form, birthYear: Number(event.target.value) })} /></label>
               <label>{t.bloodType}<input value={form.bloodType} onChange={(event) => setForm({ ...form, bloodType: event.target.value })} /></label>
               <label>{t.contactPhone}<input value={form.contactPhone} onChange={(event) => setForm({ ...form, contactPhone: event.target.value })} /></label>
+              <label>{t.socialLine}<input value={form.socialLine} onChange={(event) => setForm({ ...form, socialLine: event.target.value })} /></label>
               <label>{t.cols.startPrice}<input type="number" value={form.startPrice} onChange={(event) => setForm({ ...form, startPrice: Number(event.target.value) })} /></label>
+              <label>{t.sortOrder}<input type="number" value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) })} /></label>
               <label>{t.status}<select value={form.active ? "active" : "off"} onChange={(event) => setForm({ ...form, active: event.target.value === "active" })}><option value="active">{t.active}</option><option value="off">{t.inactive}</option></select></label>
               <label className="wide">{t.uploadImage}<input accept="image/png,image/jpeg,image/webp" type="file" onChange={(event) => upload(event.target.files?.[0] || null)} /></label>
+              <label className="wide">{t.bio}<textarea maxLength={1200} value={form.bio} onChange={(event) => setForm({ ...form, bio: event.target.value })} /></label>
+              <label className="wide">{t.specialties}<textarea placeholder={t.specialtiesHint} value={form.specialtiesText} onChange={(event) => setForm({ ...form, specialtiesText: event.target.value })} /></label>
+              <label className="wide">{t.packages}<textarea placeholder={t.packagesHint} value={form.packagesText} onChange={(event) => setForm({ ...form, packagesText: event.target.value })} /></label>
+              <label className="wide">{t.weeklySchedule}<textarea placeholder={t.weeklyScheduleHint} value={form.weeklyScheduleText} onChange={(event) => setForm({ ...form, weeklyScheduleText: event.target.value })} /></label>
               <label className="wide">{t.certifications}<textarea placeholder={t.certificationsHint} value={form.certificationsText} onChange={(event) => setForm({ ...form, certificationsText: event.target.value })} /></label>
               <div className="admin-form-actions"><button type="button" onClick={submit}>{editingId ? t.save : t.add}</button><button type="button" className="ghost" onClick={() => { reset(); setModalOpen(false); }}>{t.cancel}</button></div>
               {uploading ? <p className="admin-message">{t.uploadImage}...</p> : null}
@@ -1879,7 +2380,7 @@ function adminFetch(adminKey: string, input: string, init: RequestInit) {
   });
 }
 
-function Reports({ data, lang, section, t }: { data: AdminConsoleData; lang: Lang; section: ReportSection; t: typeof copy[Lang] }) {
+function Reports({ adminKey, data, lang, onPaymentsChange, section, t }: { adminKey: string; data: AdminConsoleData; lang: Lang; onPaymentsChange: (rows: AdminPayment[]) => void; section: ReportSection; t: typeof copy[Lang] }) {
   const paidRevenue = data.payments.filter((payment) => payment.status === "paid").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const paidBookings = data.bookings.filter((booking) => booking.status === "paid").length;
   const pendingBookings = data.bookings.filter((booking) => ["hold", "pending_payment"].includes(booking.status)).length;
@@ -1926,11 +2427,11 @@ function Reports({ data, lang, section, t }: { data: AdminConsoleData; lang: Lan
           <Panel title={t.reportExportAll}><div className="admin-report-export-grid"><ExportButton label={t.reportFinance} filename="ppa-report-payments.csv" rows={data.payments} /><ExportButton label={t.reportBookings} filename="ppa-report-bookings.csv" rows={data.bookings} /><ExportButton label={t.reportMembers} filename="ppa-report-members.csv" rows={data.users} /></div></Panel>
         </div>
       )}
-      {section === "finance" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.paidAt} filename="ppa-payments.csv" lang={lang} renderTable={(rows) => <PaymentTable rows={rows} lang={lang} t={t} />} rows={data.payments} searchText={(row) => `${row.paymentNo} ${row.displayName} ${row.method} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
+      {section === "finance" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.paidAt} filename="ppa-payments.csv" lang={lang} renderTable={(rows) => <PaymentTable adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={rows} lang={lang} t={t} />} rows={data.payments} searchText={(row) => `${row.paymentNo} ${row.displayName} ${row.method} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "bookings" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.startsAt} filename="ppa-bookings.csv" lang={lang} renderTable={(rows) => <BookingTable rows={rows} lang={lang} t={t} />} rows={data.bookings} searchText={(row) => `${row.bookingNo} ${row.title} ${row.displayName} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "members" && <ReportDataList dateGetter={(row) => row.createdAt} filename="ppa-members.csv" lang={lang} renderTable={(rows) => <MemberTable rows={rows} lang={lang} t={t} />} rows={data.users} searchText={(row) => `${row.displayName} ${row.memberCode} ${row.phone || ""} ${row.email || ""} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "coupons" && <ReportDataList filename="ppa-coupons.csv" lang={lang} renderTable={(rows) => <CouponTable rows={rows} lang={lang} t={t} />} rows={data.coupons} searchText={(row) => `${row.name} ${row.code} ${row.category}`} statusGetter={(row) => row.active ? "active" : "off"} t={t} title={t.reportDetail} />}
-      {section === "trainers" && <ReportDataList filename="ppa-trainers.csv" lang={lang} renderTable={(rows) => <TrainerTable rows={rows} lang={lang} t={t} />} rows={data.trainers} searchText={(row) => `${row.name} ${row.nickname} ${row.slug} ${row.role} ${row.experience} ${certificationText(row.certifications)}`} statusGetter={(row) => row.active ? "active" : "off"} t={t} title={t.reportDetail} />}
+      {section === "trainers" && <ReportDataList filename="ppa-trainers.csv" lang={lang} renderTable={(rows) => <TrainerTable rows={rows} lang={lang} t={t} />} rows={data.trainers} searchText={(row) => `${row.name} ${row.nickname} ${row.slug} ${row.role} ${row.experience} ${row.bio || ""} ${trainerSpecialties(row).join(" ")} ${certificationText(row.certifications)}`} statusGetter={(row) => row.active ? "active" : "off"} t={t} title={t.reportDetail} />}
       {section === "courts" && <ReportDataList filename="ppa-courts.csv" lang={lang} renderTable={(rows) => <CourtReport rows={rows} t={t} />} rows={data.courts} searchText={(row) => `${row.name} ${row.zone || ""} ${row.sportName} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "engagement" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.startsAt} filename="ppa-engagement.csv" lang={lang} renderTable={(rows) => <BookingTable rows={rows} lang={lang} t={t} />} rows={data.bookings.filter((booking) => ["paid", "checked_in"].includes(booking.status))} searchText={(row) => `${row.bookingNo} ${row.title} ${row.displayName} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "audit" && <ReportDataList dateGetter={(row) => row.createdAt} filename="ppa-audit.csv" lang={lang} renderTable={(rows) => <AuditReportTable lang={lang} rows={rows} t={t} />} rows={data.auditLogs} searchText={(row) => `${row.staffName || ""} ${row.username || ""} ${row.action} ${row.targetType} ${row.targetId || ""} ${row.metadataText || ""}`} statusGetter={(row) => row.action} t={t} title={t.auditTitle} />}
@@ -2295,6 +2796,88 @@ function trainerCertifications(trainer: Pick<AdminTrainer, "certifications">) {
     }
   }
   return [];
+}
+
+function trainerSpecialties(trainer: Pick<AdminTrainer, "specialties">) {
+  if (Array.isArray(trainer.specialties)) return trainer.specialties.map(String).filter(Boolean);
+  if (typeof trainer.specialties === "string") {
+    try {
+      const parsed = JSON.parse(trainer.specialties) as unknown;
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      return trainer.specialties.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function trainerPackages(trainer: Pick<AdminTrainer, "packages">) {
+  const rows = parseJsonArray<TrainerPackage>(trainer.packages);
+  return rows.filter((row) => row.title && row.text && Number(row.price) >= 0);
+}
+
+function formatTrainerPackages(trainer: Pick<AdminTrainer, "packages">) {
+  return trainerPackages(trainer).map((item) => `${item.title} | ${item.text} | ${item.price}`).join("\n");
+}
+
+function parseTrainerPackages(text: string): TrainerPackage[] {
+  return text.split(/\r?\n/).map((line) => {
+    const [title = "", detail = "", price = "0"] = line.split("|").map((item) => item.trim());
+    return { title, text: detail, price: Number(price) || 0 };
+  }).filter((item) => item.title && item.text);
+}
+
+function trainerSchedule(trainer: Pick<AdminTrainer, "weeklySchedule">) {
+  return parseJsonArray<TrainerScheduleDay>(trainer.weeklySchedule).filter((item) => item.day && Array.isArray(item.slots));
+}
+
+function formatTrainerSchedule(trainer: Pick<AdminTrainer, "weeklySchedule">) {
+  return trainerSchedule(trainer).flatMap((day) => day.slots.map((slot) => `${day.day} | ${day.date || ""} | ${slot.time} | ${slot.status || "available"}`)).join("\n");
+}
+
+function parseTrainerSchedule(text: string): TrainerScheduleDay[] {
+  const map = new Map<string, TrainerScheduleDay>();
+  text.split(/\r?\n/).forEach((line) => {
+    const [day = "", date = "", time = "", rawStatus = "available"] = line.split("|").map((item) => item.trim());
+    if (!day || !/^\d{2}:\d{2}$/.test(time)) return;
+    const status = rawStatus === "full" || rawStatus === "off" ? rawStatus : "available";
+    const key = `${day}|${date}`;
+    const entry = map.get(key) || { day, date, slots: [] };
+    entry.slots.push({ time, status });
+    map.set(key, entry);
+  });
+  return [...map.values()];
+}
+
+function parseJsonArray<T>(value: T[] | string | null | undefined): T[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatMetadata(value: AdminContentItem["metadata"]) {
+  if (!value) return "{}";
+  if (typeof value === "string") {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return "{}";
+    }
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+function uniqueSports(courts: AdminCourt[]) {
+  const map = new Map<number, string>();
+  courts.forEach((court) => {
+    if (court.sportId) map.set(court.sportId, court.sportName);
+  });
+  return [...map.entries()].map(([id, name]) => ({ id, name }));
 }
 
 function translatedMetrics(metrics: AdminMetric[], t: typeof copy[Lang]) {
