@@ -23,6 +23,9 @@ export function isPastSlot(date: string, time: string) {
 }
 
 export function buildSlotRange(date: string, time: string, durationHours = 1) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time) || !Number.isInteger(durationHours) || durationHours < 1 || durationHours > 4) return null;
+  const calendarDate = new Date(`${date}T00:00:00Z`);
+  if (!Number.isFinite(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== date) return null;
   const hour = Number(time.slice(0, 2));
   const minute = Number(time.slice(3, 5));
   const start = new Date(`${date}T${time}:00+07:00`);
@@ -31,7 +34,7 @@ export function buildSlotRange(date: string, time: string, durationHours = 1) {
   if (hour < 8 || hour >= 23 || minute !== 0 || end.getTime() > closesAt.getTime()) return null;
   return {
     startsAt: `${date} ${time}:00`,
-    endsAt: `${date} ${String(end.getHours()).padStart(2, "0")}:00:00`,
+    endsAt: `${date} ${String(hour + durationHours).padStart(2, "0")}:00:00`,
   };
 }
 

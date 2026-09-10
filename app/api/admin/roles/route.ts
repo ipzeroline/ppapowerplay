@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { assertAdminRequest } from "@/lib/admin-auth";
-import { query } from "@/lib/db";
+import { assertAdminRequest, adminSessionCookieName, getAdminIdentity } from "@/lib/admin-auth";
+import { query, transaction } from "@/lib/db";
 import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
 type RoleRow = {
@@ -26,7 +26,7 @@ const roleSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   const [roles, permissions] = await Promise.all([loadRoles(), query("SELECT id, code, name_th nameTh, name_en nameEn, group_key groupKey FROM admin_permissions ORDER BY group_key, code")]);
@@ -34,8 +34,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
+  const actor = await getAdminIdentity(request.cookies.get(adminSessionCookieName())?.value || "");
+  if (actor?.roleCode !== "super_admin") return NextResponse.json({ message: "Only super administrators can change roles" }, { status: 403 });
 
   let body: z.infer<typeof roleSchema>;
   try {
@@ -57,8 +59,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
+  const actor = await getAdminIdentity(request.cookies.get(adminSessionCookieName())?.value || "");
+  if (actor?.roleCode !== "super_admin") return NextResponse.json({ message: "Only super administrators can change roles" }, { status: 403 });
 
   let body: z.infer<typeof roleSchema> & { id: number };
   try {
@@ -66,6 +70,9 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     return validationErrorResponse(error);
   }
+  const [existing] = await query<{ code: string }>("SELECT code FROM admin_roles WHERE id = ?", [body.id]);
+  if (existing?.code === "super_admin") return NextResponse.json({ message: "Super administrator role is protected" }, { status: 403 });
+  if (body.code === "super_admin") return NextResponse.json({ message: "Reserved role code" }, { status: 400 });
   await query("UPDATE admin_roles SET code = ?, name_th = ?, name_en = ?, description = ?, level = ? WHERE id = ?", [
     body.code,
     body.nameTh,
@@ -83,8 +90,10 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
+  const actor = await getAdminIdentity(request.cookies.get(adminSessionCookieName())?.value || "");
+  if (actor?.roleCode !== "super_admin") return NextResponse.json({ message: "Only super administrators can change roles" }, { status: 403 });
 
   const id = Number(request.nextUrl.searchParams.get("id"));
   if (!id) return NextResponse.json({ message: "Missing role id" }, { status: 400 });
@@ -113,11 +122,13 @@ async function loadRoles() {
 }
 
 async function replacePermissions(roleId: number, permissionCodes: string[]) {
-  await query("DELETE FROM admin_role_permissions WHERE role_id = ?", [roleId]);
-  if (!permissionCodes.length) return;
-  const placeholders = permissionCodes.map(() => "?").join(",");
-  await query(
-    `INSERT IGNORE INTO admin_role_permissions (role_id, permission_id) SELECT ?, id FROM admin_permissions WHERE code IN (${placeholders})`,
-    [roleId, ...permissionCodes],
-  );
+  await transaction(async (connection) => {
+    await connection.execute("SELECT id FROM admin_roles WHERE id = ? FOR UPDATE", [roleId]);
+    await connection.execute("DELETE FROM admin_role_permissions WHERE role_id = ?", [roleId]);
+    if (!permissionCodes.length) return;
+    const placeholders = permissionCodes.map(() => "?").join(",");
+    await connection.execute(
+      `INSERT IGNORE INTO admin_role_permissions (role_id, permission_id) SELECT ?, id FROM admin_permissions WHERE code IN (${placeholders})`, [roleId, ...permissionCodes],
+    );
+  });
 }

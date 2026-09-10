@@ -5,9 +5,13 @@ import { createPublicId, pool, query } from "@/lib/db";
 import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
 import { expirePendingBookings } from "@/lib/booking-rules";
 import { grantPaidEntitlement } from "@/lib/entitlements";
+import { resolvePaymentItem } from "@/lib/payment-catalog";
 
 const schema = z.object({
-  bookingNo: z.string().optional(),
+  bookingNo: z.string().min(4).max(40).optional(),
+  contentId: z.number().int().positive().optional(),
+  trainerId: z.number().int().positive().optional(),
+  trainerPackage: z.string().max(180).optional(),
   method: z.enum(["wallet", "promptpay", "card", "line_pay", "cash"]),
   amount: z.number().positive().optional(),
   itemName: z.string().trim().max(180).optional(),
@@ -40,13 +44,26 @@ export async function POST(req: Request) {
     : null;
   if (input.bookingNo && !booking) return NextResponse.json({ message: "ไม่พบรายการจอง" }, { status: 404 });
   if (booking && !["hold", "pending_payment"].includes(booking.status)) return NextResponse.json({ message: "รายการนี้ไม่สามารถชำระเงินได้" }, { status: 409 });
-  const amount = Number(booking?.amount ?? input.amount ?? 0);
+  const catalogItem = booking ? null : await resolvePaymentItem(input);
+  if (!booking && !catalogItem) return NextResponse.json({ message: "ไม่พบแพ็กเกจที่เปิดขาย กรุณาเลือกรายการใหม่" }, { status: 400 });
+  const amount = Number(booking?.amount ?? catalogItem?.amount ?? 0);
+  input.itemName = catalogItem?.itemName || input.itemName;
+  input.itemType = catalogItem?.itemType || "booking";
   if (!amount) return NextResponse.json({ message: "ยอดชำระไม่ถูกต้อง" }, { status: 400 });
 
   const paymentNo = createPublicId("PAY");
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    if (booking) {
+      const [rows] = await conn.execute("SELECT status, expires_at > NOW() valid FROM bookings WHERE id = ? FOR UPDATE", [booking.id]);
+      const locked = (rows as { status: string; valid: number }[])[0];
+      const [pending] = await conn.execute("SELECT id FROM payments WHERE booking_id = ? AND status IN ('created','paid') LIMIT 1", [booking.id]);
+      if (!locked || !locked.valid || !["hold", "pending_payment"].includes(locked.status) || (pending as unknown[]).length) {
+        await conn.rollback();
+        return NextResponse.json({ message: "รายการนี้ถูกชำระหรือมีรายการรอยืนยันแล้ว" }, { status: 409 });
+      }
+    }
     if (input.method === "wallet") {
       const [walletRows] = await conn.execute("SELECT balance FROM wallet_accounts WHERE user_id = ? FOR UPDATE", [user.id]);
       const balance = Number((walletRows as { balance: number }[])[0]?.balance ?? 0);

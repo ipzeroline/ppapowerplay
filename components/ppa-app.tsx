@@ -1,4 +1,6 @@
 "use client";
+import Image from "next/image";
+import { safeImageSource } from "@/lib/media";
 
 import liff from "@line/liff";
 import type { ReactNode } from "react";
@@ -86,7 +88,7 @@ type ContentItem = {
   metadata?: string | Record<string, unknown> | null;
   sortOrder?: number | null;
 };
-type AppPack = { key: string; icon: string; name: string; price: number; desc: string; screen?: Screen };
+type AppPack = { contentId?: number; key: string; icon: string; name: string; price: number; desc: string; screen?: Screen };
 type Membership = { id: number; planName: string; startsAt: string; endsAt: string; status: string };
 type Entitlement = { id: number; entitlementType: string; title: string; remainingUses?: number | null; startsAt: string; endsAt?: string | null; status: string };
 
@@ -370,6 +372,7 @@ async function api<T>(url: string, init?: RequestInit) {
     ...init,
     headers: { "content-type": "application/json", ...(init?.headers || {}) },
     cache: "no-store",
+    signal: init?.signal || AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     const error = new Error((await res.json().catch(() => null))?.message || "เกิดข้อผิดพลาด");
@@ -383,6 +386,7 @@ export function PpaApp() {
   const [screen, setScreen] = useState<Screen>(initialScreenFromUrl);
   const [lineReady, setLineReady] = useState(false);
   const [lineBlocked, setLineBlocked] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [data, setData] = useState<Bootstrap | null>(null);
   const [couponStore, setCouponStore] = useState<Coupon[]>([]);
   const [selectedSport, setSelectedSport] = useState<Sport | null>(null);
@@ -392,13 +396,13 @@ export function PpaApp() {
   const [selectedTime, setSelectedTime] = useState("18:30");
   const [players, setPlayers] = useState(2);
   const [pendingBooking, setPendingBooking] = useState<Booking | null>(null);
-  const [pendingItem, setPendingItem] = useState<{ title: string; amount: number; back: Screen; save?: "coupon" | "topup" | "class" | "membership"; couponId?: number; itemType?: string } | null>(null);
+  const [pendingItem, setPendingItem] = useState<{ title: string; amount: number; back: Screen; save?: "coupon" | "topup" | "class" | "membership"; couponId?: number; contentId?: number; trainerId?: number; trainerPackage?: string; itemType?: string } | null>(null);
   const [accessQr, setAccessQr] = useState<AccessQr>({ purpose: "member" });
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastPaymentStatus, setLastPaymentStatus] = useState<"paid" | "created">("paid");
   const [activeSlide, setActiveSlide] = useState(0);
-  const [qrSeconds, setQrSeconds] = useState(20);
+  const qrSeconds = 20;
   const [groupName, setGroupName] = useState("");
   const [groupLevel, setGroupLevel] = useState(levelChoices[0]);
   const [profileName, setProfileName] = useState("");
@@ -433,7 +437,7 @@ export function PpaApp() {
       if (idToken) await api("/api/auth/line", { method: "POST", body: JSON.stringify({ idToken }) });
       setLineReady(true);
     }
-    bootLine().catch(() => setLineReady(true));
+    bootLine().catch(() => { setLineBlocked(requireLine); setLineReady(true); });
   }, [requireLine]);
 
   useEffect(() => {
@@ -444,8 +448,9 @@ export function PpaApp() {
         return;
       }
       notice((error as Error).message);
+      setLoadError(true);
     });
-  }, [lineReady]);
+  }, [lineReady, requireLine]);
 
   const appContent = data?.contentItems || [];
   const managedSlides = contentByType(appContent, "home_slide");
@@ -456,23 +461,21 @@ export function PpaApp() {
   const membershipPlans = contentByType(appContent, "membership_plan");
 
   useEffect(() => {
-    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % Math.max(visibleHomeSlides.length, 1)), 4200);
+    if (screen !== "home" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") setActiveSlide((current) => (current + 1) % Math.max(visibleHomeSlides.length, 1));
+    }, 4200);
     return () => window.clearInterval(timer);
-  }, [visibleHomeSlides.length]);
-
-  useEffect(() => {
-    if (screen !== "scan") return;
-    setQrSeconds(20);
-    const timer = window.setInterval(() => setQrSeconds((current) => (current <= 1 ? 20 : current - 1)), 1000);
-    return () => window.clearInterval(timer);
-  }, [screen]);
+  }, [visibleHomeSlides.length, screen]);
 
   useEffect(() => {
     if (!selectedSport) return;
+    const controller = new AbortController();
     const params = new URLSearchParams({ sport: selectedSport.slug, date });
-    api<{ slots: Slot[] }>(`/api/courts/availability?${params.toString()}`)
+    api<{ slots: Slot[] }>(`/api/courts/availability?${params.toString()}`, { signal: controller.signal })
       .then((res) => setSlots(res.slots))
-      .catch((error) => notice(error.message));
+      .catch((error) => { if (!controller.signal.aborted) notice(error.message); });
+    return () => controller.abort();
   }, [selectedSport, date]);
 
   const slotGroups = useMemo(() => {
@@ -491,6 +494,7 @@ export function PpaApp() {
 
   function go(next: Screen) {
     setScreen(next);
+    document.querySelector(".phone > .content")?.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }
 
   async function refresh() {
@@ -513,7 +517,7 @@ export function PpaApp() {
   }
 
   function selectClass(item: AppPack) {
-    setPendingItem({ title: `${item.icon} ${item.name}`, amount: item.price, back: item.screen || item.key as Screen, save: "class", itemType: contentTypeForPack(item) });
+    setPendingItem({ contentId: item.contentId, title: `${item.icon} ${item.name}`, amount: item.price, back: item.screen || item.key as Screen, save: "class", itemType: contentTypeForPack(item) });
     go("payment");
   }
 
@@ -576,7 +580,7 @@ export function PpaApp() {
       } else if (pendingItem) {
         const payment = await api<{ status?: string }>("/api/payments", {
           method: "POST",
-          body: JSON.stringify({ amount: pendingItem.amount, method, itemName: pendingItem.title, itemType: pendingItem.itemType || pendingItem.save }),
+          body: JSON.stringify({ contentId: pendingItem.contentId, trainerId: pendingItem.trainerId, trainerPackage: pendingItem.trainerPackage, method }),
         });
         nextPaymentStatus = payment.status === "created" ? "created" : "paid";
         if (nextPaymentStatus === "created") notice("สร้างรายการชำระเงินแล้ว กรุณารอการยืนยันจากระบบ");
@@ -689,7 +693,7 @@ export function PpaApp() {
   if (!data) {
     return (
       <main className="phone-wrap">
-        <LineGate embedded />
+        <LineGate embedded error={loadError} onRetry={() => { setLoadError(false); refresh().catch(() => setLoadError(true)); }} />
       </main>
     );
   }
@@ -718,7 +722,7 @@ export function PpaApp() {
     <main className="phone-wrap">
       <section className="phone">
         <div className="statusbar">
-          <span>9:41</span>
+          <span>PPA</span>
           <button className="status-member-chip" onClick={() => go("profile")}>
             <span>{memberInitial(data.user.displayName)}</span>
             <b>{data.user.displayName || "PPA Member"}</b>
@@ -1014,9 +1018,9 @@ export function PpaApp() {
           {screen === "gymnos" && <HubScreen title="Gymnos Hub" back={() => go("home")} items={servicePackages.length ? servicePackages.map(contentToPack) : classPacks.slice(0, 2)} onSelect={selectClass} extra={<button className="primary" onClick={() => go("fitness")}>💪 ดู Fitness Pack</button>} />}
           {screen === "fitness" && <HubScreen title="Fitness Pack" back={() => go("gymnos")} items={(servicePackages.length ? servicePackages.map(contentToPack).filter((item) => item.screen === "fitness" || item.key.includes("fitness")) : [classPacks[0]])} onSelect={selectClass} extra={<TrainerStrip trainers={data.trainers} onOpen={(trainer) => { setSelectedTrainer(trainer); setTrainerDetail(true); go("trainer"); }} />} />}
           {screen === "swim" && <SimplePack title="Swim Pack" icon="🏊" price={1200} back={() => go("home")} onBuy={(title, amount) => { setPendingItem({ title, amount, back: "swim", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />}
-          {screen === "hyrox" && <HubScreen title="HYROX" back={() => go("home")} items={packagesForScreen(servicePackages, "hyrox", [classPacks[1]])} onSelect={selectClass} extra={<Schedule title="HYROX Class Schedule" items={scheduleForScreen(classScheduleItems, "hyrox")} onBook={(time, item) => { setPendingItem({ title: `${item?.title || "HYROX Class"} · ${time}`, amount: Number(item?.price || 700), back: "hyrox", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
-          {screen === "pilates" && <HubScreen title="Pilates" back={() => go("home")} items={packagesForScreen(servicePackages, "pilates", [classPacks[2]])} onSelect={selectClass} extra={<Schedule title="Reformer Schedule" items={scheduleForScreen(classScheduleItems, "pilates")} onBook={(time, item) => { setPendingItem({ title: `${item?.title || "Pilates Reformer"} · ${time}`, amount: Number(item?.price || 950), back: "pilates", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
-          {screen === "airfit" && <HubScreen title="Airfit" back={() => go("home")} items={packagesForScreen(servicePackages, "airfit", [classPacks[3]])} onSelect={selectClass} extra={<Schedule title="Airfit Slots" items={scheduleForScreen(classScheduleItems, "airfit")} onBook={(time, item) => { setPendingItem({ title: `${item?.title || "Airfit"} · ${time}`, amount: Number(item?.price || 199), back: "airfit", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "hyrox" && <HubScreen title="HYROX" back={() => go("home")} items={packagesForScreen(servicePackages, "hyrox", [classPacks[1]])} onSelect={selectClass} extra={<Schedule title="HYROX Class Schedule" items={scheduleForScreen(classScheduleItems, "hyrox")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "HYROX Class"} · ${time}`, amount: Number(item?.price || 700), back: "hyrox", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "pilates" && <HubScreen title="Pilates" back={() => go("home")} items={packagesForScreen(servicePackages, "pilates", [classPacks[2]])} onSelect={selectClass} extra={<Schedule title="Reformer Schedule" items={scheduleForScreen(classScheduleItems, "pilates")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Pilates Reformer"} · ${time}`, amount: Number(item?.price || 950), back: "pilates", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "airfit" && <HubScreen title="Airfit" back={() => go("home")} items={packagesForScreen(servicePackages, "airfit", [classPacks[3]])} onSelect={selectClass} extra={<Schedule title="Airfit Slots" items={scheduleForScreen(classScheduleItems, "airfit")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Airfit"} · ${time}`, amount: Number(item?.price || 199), back: "airfit", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
 
           {screen === "promotion" && (
             <div className="page">
@@ -1152,7 +1156,7 @@ export function PpaApp() {
               <Top title="เลือกแพ็กเกจ" onBack={() => go("membership")} />
               <div className="fit-list">
                 {(membershipPlans.length ? membershipPlans : []).map((item) => (
-                  <FitItem key={item.slug} title={item.title} text={item.subtitle || item.body || "เข้าใช้บริการตามสิทธิ์สมาชิก"} price={`${money(item.price)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ title: item.title, amount: Number(item.price), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
+                  <FitItem key={item.slug} title={item.title} text={item.subtitle || item.body || "เข้าใช้บริการตามสิทธิ์สมาชิก"} price={`${money(item.price)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ contentId: item.id, title: item.title, amount: Number(item.price), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
                 ))}
                 {!membershipPlans.length ? ([["Monthly", 1900], ["Quarterly", 5100], ["Annual", 18000]] as const).map(([name, amount]) => (
                   <FitItem key={name} title={`แพ็กเกจ ${name}`} text="เข้าใช้บริการตามสิทธิ์สมาชิก" price={`${money(amount)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ title: `PPA Premium ${name}`, amount: Number(amount), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
@@ -1276,7 +1280,7 @@ export function PpaApp() {
                             }
                             const plan = trainerPlans(selectedTrainer)[trainerPlanIndex];
                             setPendingBooking(null);
-                            setPendingItem({ title: `PT ${selectedTrainer.name} · ${activeTrainerDay?.day || ""} ${slot.time} · ${plan.title}`, amount: plan.price, back: "trainer", save: "class", itemType: "trainer" });
+                            setPendingItem({ trainerId: selectedTrainer.id, trainerPackage: plan.title, title: `PT ${selectedTrainer.name} · ${activeTrainerDay?.day || ""} ${slot.time} · ${plan.title}`, amount: plan.price, back: "trainer", save: "class", itemType: "trainer" });
                             go("payment");
                           }}
                         >
@@ -1337,7 +1341,7 @@ export function PpaApp() {
               onBuy={(item) => {
                 if (item.price > 0) {
                   setPendingBooking(null);
-                setPendingItem({ title: item.title, amount: Number(item.price), back: screen, save: "class", itemType: String(contentMeta(item).itemType || item.contentType || "class") });
+                setPendingItem({ contentId: item.id, title: item.title, amount: Number(item.price), back: screen, save: "class", itemType: String(contentMeta(item).itemType || item.contentType || "class") });
                   go("payment");
                   return;
                 }
@@ -1353,7 +1357,7 @@ export function PpaApp() {
               onBack={() => go("home")}
               onBuy={(item) => {
                 setPendingBooking(null);
-                setPendingItem({ title: item.title, amount: Number(item.price), back: "classhub", save: "class", itemType: String(contentMeta(item).itemType || item.contentType || "class") });
+                setPendingItem({ contentId: item.id, title: item.title, amount: Number(item.price), back: "classhub", save: "class", itemType: String(contentMeta(item).itemType || item.contentType || "class") });
                 go("payment");
               }}
               screen="classhub"
@@ -1363,7 +1367,7 @@ export function PpaApp() {
           {screen === "classschedule" && (
             <div className="page">
               <Top title="ตารางคลาส" onBack={() => go("home")} />
-              <Schedule title="Class Schedule" items={classScheduleItems} onBook={(time, item) => { setPendingItem({ title: `${item?.title || "Class"} · ${time}`, amount: Number(item?.price || 0), back: "classschedule", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />
+              <Schedule title="Class Schedule" items={classScheduleItems} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Class"} · ${time}`, amount: Number(item?.price || 0), back: "classschedule", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />
             </div>
           )}
 
@@ -1454,7 +1458,7 @@ export function PpaApp() {
   );
 }
 
-function LineGate({ blocked = false, embedded = false, liffId = "" }: { blocked?: boolean; embedded?: boolean; liffId?: string }) {
+function LineGate({ blocked = false, embedded = false, liffId = "", error = false, onRetry }: { blocked?: boolean; embedded?: boolean; liffId?: string; error?: boolean; onRetry?: () => void }) {
   const openUrl = liffId ? `https://liff.line.me/${liffId}` : "";
   return (
     <main className={embedded ? "phone line-gate embedded" : "line-gate"}>
@@ -1472,7 +1476,7 @@ function LineGate({ blocked = false, embedded = false, liffId = "" }: { blocked?
         </div>
         <div className="gate-copy">
           <span className="gate-kicker">{blocked ? "LINE SECURE ACCESS" : "SPORT COMPLEX LOADING"}</span>
-          <h1>{blocked ? "เปิดผ่าน LINE เพื่อเข้าสู่ระบบสมาชิก" : "กำลังเตรียมสนามและข้อมูลสมาชิก"}</h1>
+          <h1>{error ? "โหลดข้อมูลไม่สำเร็จ" : blocked ? "เปิดผ่าน LINE เพื่อเข้าสู่ระบบสมาชิก" : "กำลังเตรียมสนามและข้อมูลสมาชิก"}</h1>
           <p>
             {blocked
               ? "ยืนยันตัวตนด้วย LINE LIFF เพื่อเรียกข้อมูลเดิมของสมาชิกอย่างปลอดภัย แม้เปลี่ยนเครื่องก็ใช้บัญชีเดิมได้"
@@ -1484,8 +1488,9 @@ function LineGate({ blocked = false, embedded = false, liffId = "" }: { blocked?
           <div><b>MEMBER</b><small>{blocked ? "Protected" : "Syncing"}</small></div>
           <div><b>DATA</b><small>{blocked ? "Safe" : "Loading"}</small></div>
         </div>
-        <div className="gate-progress"><span /></div>
+        {!error && <div className="gate-progress"><span /></div>}
         <div className="gate-actions">
+          {error ? <button type="button" className="primary" onClick={onRetry}>ลองอีกครั้ง</button> : null}
           {blocked && openUrl ? <a href={openUrl}>เปิดใน LINE</a> : null}
           <small>{blocked ? "หากเปิดจาก Rich Menu แล้วยังเห็นหน้านี้ ให้ปิดหน้านี้แล้วเปิดจากแชต LINE OA อีกครั้ง" : "Secure member access in progress"}</small>
         </div>
@@ -1693,6 +1698,7 @@ function contentToSlide(item: ContentItem) {
 
 function contentToPack(item: ContentItem): AppPack {
   return {
+    contentId: item.id,
     key: item.slug,
     icon: item.icon || "📦",
     name: item.title,
@@ -1882,16 +1888,24 @@ function PaymentScreen({
   );
 }
 
-function ScanScreen({ data, booking, accessQr, qrSeconds, onCheckin }: { data: Bootstrap; booking?: Booking | null; accessQr?: AccessQr; qrSeconds: number; onCheckin: () => void }) {
-  const [qr, setQr] = useState<QrPayload | null>(null);
+function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; booking?: Booking | null; accessQr?: AccessQr; qrSeconds: number; onCheckin: () => void }) {
+  const [qr, setQr] = useState<(QrPayload & { selection: string }) | null>(null);
+  const [remaining, setRemaining] = useState(0);
   const [qrError, setQrError] = useState("");
   const bookingCode = booking ? bookingNo(booking) : "";
   const purpose = bookingCode ? "booking" : accessQr?.purpose || "member";
   const accessKey = accessQr?.purpose === "coupon" ? String(accessQr.couponId) : accessQr?.purpose === "entitlement" ? String(accessQr.entitlementId) : "";
+  const selection = `${purpose}:${bookingCode}:${accessKey}`;
+  const currentQr = qr?.selection === selection && remaining > 0 ? qr : null;
 
   useEffect(() => {
     let alive = true;
+    let pending = false;
+    let expiresAt = 0;
     async function loadQr() {
+      if (pending) return;
+      pending = true;
+      const requestedAt = Date.now();
       try {
         const params = new URLSearchParams({ purpose });
         if (bookingCode) params.set("bookingNo", bookingCode);
@@ -1899,37 +1913,43 @@ function ScanScreen({ data, booking, accessQr, qrSeconds, onCheckin }: { data: B
         if (!bookingCode && accessQr?.purpose === "entitlement") params.set("entitlementId", String(accessQr.entitlementId));
         const nextQr = await api<QrPayload>(`/api/qr?${params.toString()}`);
         if (!alive) return;
-        setQr(nextQr);
+        expiresAt = requestedAt + nextQr.expiresIn * 1000;
+        setRemaining(nextQr.expiresIn);
+        setQr({ ...nextQr, selection });
         setQrError("");
       } catch {
         if (!alive) return;
         setQr(null);
         setQrError("ยังไม่สามารถออก QR ได้ โปรดตรวจสอบสิทธิ์หรือสถานะชำระเงิน");
+      } finally {
+        pending = false;
       }
     }
     loadQr();
     const timer = window.setInterval(loadQr, 20_000);
+    const countdown = window.setInterval(() => setRemaining(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))), 1000);
     return () => {
       alive = false;
       window.clearInterval(timer);
+      window.clearInterval(countdown);
     };
-  }, [accessKey, accessQr, bookingCode, purpose]);
+  }, [accessKey, accessQr, bookingCode, purpose, selection]);
 
   return (
     <div className="page centered">
       <span className="eyebrow">FAST ACCESS</span>
       <h1 className="scan-title">สแกนเข้าใช้บริการ</h1>
       <div className="qr-box">
-        {qr?.svg ? (
-          <div className="qr-svg" dangerouslySetInnerHTML={{ __html: qr.svg }} />
+        {currentQr?.svg ? (
+          <Image unoptimized width={220} height={220} alt="QR เข้าใช้บริการ" className="qr-svg" src={`data:image/svg+xml,${encodeURIComponent(currentQr.svg)}`} />
         ) : (
-          <div className="qr-grid">{Array.from({ length: 121 }).map((_, i) => <i key={i} className={(i + qrSeconds) % 3 ? "" : "off"} />)}</div>
+          <p role="status">{qrError ? "ไม่สามารถออก QR ได้" : "กำลังโหลด QR..."}</p>
         )}
       </div>
       <h2>{bookingCode || data.user.memberCode}</h2>
       <p>{bookingCode ? booking?.title : accessQr?.title || qr?.title || "QR สมาชิกอายุสั้นสำหรับเข้าใช้ sport complex"}</p>
       {qrError ? <p className="form-error">{qrError}</p> : null}
-      <div className="scan-meta"><span>หมดอายุใน</span><strong>{qr?.expiresIn || qrSeconds}s</strong></div>
+      {currentQr ? <div className="scan-meta"><span>หมดอายุใน</span><strong>{remaining}s</strong></div> : null}
       <button className="primary" onClick={onCheckin}>✅ ไปหน้า Check-in</button>
     </div>
   );
@@ -2017,18 +2037,9 @@ function TrainerStrip({ trainers, onOpen }: { trainers: Trainer[]; onOpen: (trai
 }
 
 function TrainerAvatar({ className = "", trainer }: { className?: string; trainer: Trainer }) {
-  if (trainer.imageUrl) return <img alt={trainer.name} className={`trainer-photo ${className}`} src={trainer.imageUrl} />;
+  const src = safeImageSource(trainer.imageUrl);
+  if (src) return <Image unoptimized width={160} height={160} alt={trainer.name} className={`trainer-photo ${className}`} src={src} referrerPolicy="no-referrer" />;
   return <span className={`trainer-photo fallback ${className}`}>{trainer.avatar}</span>;
-}
-
-function WalletSummary({ wallet }: { wallet: Bootstrap["wallet"] }) {
-  return (
-    <div className="wallet">
-      <div><span>👛 Wallet</span><strong>{money(wallet.balance)} ฿</strong></div>
-      <div><span>⭐ Points</span><strong>{money(wallet.pointBalance)}</strong></div>
-      <div><span>🪙 Coin</span><strong>{wallet.coinBalance}</strong></div>
-    </div>
-  );
 }
 
 function Tutorial({ step, onNext, onSkip }: { step: number; onNext: () => void; onSkip: () => void }) {

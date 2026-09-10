@@ -21,7 +21,7 @@ type PaymentRow = {
 };
 
 export async function PUT(req: NextRequest) {
-  const adminError = assertAdminRequest(req);
+  const adminError = await assertAdminRequest(req);
   if (adminError) return adminError;
 
   let input: z.infer<typeof schema>;
@@ -46,6 +46,14 @@ export async function PUT(req: NextRequest) {
     if (payment.status !== "created") {
       await conn.rollback();
       return secureResponse(NextResponse.json({ message: "รายการนี้ถูกจัดการแล้ว" }, { status: 409 }));
+    }
+    if (input.status === "paid" && payment.bookingId) {
+      const [bookings] = await conn.execute("SELECT status, expires_at > NOW() valid FROM bookings WHERE id = ? FOR UPDATE", [payment.bookingId]);
+      const booking = (bookings as { status: string; valid: number }[])[0];
+      if (!booking || !booking.valid || !["hold", "pending_payment"].includes(booking.status)) {
+        await conn.rollback();
+        return secureResponse(NextResponse.json({ message: "Booking is no longer payable" }, { status: 409 }));
+      }
     }
 
     await conn.execute("UPDATE payments SET status = ?, paid_at = IF(? = 'paid', NOW(), paid_at) WHERE id = ?", [input.status, input.status, payment.id]);

@@ -45,7 +45,7 @@ const trainerSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   const trainers = await loadTrainers();
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   let body: z.infer<typeof trainerSchema>;
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   let body: z.infer<typeof trainerSchema> & { id: number };
@@ -107,7 +107,7 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   const id = Number(request.nextUrl.searchParams.get("id"));

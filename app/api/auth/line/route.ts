@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authErrorResponse, getOrCreateUserFromLineToken } from "@/lib/auth";
+import { signSession } from "@/lib/session";
 import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
 
-const schema = z.object({ idToken: z.string().min(20) });
+const schema = z.object({ idToken: z.string().min(20).max(8192) });
 
 export async function POST(req: Request) {
   const limited = checkRateLimit({ key: `auth-line:${await clientIp()}`, limit: 30, windowMs: 60_000 });
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
     return authErrorResponse(error);
   }
   const res = NextResponse.json({ user });
-  res.cookies.set("ppa_line_user_id", user.lineUserId, {
+  res.cookies.set("ppa_member_session", signSession("member", user.lineUserId, 60 * 60 * 24 * 30), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

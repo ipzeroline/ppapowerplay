@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { assertAdminRequest } from "@/lib/admin-auth";
+import { assertAdminRequest, adminSessionCookieName, getAdminIdentity } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
 import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
@@ -13,8 +13,9 @@ const profileSchema = z.object({
 });
 
 export async function PUT(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
+  const identity = await getAdminIdentity(request.cookies.get(adminSessionCookieName())?.value || "");
 
   let body: z.infer<typeof profileSchema>;
   try {
@@ -22,6 +23,7 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     return validationErrorResponse(error);
   }
+  if (!identity || body.staffId !== identity.id) return NextResponse.json({ message: "Permission denied" }, { status: 403 });
   const duplicate = await query<{ id: number }>("SELECT id FROM admin_staff WHERE username = ? AND id <> ? AND status <> 'deleted' LIMIT 1", [
     body.username,
     body.staffId,
@@ -41,9 +43,9 @@ export async function PUT(request: NextRequest) {
     body.username,
   ]);
 
-  const rows = await query(
-    "SELECT s.id, s.username, s.display_name displayName, s.email, s.phone, s.status, s.role_id roleId, r.code roleCode, r.name_th roleNameTh, r.name_en roleNameEn, s.created_at createdAt FROM admin_staff s JOIN admin_roles r ON r.id = s.role_id WHERE s.status <> 'deleted' ORDER BY s.id DESC",
+  const rows = await query<{ id: number }>(
+    "SELECT s.id, s.username, s.display_name displayName, s.email, s.phone, s.status, s.role_id roleId, r.code roleCode, r.name_th roleNameTh, r.name_en roleNameEn, s.created_at createdAt FROM admin_staff s JOIN admin_roles r ON r.id = s.role_id WHERE s.id = ?", [identity.id],
   );
   const admin = (rows as { id: number }[]).find((row) => row.id === body.staffId) || null;
-  return NextResponse.json({ admin, staff: rows });
+  return NextResponse.json({ admin, staff: rows.map((row) => ({ ...row, permissionCodes: identity.permissionCodes })) });
 }

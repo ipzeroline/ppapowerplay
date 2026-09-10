@@ -32,6 +32,7 @@ const required = [
 
 const missing = required.filter((name) => !readEnv(name));
 const invalid = [];
+if ((readEnv("SESSION_SECRET") || readEnv("ADMIN_ACCESS_KEY")).length < 32) invalid.push("Session signing secret must contain at least 32 characters");
 
 if (readEnv("APP_REQUIRE_LINE") !== "true") invalid.push("APP_REQUIRE_LINE must be true");
 if (readEnv("NEXT_PUBLIC_REQUIRE_LINE") !== "true") invalid.push("NEXT_PUBLIC_REQUIRE_LINE must be true");

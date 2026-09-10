@@ -1,6 +1,11 @@
 "use client";
+import Image from "next/image";
+import { safeImageSource } from "@/lib/media";
+import { AdminDialog } from "@/components/admin-dialog";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { sectionPermissions } from "@/lib/admin-permissions";
 
 type Lang = "th" | "en";
 type Theme = "dark" | "light";
@@ -61,6 +66,7 @@ type AdminStaff = {
   roleCode: string;
   roleNameTh: string;
   roleNameEn: string;
+  permissionCodes: string[];
   createdAt?: string;
 };
 type AdminRole = {
@@ -307,6 +313,8 @@ const copy = {
     staffUpdated: "อัปเดตพนักงานแล้ว",
     staffDeleted: "ลบพนักงานแล้ว",
     staffSearch: "ค้นหาพนักงาน / ชื่อผู้ใช้ / บทบาท",
+    staffPermissions: "สิทธิ์ที่ทำได้",
+    noPermissions: "ยังไม่มีสิทธิ์",
     saveFailed: "บันทึกไม่สำเร็จ",
     deleteFailed: "ลบไม่สำเร็จ",
     addRole: "เพิ่มบทบาท",
@@ -595,6 +603,8 @@ const copy = {
     staffUpdated: "Staff updated",
     staffDeleted: "Staff deleted",
     staffSearch: "Search staff / username / role",
+    staffPermissions: "Allowed actions",
+    noPermissions: "No permissions",
     saveFailed: "Save failed",
     deleteFailed: "Delete failed",
     addRole: "Add role",
@@ -871,6 +881,34 @@ const completionChecklist = {
 };
 
 export function AdminConsole({ adminKey, data, initialReportSection, initialTab = "dashboard" }: { adminKey: string; data: AdminConsoleData; initialReportSection?: string; initialTab?: string }) {
+  const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const sidebar = sidebarRef.current;
+    const previous = document.activeElement as HTMLElement | null;
+    sidebar?.querySelector<HTMLButtonElement>("button")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setMenuOpen(false); }
+      if (event.key !== "Tab" || !sidebar) return;
+      const controls = Array.from(sidebar.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex="0"]')).filter((node) => node.getClientRects().length);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    const onResize = () => { if (window.innerWidth >= 1024) setMenuOpen(false); };
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onResize);
+      previous?.focus();
+    };
+  }, [menuOpen]);
+  const canAccessTab = useCallback((id: string) => data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes(sectionPermissions[id])), [data.currentAdmin]);
   const [tab, setTab] = useState<AdminTab>(isAdminTab(initialTab) ? initialTab : "dashboard");
   const initialReport = isReportSection(initialReportSection || null) ? initialReportSection as ReportSection : "overview";
   const [reportSection, setReportSection] = useState<ReportSection>(initialReport);
@@ -904,7 +942,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
   useEffect(() => {
     const syncFromPath = () => {
       const section = window.location.pathname.split("/").filter(Boolean)[1] || "dashboard";
-      if (isAdminTab(section)) {
+      if (isAdminTab(section) && canAccessTab(section)) {
         setTab(section);
         setReportMenuOpen(section === "reports");
       }
@@ -913,7 +951,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
     };
     window.addEventListener("popstate", syncFromPath);
     return () => window.removeEventListener("popstate", syncFromPath);
-  }, []);
+  }, [canAccessTab]);
 
   const filteredUsers = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -922,7 +960,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
   }, [data.users, query]);
 
   const activeTab = tabs.find(([id]) => id === tab);
-  const currentAdminRaw = data.currentAdmin || staffRows.find((row) => row.roleCode === "super_admin") || staffRows[0] || null;
+  const currentAdminRaw = staffRows.find((row) => row.id === data.currentAdmin?.id) || data.currentAdmin;
   const currentAdmin = currentAdminRaw?.username === "zeroline" ? { ...currentAdminRaw, displayName: "i'm zΞro" } : currentAdminRaw;
   const searchScope = activeTab ? t[activeTab[2]] : t.dashboard;
   const currentTitle = activeTab ? t[activeTab[2]] : t.dashboard;
@@ -937,6 +975,8 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
     return queryText ? `${path}?${queryText}` : path;
   };
   const goTab = (id: AdminTab) => {
+    if (!canAccessTab(id)) return;
+    setMenuOpen(false);
     setTab(id);
     setReportMenuOpen(id === "reports");
     window.history.pushState({}, "", adminPath(id));
@@ -949,26 +989,32 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
     setReportMenuOpen((open) => !open);
   };
   const goReport = (section: ReportSection) => {
+    if (!canAccessTab("reports")) return;
+    setMenuOpen(false);
     setReportSection(section);
     setTab("reports");
     setReportMenuOpen(true);
     window.history.pushState({}, "", adminPath("reports", section));
   };
-  const logout = () => {
-    window.location.assign("/AdminConsole");
+  const logout = async () => {
+    await fetch("/api/admin/session", { method: "DELETE" });
+    router.replace("/AdminConsole");
+    router.refresh();
   };
   const reportTabs = reportMenu(t);
 
   return (
-    <main className="admin admin-console" data-theme={theme}>
-      <aside className="admin-sidebar">
+    <main className="admin admin-console" data-theme={theme} data-menu-open={menuOpen}>
+      {menuOpen ? <button className="admin-menu-backdrop" tabIndex={-1} aria-label="Close menu" onClick={() => setMenuOpen(false)} /> : null}
+      <aside className="admin-sidebar" id="admin-navigation" ref={sidebarRef} role={menuOpen ? "dialog" : undefined} aria-modal={menuOpen || undefined} aria-label="Admin navigation">
+        <button className="admin-menu-close" type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)}>×</button>
         <div className="admin-logo">PPA<span>.</span></div>
         <small>{t.ops}</small>
         <nav>
-          {adminNavGroups.map((group) => (
+          {adminNavGroups.filter((group) => group.items.some(canAccessTab)).map((group) => (
             <section className="admin-nav-section" key={group.labelEn}>
               <p>{lang === "th" ? group.labelTh : group.labelEn}</p>
-              {group.items.map((itemId) => {
+              {group.items.filter(canAccessTab).map((itemId) => {
                 const item = tabs.find(([id]) => id === itemId);
                 if (!item) return null;
                 const [id, , key, icon] = item;
@@ -999,8 +1045,9 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
           ))}
         </nav>
       </aside>
-      <section className="admin-main">
+      <section className="admin-main" inert={menuOpen}>
         <nav className="admin-navbar">
+          <button className="admin-menu-toggle" type="button" ref={menuButtonRef} aria-label="Open menu" aria-expanded={menuOpen} aria-controls="admin-navigation" onClick={() => setMenuOpen(true)}>☰</button>
           <button className="admin-nav-home" type="button" onClick={() => goTab("dashboard")}>
             <span>⌂</span>{t.home}
           </button>
@@ -1013,7 +1060,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
         </nav>
 
         {profileOpen && currentAdmin ? (
-          <ProfileModal admin={currentAdmin} adminKey={adminKey} lang={lang} onClose={() => setProfileOpen(false)} onProfileSaved={setStaffRows} t={t} />
+          <ProfileModal admin={currentAdmin} adminKey={adminKey} lang={lang} onClose={() => setProfileOpen(false)} onProfileSaved={(updated) => setStaffRows((existing) => [...existing.filter((row) => !updated.some((item) => item.id === row.id)), ...updated])} t={t} />
         ) : null}
 
         <header className="admin-top">
@@ -1040,6 +1087,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
             adminKey={adminKey}
             lang={lang}
             message={adminMessage}
+            permissions={permissionRows}
             roles={roleRows}
             rows={staffRows}
             setMessage={setAdminMessage}
@@ -1160,7 +1208,7 @@ function ProfileModal({
   };
 
   return (
-    <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+    <AdminDialog onClose={onClose}>
       <section className="admin-modal admin-profile-modal">
         <header>
           <div><small>{t.signedIn}</small><h2>{t.profileTitle}</h2><span>{t.profileSubtitle}</span></div>
@@ -1197,7 +1245,7 @@ function ProfileModal({
           </div>
         </div>
       </section>
-    </div>
+    </AdminDialog>
   );
 }
 
@@ -1491,7 +1539,7 @@ function BookingManager({
         </div>
       </Panel>
       {courtModalOpen ? (
-        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+        <AdminDialog onClose={() => { resetCourt(); setCourtModalOpen(false); }}>
           <section className="admin-modal">
             <header><div><small>{t.courtManager}</small><h2>{editingCourtId ? t.editCourt : t.addCourt}</h2></div><button type="button" onClick={() => { resetCourt(); setCourtModalOpen(false); }}>×</button></header>
             <div className="admin-form">
@@ -1507,7 +1555,7 @@ function BookingManager({
               <div className="admin-form-actions"><button type="button" onClick={submitCourt}>{t.save}</button><button type="button" className="ghost" onClick={() => { resetCourt(); setCourtModalOpen(false); }}>{t.cancel}</button></div>
             </div>
           </section>
-        </div>
+        </AdminDialog>
       ) : null}
     </div>
   );
@@ -1600,20 +1648,16 @@ function ReportDataList<T>({
   const currentPage = Math.min(page, totalPages);
   const pagedRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  useEffect(() => {
-    setPage(1);
-  }, [dateFrom, dateTo, pageSize, query, status]);
-
   return (
     <Panel title={title}>
       <div className="admin-report-list">
         <div className="admin-filterbar">
-          <label>{t.reportSearchRows}<input value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-          {dateGetter ? <label>{t.reportDateFrom}<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label> : null}
-          {dateGetter ? <label>{t.reportDateTo}<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label> : null}
-          {statusGetter ? <label>{t.reportStatus}<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">{t.reportAllStatus}</option>{statusOptions.map((item) => <option key={item} value={item}>{statusLabel(item, t)}</option>)}</select></label> : null}
-          <label>{t.reportPageSize}<select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select></label>
-          <button type="button" onClick={() => { setQuery(""); setDateFrom(""); setDateTo(""); setStatus(""); }}>{t.resetFilter}</button>
+          <label>{t.reportSearchRows}<input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /></label>
+          {dateGetter ? <label>{t.reportDateFrom}<input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label> : null}
+          {dateGetter ? <label>{t.reportDateTo}<input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label> : null}
+          {statusGetter ? <label>{t.reportStatus}<select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="">{t.reportAllStatus}</option>{statusOptions.map((item) => <option key={item} value={item}>{statusLabel(item, t)}</option>)}</select></label> : null}
+          <label>{t.reportPageSize}<select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select></label>
+          <button type="button" onClick={() => { setQuery(""); setDateFrom(""); setDateTo(""); setStatus(""); setPage(1); }}>{t.resetFilter}</button>
           <ExportButton label={t.exportCsv} filename={filename} rows={filteredRows.map((row) => row as Record<string, unknown>)} />
         </div>
         <div className="admin-report-summary">
@@ -1739,7 +1783,7 @@ function CouponManager({
         {message ? <p className="admin-message">{message}</p> : null}
       </Panel>
       {modalOpen ? (
-        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+        <AdminDialog onClose={() => { reset(); setModalOpen(false); }}>
           <section className="admin-modal">
             <header><div><small>{t.coupons}</small><h2>{editingId ? t.editCoupon : t.addCoupon}</h2></div><button type="button" onClick={() => { reset(); setModalOpen(false); }}>×</button></header>
             <div className="admin-form">
@@ -1755,7 +1799,7 @@ function CouponManager({
               {message ? <p className="admin-message">{message}</p> : null}
             </div>
           </section>
-        </div>
+        </AdminDialog>
       ) : null}
     </div>
   );
@@ -1889,7 +1933,7 @@ function ContentManager({
         {message ? <p className="admin-message">{message}</p> : null}
       </Panel>
       {modalOpen ? (
-        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+        <AdminDialog onClose={() => { reset(); setModalOpen(false); }}>
           <section className="admin-modal">
             <header><div><small>{t.content}</small><h2>{editingId ? t.editContent : t.addContent}</h2></div><button type="button" onClick={() => { reset(); setModalOpen(false); }}>×</button></header>
             <div className="admin-form">
@@ -1910,7 +1954,7 @@ function ContentManager({
               {message ? <p className="admin-message">{message}</p> : null}
             </div>
           </section>
-        </div>
+        </AdminDialog>
       ) : null}
     </div>
   );
@@ -1936,7 +1980,6 @@ function couponIcon(category: string) {
 
 function TrainerManager({
   adminKey,
-  lang,
   message,
   rows,
   setMessage,
@@ -2101,7 +2144,7 @@ function TrainerManager({
         </div>
       </Panel>
       {modalOpen ? (
-        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+        <AdminDialog onClose={() => { reset(); setModalOpen(false); }}>
           <section className="admin-modal">
             <header><div><small>{t.trainers}</small><h2>{editingId ? t.editTrainer : t.addTrainer}</h2></div><button type="button" onClick={() => { reset(); setModalOpen(false); }}>×</button></header>
             <div className="admin-form">
@@ -2131,14 +2174,15 @@ function TrainerManager({
               {message ? <p className="admin-message">{message}</p> : null}
             </div>
           </section>
-        </div>
+        </AdminDialog>
       ) : null}
     </div>
   );
 }
 
 function TrainerPhoto({ row }: { row: Pick<AdminTrainer, "avatar" | "imageUrl" | "name"> }) {
-  if (row.imageUrl) return <img alt={row.name} className="admin-trainer-photo" src={row.imageUrl} />;
+  const src = safeImageSource(row.imageUrl);
+  if (src) return <Image unoptimized width={160} height={160} alt={row.name} className="admin-trainer-photo" src={src} referrerPolicy="no-referrer" />;
   return <div className="admin-trainer-photo fallback">{row.avatar || "🏋️"}</div>;
 }
 
@@ -2146,6 +2190,7 @@ function StaffManager({
   adminKey,
   lang,
   message,
+  permissions,
   roles,
   rows,
   setMessage,
@@ -2155,6 +2200,7 @@ function StaffManager({
   adminKey: string;
   lang: Lang;
   message: string;
+  permissions: AdminPermission[];
   roles: AdminRole[];
   rows: AdminStaff[];
   setMessage: (message: string) => void;
@@ -2180,6 +2226,7 @@ function StaffManager({
     if (!needle) return rows;
     return rows.filter((row) => `${row.displayName} ${row.username} ${row.email || ""} ${row.phone || ""} ${row.status} ${row.roleCode} ${row.roleNameTh} ${row.roleNameEn}`.toLowerCase().includes(needle));
   }, [rows, staffSearch]);
+  const permissionMap = useMemo(() => new Map(permissions.map((permission) => [permission.code, permission])), [permissions]);
   const totalPages = Math.max(Math.ceil(filteredRows.length / perPage), 1);
   const currentPage = Math.min(page, totalPages);
   const pagedRows = filteredRows.slice((currentPage - 1) * perPage, currentPage * perPage);
@@ -2245,7 +2292,17 @@ function StaffManager({
           {pagedRows.map((row) => (
             <article key={row.id}>
               <div className="admin-staff-avatar">{initials(row.displayName || row.username)}</div>
-              <div><b>{row.displayName}</b><span>{row.username} · {lang === "th" ? row.roleNameTh : row.roleNameEn}</span><small>{row.phone || row.email || "-"}</small></div>
+              <div className="admin-staff-detail">
+                <b>{row.displayName}</b>
+                <span>{row.username} · {lang === "th" ? row.roleNameTh : row.roleNameEn}</span>
+                <small>{row.phone || row.email || "-"}</small>
+                <div className="admin-staff-permissions" aria-label={t.staffPermissions}>
+                  {row.permissionCodes.length ? row.permissionCodes.map((code) => {
+                    const permission = permissionMap.get(code);
+                    return <em key={code} title={code}>{permission ? (lang === "th" ? permission.nameTh : permission.nameEn) : code}</em>;
+                  }) : <em className="empty">{t.noPermissions}</em>}
+                </div>
+              </div>
               <Badge tone={row.status === "active" ? "good" : "warn"}>{statusLabel(row.status, t)}</Badge>
               <div className="admin-row-actions"><button type="button" onClick={() => edit(row)}>{t.edit}</button><button type="button" className="danger" onClick={() => remove(row)}>{t.delete}</button></div>
             </article>
@@ -2258,7 +2315,7 @@ function StaffManager({
         </div>
       </Panel>
       {modalOpen ? (
-        <div className="admin-modal-backdrop" role="dialog" aria-modal="true">
+        <AdminDialog onClose={() => { reset(); setModalOpen(false); }}>
           <section className="admin-modal">
             <header><div><small>{t.staff}</small><h2>{editingId ? t.editStaff : t.addStaff}</h2></div><button type="button" onClick={() => { reset(); setModalOpen(false); }}>×</button></header>
             <div className="admin-form">
@@ -2273,7 +2330,7 @@ function StaffManager({
               {message ? <p className="admin-message">{message}</p> : null}
             </div>
           </section>
-        </div>
+        </AdminDialog>
       ) : null}
     </div>
   );
@@ -2924,7 +2981,8 @@ function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
 
 function csvCell(value: unknown) {
   const text = value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
-  return `"${text.replace(/"/g, '""')}"`;
+  const safeText = /^[\s]*[=+@-]/.test(text) || /^[\t\r\n]/.test(text) ? `'${text}` : text;
+  return `"${safeText.replace(/"/g, '""')}"`;
 }
 
 function certificationText(value: AdminTrainer["certifications"]) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminRequest } from "@/lib/admin-auth";
-import { query } from "@/lib/db";
+import { query, transaction } from "@/lib/db";
 import { expirePendingBookings } from "@/lib/booking-rules";
 import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 
@@ -12,7 +12,7 @@ const statusSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   await expirePendingBookings();
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   let body: z.infer<typeof statusSchema>;
@@ -30,27 +30,22 @@ export async function PUT(request: NextRequest) {
     return validationErrorResponse(error);
   }
 
-  const rows = await query<{ id: number; status: string }>("SELECT id, status FROM bookings WHERE booking_no = ? LIMIT 1", [body.bookingNo]);
-  const booking = rows[0];
-  if (!booking) return NextResponse.json({ message: "ไม่พบรายการจอง" }, { status: 404 });
-  if (!canTransition(booking.status, body.status)) return NextResponse.json({ message: "เปลี่ยนสถานะรายการนี้ไม่ได้" }, { status: 409 });
-
-  if (body.status === "cancelled") {
-    await query("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancel_reason = ? WHERE id = ?", [body.reason || "admin cancelled", booking.id]);
-  } else if (body.status === "checked_in") {
-    await query("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE id = ?", [booking.id]);
-  } else if (body.status === "paid") {
-    await query("UPDATE bookings SET status = 'paid' WHERE id = ?", [booking.id]);
-    await query("UPDATE payments SET status = 'paid', paid_at = COALESCE(paid_at, NOW()) WHERE booking_id = ? AND status = 'created'", [booking.id]);
-  } else {
-    await query("UPDATE bookings SET status = ?, cancel_reason = NULL WHERE id = ?", [body.status, booking.id]);
-  }
-  await query("INSERT INTO admin_audit_logs (action, target_type, target_id, metadata) VALUES ('booking.status', 'bookings', ?, JSON_OBJECT('fromStatus', ?, 'toStatus', ?, 'reason', ?))", [
-    body.bookingNo,
-    booking.status,
-    body.status,
-    body.reason || null,
-  ]);
+  if (body.status === "paid") return NextResponse.json({ message: "กรุณายืนยันผ่านรายการชำระเงิน" }, { status: 400 });
+  const failure = await transaction(async (connection) => {
+    const [rows] = await connection.execute("SELECT id, status FROM bookings WHERE booking_no = ? LIMIT 1 FOR UPDATE", [body.bookingNo]);
+    const booking = (rows as { id: number; status: string }[])[0];
+    if (!booking) return NextResponse.json({ message: "ไม่พบรายการจอง" }, { status: 404 });
+    if (!canTransition(booking.status, body.status)) return NextResponse.json({ message: "เปลี่ยนสถานะรายการนี้ไม่ได้" }, { status: 409 });
+    await connection.execute(
+      "UPDATE bookings SET status = ?, cancelled_at = IF(? = 'cancelled', NOW(), cancelled_at), cancel_reason = IF(? = 'cancelled', ?, cancel_reason), checked_in_at = IF(? = 'checked_in', NOW(), checked_in_at) WHERE id = ?",
+      [body.status, body.status, body.status, body.reason || "admin cancelled", body.status, booking.id],
+    );
+    await connection.execute("INSERT INTO admin_audit_logs (action, target_type, target_id, metadata) VALUES ('booking.status', 'bookings', ?, JSON_OBJECT('fromStatus', ?, 'toStatus', ?, 'reason', ?))", [
+      body.bookingNo, booking.status, body.status, body.reason || null,
+    ]);
+    return null;
+  });
+  if (failure) return failure;
   return GET(request);
 }
 
@@ -65,6 +60,6 @@ function canTransition(from: string, to: string) {
   if (["cancelled", "expired", "checked_in"].includes(from)) return false;
   if (to === "checked_in") return from === "paid";
   if (to === "paid") return ["hold", "pending_payment"].includes(from);
-  if (to === "cancelled" || to === "expired") return true;
-  return ["hold", "pending_payment"].includes(to);
+  if (to === "cancelled") return true;
+  return ["hold", "pending_payment"].includes(from) && ["hold", "pending_payment", "expired"].includes(to);
 }

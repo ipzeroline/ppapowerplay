@@ -3,6 +3,7 @@ import type { Viewport } from "next";
 import { Inter, Noto_Sans_Thai } from "next/font/google";
 import type { ReactNode } from "react";
 import "./styles.css";
+import "./responsive.css";
 
 const inter = Inter({
   variable: "--font-inter",

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { assertAdminRequest } from "@/lib/admin-auth";
-import { secureResponse } from "@/lib/security";
+import { readRequestBody, secureResponse, validationErrorResponse } from "@/lib/security";
 
 const allowedTypes = new Map([
   ["image/jpeg", "jpg"],
@@ -13,10 +13,17 @@ const allowedTypes = new Map([
 const maxBytes = 3 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
-  const data = await request.formData();
+  let data: FormData;
+  try {
+    const bytes = await readRequestBody(request, maxBytes + 64 * 1024);
+    data = await new Response(new Uint8Array(bytes), { headers: { "Content-Type": request.headers.get("content-type") || "" } }).formData();
+  } catch (error) {
+    if (error instanceof TypeError) return secureResponse(NextResponse.json({ message: "Invalid upload" }, { status: 400 }));
+    return validationErrorResponse(error);
+  }
   const file = data.get("file");
   if (!(file instanceof File)) return secureResponse(NextResponse.json({ message: "Missing file" }, { status: 400 }));
   if (!allowedTypes.has(file.type)) return secureResponse(NextResponse.json({ message: "Only JPG, PNG, or WEBP images are allowed" }, { status: 415 }));

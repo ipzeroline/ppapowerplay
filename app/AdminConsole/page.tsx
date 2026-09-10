@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { AdminLogin } from "@/components/admin-login";
 import { AdminConsole, type AdminConsoleData } from "@/components/admin-console";
-import { adminSessionCookieName, verifyAdminSession } from "@/lib/admin-auth";
+import { adminSessionCookieName, getAdminIdentity, hasAdminPermission } from "@/lib/admin-auth";
+import { sectionPermissions } from "@/lib/admin-permissions";
+import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 
 type AdminConsolePageProps = {
@@ -21,25 +23,30 @@ export default async function AdminConsolePage(props: AdminConsolePageProps) {
 
 export async function AdminConsolePageView({ searchParams, initialTab = "dashboard" }: AdminConsolePageProps & { initialTab?: AdminConsoleSection }) {
   const adminKey = process.env.ADMIN_ACCESS_KEY || "";
-  const allowDevOpen = process.env.NODE_ENV !== "production" && !adminKey;
   const resolvedSearchParams = await searchParams;
-  const providedKey = process.env.NODE_ENV !== "production" ? readSingle(resolvedSearchParams.key) : "";
   const reportSection = readSingle(resolvedSearchParams.report);
   const cookieStore = await cookies();
   const adminSession = cookieStore.get(adminSessionCookieName())?.value || "";
-  const canAccess = allowDevOpen || (Boolean(adminKey) && providedKey === adminKey) || verifyAdminSession(adminSession);
+  const currentAdmin = await getAdminIdentity(adminSession);
 
-  if (!canAccess) {
+  if (!currentAdmin) {
     return (
       <main className="admin admin-locked">
         <div className="brand">PPA<span>.</span></div>
         <h1>Admin Access</h1>
-        <p>เข้าสู่ระบบด้วย admin key เพื่อเปิดระบบจัดการ</p>
+        <p>เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านพนักงาน</p>
         <AdminLogin />
       </main>
     );
   }
 
+  const can = (permission: string) => hasAdminPermission(currentAdmin, permission);
+  if (!can(sectionPermissions[initialTab])) {
+    const first = adminConsoleSections.find((section) => can(sectionPermissions[section]));
+    if (first) redirect(`/AdminConsole/${first}`);
+    return <main className="admin admin-locked"><h1>ไม่มีสิทธิ์เข้าถึง</h1><p>กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดสิทธิ์</p><AdminLogin /></main>;
+  }
+  const allowedQuery = <T,>(permissions: string[], sql: string) => permissions.some(can) ? query<T>(sql) : Promise.resolve([] as T[]);
   const [
     userCount,
     bookingCount,
@@ -60,58 +67,51 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     walletAccounts,
     notifications,
     groups,
-  ] = await Promise.all([
-    query<{ total: number }>("SELECT COUNT(*) total FROM users"),
-    query<{ total: number }>("SELECT COUNT(*) total FROM bookings"),
-    query<{ total: number }>("SELECT COUNT(*) total FROM payments WHERE status = 'paid'"),
-    query<{ total: number }>("SELECT COALESCE(SUM(amount), 0) total FROM payments WHERE status = 'paid'"),
-    query<AdminConsoleData["users"][number]>(
-      "SELECT id, display_name displayName, member_code memberCode, phone, email, status, created_at createdAt FROM users ORDER BY created_at DESC LIMIT 80",
+] = await Promise.all([
+    allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM users"),
+    allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM bookings"),
+    allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM payments WHERE status = 'paid'"),
+    allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COALESCE(SUM(amount), 0) total FROM payments WHERE status = 'paid'"),
+    allowedQuery<AdminConsoleData["users"][number]>(["members.manage","reports.view"], "SELECT id, display_name displayName, member_code memberCode, phone, email, status, created_at createdAt FROM users ORDER BY created_at DESC LIMIT 80",
     ),
-    query<AdminConsoleData["bookings"][number]>(
-      "SELECT b.id, b.booking_no bookingNo, b.title, u.display_name displayName, s.name_th sportName, c.name courtName, b.starts_at startsAt, b.ends_at endsAt, b.players, b.amount, b.status, b.expires_at expiresAt, b.cancel_reason cancelReason, b.checked_in_at checkedInAt FROM bookings b JOIN users u ON u.id = b.user_id JOIN sports s ON s.id = b.sport_id LEFT JOIN courts c ON c.id = b.court_id ORDER BY b.starts_at DESC LIMIT 200",
+    allowedQuery<AdminConsoleData["bookings"][number]>(["bookings.manage","reports.view"], "SELECT b.id, b.booking_no bookingNo, b.title, u.display_name displayName, s.name_th sportName, c.name courtName, b.starts_at startsAt, b.ends_at endsAt, b.players, b.amount, b.status, b.expires_at expiresAt, b.cancel_reason cancelReason, b.checked_in_at checkedInAt FROM bookings b JOIN users u ON u.id = b.user_id JOIN sports s ON s.id = b.sport_id LEFT JOIN courts c ON c.id = b.court_id ORDER BY b.starts_at DESC LIMIT 200",
     ),
-    query<AdminConsoleData["payments"][number]>(
-      "SELECT p.payment_no paymentNo, u.display_name displayName, p.method, p.amount, p.status, p.paid_at paidAt FROM payments p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 80",
+    allowedQuery<AdminConsoleData["payments"][number]>(["payments.manage","reports.view"], "SELECT p.payment_no paymentNo, u.display_name displayName, p.method, p.amount, p.status, p.paid_at paidAt FROM payments p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 80",
     ),
-    query<AdminConsoleData["coupons"][number]>(
-      "SELECT id, code, name, category, price, total_uses totalUses, validity_days validityDays, active FROM coupons ORDER BY id DESC LIMIT 80",
+    allowedQuery<AdminConsoleData["coupons"][number]>(["coupons.manage","reports.view"], "SELECT id, code, name, category, price, total_uses totalUses, validity_days validityDays, active FROM coupons ORDER BY id DESC LIMIT 80",
     ),
-    query<AdminConsoleData["trainers"][number]>(
-      "SELECT id, slug, name, nickname, role, avatar, image_url imageUrl, experience, zodiac, birth_year birthYear, blood_type bloodType, contact_phone contactPhone, bio, CAST(specialties AS CHAR) specialties, CAST(packages AS CHAR) packages, CAST(weekly_schedule AS CHAR) weeklySchedule, social_line socialLine, start_price startPrice, CAST(certifications AS CHAR) certifications, active, sort_order sortOrder FROM trainers ORDER BY active DESC, sort_order, id DESC LIMIT 120",
+    allowedQuery<AdminConsoleData["trainers"][number]>(["trainers.manage","reports.view"], "SELECT id, slug, name, nickname, role, avatar, image_url imageUrl, experience, zodiac, birth_year birthYear, blood_type bloodType, contact_phone contactPhone, bio, CAST(specialties AS CHAR) specialties, CAST(packages AS CHAR) packages, CAST(weekly_schedule AS CHAR) weeklySchedule, social_line socialLine, start_price startPrice, CAST(certifications AS CHAR) certifications, active, sort_order sortOrder FROM trainers ORDER BY active DESC, sort_order, id DESC LIMIT 120",
     ),
-    query<AdminConsoleData["courts"][number]>(
-      "SELECT c.id, c.sport_id sportId, s.name_th sportName, c.name, c.zone, c.capacity, c.surface, c.hourly_rate hourlyRate, c.sort_order sortOrder, c.notes, c.status FROM courts c JOIN sports s ON s.id = c.sport_id ORDER BY s.sort_order, c.sort_order, c.id LIMIT 300",
+    allowedQuery<AdminConsoleData["courts"][number]>(["bookings.manage","reports.view"], "SELECT c.id, c.sport_id sportId, s.name_th sportName, c.name, c.zone, c.capacity, c.surface, c.hourly_rate hourlyRate, c.sort_order sortOrder, c.notes, c.status FROM courts c JOIN sports s ON s.id = c.sport_id ORDER BY s.sort_order, c.sort_order, c.id LIMIT 300",
     ),
-    query<AdminConsoleData["staff"][number]>(
-      "SELECT s.id, s.username, s.display_name displayName, s.email, s.phone, s.status, s.role_id roleId, r.code roleCode, r.name_th roleNameTh, r.name_en roleNameEn, s.created_at createdAt FROM admin_staff s JOIN admin_roles r ON r.id = s.role_id WHERE s.status <> 'deleted' ORDER BY s.id DESC",
+    allowedQuery<Omit<AdminConsoleData["staff"][number], "permissionCodes"> & { permissionCodes: string }>(["staff.manage"], "SELECT s.id, s.username, s.display_name displayName, s.email, s.phone, s.status, s.role_id roleId, r.code roleCode, r.name_th roleNameTh, r.name_en roleNameEn, s.created_at createdAt, COALESCE(GROUP_CONCAT(p.code ORDER BY p.code SEPARATOR ','), '') permissionCodes FROM admin_staff s JOIN admin_roles r ON r.id = s.role_id LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id LEFT JOIN admin_permissions p ON p.id = rp.permission_id WHERE s.status <> 'deleted' GROUP BY s.id, s.username, s.display_name, s.email, s.phone, s.status, s.role_id, r.code, r.name_th, r.name_en, s.created_at ORDER BY s.id DESC",
     ),
-    query<
+    allowedQuery<
       Omit<AdminConsoleData["roles"][number], "permissionCodes"> & {
         permissionCodes: string;
       }
-    >(
-      "SELECT r.id, r.code, r.name_th nameTh, r.name_en nameEn, r.description, r.level, r.is_system isSystem, COALESCE(GROUP_CONCAT(p.code ORDER BY p.code SEPARATOR ','), '') permissionCodes FROM admin_roles r LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id LEFT JOIN admin_permissions p ON p.id = rp.permission_id GROUP BY r.id, r.code, r.name_th, r.name_en, r.description, r.level, r.is_system ORDER BY r.level DESC, r.id",
+    >(["staff.manage","roles.manage"], "SELECT r.id, r.code, r.name_th nameTh, r.name_en nameEn, r.description, r.level, r.is_system isSystem, COALESCE(GROUP_CONCAT(p.code ORDER BY p.code SEPARATOR ','), '') permissionCodes FROM admin_roles r LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id LEFT JOIN admin_permissions p ON p.id = rp.permission_id GROUP BY r.id, r.code, r.name_th, r.name_en, r.description, r.level, r.is_system ORDER BY r.level DESC, r.id",
     ),
-    query<AdminConsoleData["permissions"][number]>(
-      "SELECT id, code, name_th nameTh, name_en nameEn, group_key groupKey FROM admin_permissions ORDER BY group_key, code",
+    allowedQuery<AdminConsoleData["permissions"][number]>(["staff.manage","roles.manage","settings.manage"], "SELECT id, code, name_th nameTh, name_en nameEn, group_key groupKey FROM admin_permissions ORDER BY group_key, code",
     ),
-    query<AdminConsoleData["auditLogs"][number]>(
-      "SELECT l.id, s.display_name staffName, s.username, l.action, l.target_type targetType, l.target_id targetId, CAST(l.metadata AS CHAR) metadataText, l.created_at createdAt FROM admin_audit_logs l LEFT JOIN admin_staff s ON s.id = l.staff_id ORDER BY l.created_at DESC LIMIT 120",
+    allowedQuery<AdminConsoleData["auditLogs"][number]>(["settings.manage"], "SELECT l.id, s.display_name staffName, s.username, l.action, l.target_type targetType, l.target_id targetId, CAST(l.metadata AS CHAR) metadataText, l.created_at createdAt FROM admin_audit_logs l LEFT JOIN admin_staff s ON s.id = l.staff_id ORDER BY l.created_at DESC LIMIT 120",
     ),
-    query<AdminConsoleData["contentItems"][number]>(
-      "SELECT id, content_type contentType, slug, title, subtitle, body, icon, image_url imageUrl, action_label actionLabel, target_screen targetScreen, price, CAST(metadata AS CHAR) metadata, active, sort_order sortOrder, created_at createdAt, updated_at updatedAt FROM app_content_items ORDER BY active DESC, content_type, sort_order, id DESC LIMIT 500",
+    allowedQuery<AdminConsoleData["contentItems"][number]>(["content.manage"], "SELECT id, content_type contentType, slug, title, subtitle, body, icon, image_url imageUrl, action_label actionLabel, target_screen targetScreen, price, CAST(metadata AS CHAR) metadata, active, sort_order sortOrder, created_at createdAt, updated_at updatedAt FROM app_content_items ORDER BY active DESC, content_type, sort_order, id DESC LIMIT 500",
     ),
-    query<{ total: number }>("SELECT COUNT(*) total FROM memberships WHERE status = 'active'"),
-    query<{ total: number }>("SELECT COUNT(*) total FROM wallet_accounts"),
-    query<{ total: number }>("SELECT COUNT(*) total FROM notifications"),
-    query<{ total: number }>("SELECT COUNT(*) total FROM groups_clubs WHERE status = 'active'"),
+    allowedQuery<{ total: number }>(["settings.manage"], "SELECT COUNT(*) total FROM memberships WHERE status = 'active'"),
+    allowedQuery<{ total: number }>(["settings.manage"], "SELECT COUNT(*) total FROM wallet_accounts"),
+    allowedQuery<{ total: number }>(["settings.manage"], "SELECT COUNT(*) total FROM notifications"),
+    allowedQuery<{ total: number }>(["settings.manage"], "SELECT COUNT(*) total FROM groups_clubs WHERE status = 'active'"),
   ]);
 
-  const requireLine = process.env.APP_REQUIRE_LINE === "true" && process.env.NEXT_PUBLIC_REQUIRE_LINE === "true";
+  const requireLine = process.env.NODE_ENV === "production" || process.env.APP_REQUIRE_LINE === "true" || process.env.NEXT_PUBLIC_REQUIRE_LINE === "true";
   const liffConfigured = Boolean(process.env.NEXT_PUBLIC_LINE_LIFF_ID);
   const lineChannelConfigured = Boolean(process.env.LINE_CHANNEL_ID);
   const adminKeyConfigured = Boolean(adminKey);
+  const staffRows = staff.map((admin) => ({
+    ...admin,
+    permissionCodes: typeof admin.permissionCodes === "string" ? admin.permissionCodes.split(",").filter(Boolean) : admin.permissionCodes,
+  }));
 
   const data: AdminConsoleData = {
     metrics: [
@@ -126,14 +126,14 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     coupons,
     trainers,
     courts,
-    staff,
+    staff: staffRows,
     roles: roles.map((role) => ({
       ...role,
       isSystem: Boolean(role.isSystem),
       permissionCodes: role.permissionCodes ? role.permissionCodes.split(",") : [],
     })),
     permissions,
-    currentAdmin: staff.find((admin) => admin.username === "zeroline") || staff.find((admin) => admin.roleCode === "super_admin") || staff[0] || null,
+    currentAdmin,
     auditLogs,
     contentItems,
     securityItems: [
@@ -159,7 +159,7 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
         key: "admin-key",
         labelTh: "Admin Access Key",
         labelEn: "Admin access key",
-        value: adminKeyConfigured ? "Configured" : "Dev open",
+        value: adminKeyConfigured ? "Configured" : "Development session",
         status: adminKeyConfigured ? "good" : "warn",
         hintTh: "Production ควรตั้ง ADMIN_ACCESS_KEY เสมอ",
         hintEn: "Production should always set ADMIN_ACCESS_KEY",
@@ -259,5 +259,5 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     ],
   };
 
-  return <AdminConsole adminKey={process.env.NODE_ENV !== "production" ? providedKey || "" : ""} data={data} initialReportSection={reportSection} initialTab={initialTab} />;
+  return <AdminConsole adminKey="" data={data} initialReportSection={reportSection} initialTab={initialTab} />;
 }

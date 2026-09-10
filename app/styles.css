@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Kanit:wght@300;400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -8,8 +7,8 @@
   --color-ppa-bg: #0a0a0c;
   --color-ppa-card: #141417;
   --color-ppa-line: #26262c;
-  --font-ppa: "Kanit", "Poppins", sans-serif;
-  --font-ppa-display: "Poppins", "Kanit", sans-serif;
+  --font-ppa: var(--font-aura), var(--font-inter), sans-serif;
+  --font-ppa-display: var(--font-inter), var(--font-aura), sans-serif;
 }
 
 @layer base {
@@ -43,7 +42,7 @@ body {
     radial-gradient(ellipse 50% 40% at 10% 100%, rgb(46 204 113 / 6%), transparent),
     #060607;
   color: var(--text);
-  font-family: "Kanit", "Poppins", sans-serif;
+  font-family: var(--font-aura), var(--font-inter), sans-serif;
 }
 
 button,
@@ -63,30 +62,29 @@ button:disabled {
 
 @layer components {
 .phone-wrap {
-  min-height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 12px;
+  padding: 0;
 }
 
 .phone {
-  width: 390px;
-  height: 844px;
+  width: min(100%, 960px);
+  height: 100%;
+  min-width: 0;
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border: 1px solid #2a2a30;
-  border-radius: 54px;
+  border: 0;
+  border-radius: 0;
   background: var(--bg);
-  box-shadow:
-    0 0 0 11px #111114,
-    0 0 0 13px #2c2c33,
-    0 40px 90px rgb(0 0 0 / 80%);
+  box-shadow: none;
 }
 
 .phone::before {
+  display: none;
   content: "";
   position: absolute;
   top: 0;
@@ -106,7 +104,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   padding: 0 26px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 12px;
   font-weight: 500;
 }
@@ -161,8 +159,12 @@ button:disabled {
 }
 
 .content {
-  height: calc(100% - 126px);
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   scrollbar-width: none;
 }
 
@@ -192,12 +194,12 @@ button:disabled {
 }
 
 .brand {
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 64px;
   font-weight: 800;
   font-style: italic;
   line-height: 1;
-  letter-spacing: -3px;
+  letter-spacing: 0;
 }
 
 .brand span,
@@ -227,7 +229,7 @@ button:disabled {
   font-size: 16px;
   font-weight: 500;
   line-height: 1.35;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
 }
 
 .top {
@@ -271,10 +273,10 @@ button:disabled {
 }
 
 .eyebrow {
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 1.6px;
+  letter-spacing: 0;
 }
 
 .coin {
@@ -283,7 +285,7 @@ button:disabled {
   background: var(--card);
   color: var(--text);
   padding: 9px 11px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 12px;
   font-weight: 700;
 }
@@ -313,7 +315,7 @@ button:disabled {
   position: absolute;
   right: -10px;
   bottom: -24px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 80px;
   font-style: italic;
   font-weight: 800;
@@ -343,7 +345,7 @@ button:disabled {
 .member-card strong {
   display: block;
   margin: 3px 0;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0;
@@ -396,7 +398,7 @@ button:disabled {
   right: -8px;
   bottom: -24px;
   color: rgb(255 255 255 / 5%);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 76px;
   font-style: italic;
   font-weight: 800;
@@ -433,10 +435,10 @@ button:disabled {
   background: var(--orange);
   color: #11180c;
   padding: 3px 9px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 8px;
   font-weight: 800;
-  letter-spacing: 1.5px;
+  letter-spacing: 0;
 }
 
 .ad-slide strong {
@@ -533,7 +535,7 @@ button:disabled {
   display: block;
   margin-bottom: 5px;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 20px;
   font-weight: 700;
 }
@@ -548,7 +550,7 @@ button:disabled {
   display: block;
   margin-top: 2px;
   color: var(--muted);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 9px;
 }
 
@@ -573,7 +575,7 @@ button:disabled {
   right: -12px;
   bottom: -30px;
   color: rgb(255 255 255 / 5%);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 92px;
   font-style: italic;
   font-weight: 800;
@@ -583,10 +585,10 @@ button:disabled {
   display: inline-block;
   margin-bottom: 8px;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 1.6px;
+  letter-spacing: 0;
 }
 
 .complex-hero strong {
@@ -646,10 +648,10 @@ button:disabled {
   padding: 3px 9px;
   background: var(--orange);
   color: #11180c;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 8px;
   font-weight: 700;
-  letter-spacing: 1.5px;
+  letter-spacing: 0;
 }
 
 .hero-deal strong {
@@ -874,7 +876,7 @@ button:disabled {
 }
 
 .slot-list article > strong {
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 13px;
 }
 
@@ -906,7 +908,7 @@ button:disabled {
   display: block;
   margin-top: 3px;
   color: var(--orange-2);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 10px;
 }
 
@@ -1008,7 +1010,7 @@ button:disabled {
 
 .pay-card strong {
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 34px;
   font-weight: 700;
 }
@@ -1024,7 +1026,7 @@ button:disabled {
 
 .pay-method span {
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 12px;
 }
 
@@ -1114,7 +1116,7 @@ button:disabled {
 .wallet strong {
   display: block;
   margin-top: 4px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 21px;
 }
 
@@ -1130,7 +1132,7 @@ button:disabled {
   background: var(--card);
   color: var(--orange);
   padding: 10px 0;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 12px;
   font-weight: 600;
 }
@@ -1351,13 +1353,13 @@ button:disabled {
 
 .gate-logo {
   position: relative;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 72px;
   font-weight: 900;
   font-style: italic;
   line-height: 1;
   color: #fff;
-  letter-spacing: -4px;
+  letter-spacing: 0;
   text-shadow: 0 12px 30px rgb(0 0 0 / 55%);
 }
 
@@ -1369,10 +1371,10 @@ button:disabled {
   display: block;
   margin-bottom: 8px;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 10px;
   font-weight: 900;
-  letter-spacing: 2.4px;
+  letter-spacing: 0;
 }
 
 .gate-copy h1 {
@@ -1414,7 +1416,7 @@ button:disabled {
 
 .gate-status b {
   color: #fff;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 11px;
   font-weight: 900;
 }
@@ -1611,10 +1613,10 @@ button:disabled {
   background: var(--orange);
   color: #11180c;
   padding: 3px 9px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 8px;
   font-weight: 800;
-  letter-spacing: 1.4px;
+  letter-spacing: 0;
 }
 
 .promo-card strong {
@@ -1739,17 +1741,17 @@ button:disabled {
   display: block;
   margin-top: 4px;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 30px;
   font-weight: 800;
 }
 
 .reward-label {
   color: var(--muted);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 1.6px;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -1797,7 +1799,7 @@ button:disabled {
 .coin-reward-list button > span {
   flex: 0 0 auto;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 13px;
   font-weight: 800;
 }
@@ -1942,7 +1944,7 @@ button:disabled {
 .stat strong {
   margin-top: 5px;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 24px;
 }
 
@@ -1982,7 +1984,7 @@ button:disabled {
 
 .tut-card > span {
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 11px;
   font-weight: 700;
 }
@@ -2176,7 +2178,7 @@ button:disabled {
   background: var(--orange);
   color: #11180c;
   font-size: 8px;
-  letter-spacing: 1.5px;
+  letter-spacing: 0;
 }
 
 .home-carousel .ad-slide strong {
@@ -2231,7 +2233,7 @@ button:disabled {
 }
 
 .lb-head strong {
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 15px;
   font-style: italic;
   font-weight: 800;
@@ -2246,10 +2248,10 @@ button:disabled {
   background: var(--orange);
   color: #11180c;
   padding: 4px 9px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 9px;
   font-weight: 800;
-  letter-spacing: 1.5px;
+  letter-spacing: 0;
 }
 
 .live-pill i,
@@ -2408,7 +2410,7 @@ button:disabled {
 .gymnos-banner strong {
   display: block;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 17px;
   font-weight: 800;
 }
@@ -2496,7 +2498,7 @@ button:disabled {
 
 .stat-row strong {
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 19px;
   font-weight: 800;
 }
@@ -2522,10 +2524,10 @@ button:disabled {
 
 .admin h1 {
   margin: 4px 0;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: clamp(34px, 5vw, 64px);
   font-weight: 800;
-  letter-spacing: -1px;
+  letter-spacing: 0;
 }
 
 .admin .admin-grid {
@@ -2549,7 +2551,7 @@ button:disabled {
 .admin-card strong {
   display: block;
   margin-top: 10px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 28px;
   font-weight: 700;
 }
@@ -2700,7 +2702,7 @@ button:disabled {
   font-family: var(--admin-font-sans);
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 2.2px;
+  letter-spacing: 0;
 }
 
 .admin-sidebar nav {
@@ -2718,7 +2720,7 @@ button:disabled {
   color: var(--admin-soft);
   font-size: 11px;
   font-weight: 950;
-  letter-spacing: 1.4px;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -3054,7 +3056,7 @@ button:disabled {
   padding: 5px 10px;
   font-size: 10px;
   font-weight: 950;
-  letter-spacing: 2.4px;
+  letter-spacing: 0;
 }
 
 .admin-console[data-theme="light"] .eyebrow {
@@ -3273,7 +3275,7 @@ button:disabled {
   padding: 6px 10px;
   font-size: 10px;
   font-weight: 950;
-  letter-spacing: 1.8px;
+  letter-spacing: 0;
 }
 
 .admin-dashboard-hero h2 {
@@ -3479,7 +3481,7 @@ button:disabled {
   color: var(--admin-soft);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: .4px;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -4423,7 +4425,7 @@ button:disabled {
   color: var(--admin-accent);
   font-size: 10px;
   font-weight: 950;
-  letter-spacing: 1.8px;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -4736,6 +4738,39 @@ button:disabled {
   font-size: 11px;
 }
 
+.admin-staff-detail {
+  min-width: 0;
+}
+
+.admin-staff-permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.admin-staff-permissions em {
+  max-width: 190px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--admin-accent) 24%, var(--admin-line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--admin-accent) 9%, transparent);
+  color: var(--admin-heading);
+  padding: 4px 7px;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-staff-permissions em.empty {
+  border-color: var(--admin-line);
+  background: var(--admin-surface-3);
+  color: var(--admin-soft);
+}
+
 .admin-filterbar {
   display: grid;
   grid-template-columns: minmax(180px, 240px) minmax(240px, 1fr) auto auto;
@@ -4910,26 +4945,6 @@ button:disabled {
 }
 
 @media (max-width: 700px) {
-  .phone-wrap {
-    padding: 24px 12px;
-  }
-
-  .phone {
-    width: min(390px, calc(100vw - 24px));
-    height: min(844px, calc(100vh - 48px));
-    min-height: 0;
-    border: 1px solid #2a2a30;
-    border-radius: 54px;
-    box-shadow:
-      0 0 0 11px #111114,
-      0 0 0 13px #2c2c33,
-      0 40px 90px rgb(0 0 0 / 80%);
-  }
-
-  .phone::before {
-    display: block;
-  }
-
   .admin {
     padding: 24px;
   }
@@ -5172,7 +5187,7 @@ button:disabled {
 .menu-item-ui .chev {
   margin-left: auto;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 22px;
   line-height: 1;
 }
@@ -5224,7 +5239,7 @@ button:disabled {
 .fit-item-ui strong {
   flex: 0 0 auto;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 15.5px;
   font-weight: 800;
 }
@@ -5244,7 +5259,7 @@ button:disabled {
   display: block;
   margin-top: 4px;
   color: var(--text);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 42px;
   font-weight: 800;
   line-height: 1;
@@ -5269,7 +5284,7 @@ button:disabled {
   width: 56px;
   flex: 0 0 56px;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 28px;
   font-weight: 800;
   line-height: 1;
@@ -5278,7 +5293,7 @@ button:disabled {
 
 .coupon-row-ui .cn small {
   margin-top: 2px;
-  font-family: "Noto Sans Thai", sans-serif;
+  font-family: var(--font-aura), sans-serif;
   font-size: 10px;
 }
 
@@ -5296,7 +5311,7 @@ button:disabled {
   place-items: center;
   background: var(--orange);
   color: #061000;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 22px;
   font-weight: 800;
 }
@@ -5319,7 +5334,7 @@ button:disabled {
 
 .booking-row-ui .date b {
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 20px;
   line-height: 1;
 }
@@ -5384,7 +5399,7 @@ button:disabled {
 .booking-seg button {
   border-radius: 11px;
   padding: 9px 8px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 11px;
   font-weight: 700;
 }
@@ -5429,9 +5444,9 @@ button:disabled {
   background: var(--lime-soft);
   color: var(--orange);
   padding: 5px 7px;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 8.5px;
-  letter-spacing: .4px;
+  letter-spacing: 0;
 }
 
 .primary.green {
@@ -5482,7 +5497,7 @@ button:disabled {
 
 .tx-row .amt {
   flex: 0 0 auto;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 12.5px;
   font-weight: 800;
 }
@@ -5590,7 +5605,7 @@ button:disabled {
 .profile-head small,
 .profile-head em {
   display: block;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-style: normal;
 }
 
@@ -5606,7 +5621,7 @@ button:disabled {
   color: var(--orange);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 1px;
+  letter-spacing: 0;
 }
 
 .help-info {
@@ -5716,7 +5731,7 @@ button:disabled {
 
 .trainer-hero b {
   display: block;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 18px;
   font-weight: 800;
 }
@@ -5746,7 +5761,7 @@ button:disabled {
 .trainer-stats b {
   display: block;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 17px;
   font-weight: 800;
   line-height: 1.1;
@@ -5966,7 +5981,7 @@ img.trainer-ava,
   display: block;
   margin-top: 6px;
   color: var(--orange);
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 24px;
   font-weight: 800;
 }
@@ -6022,7 +6037,7 @@ img.trainer-ava,
 
 .trainer-day-strip b {
   display: block;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 13px;
   font-weight: 800;
 }
@@ -6050,7 +6065,7 @@ img.trainer-ava,
   color: var(--text);
   padding: 10px 2px;
   text-align: center;
-  font-family: "Poppins", sans-serif;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
   font-size: 12px;
   font-weight: 700;
 }
@@ -6069,7 +6084,7 @@ img.trainer-ava,
   display: block;
   margin-top: 2px;
   color: var(--green);
-  font-family: "Kanit", sans-serif;
+  font-family: var(--font-aura), sans-serif;
   font-size: 9px;
   font-weight: 300;
 }

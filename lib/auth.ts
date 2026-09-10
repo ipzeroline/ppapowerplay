@@ -5,6 +5,7 @@ import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { query, transaction } from "@/lib/db";
 import { secureResponse } from "@/lib/security";
+import { readSession } from "@/lib/session";
 
 export type CurrentUser = {
   id: number;
@@ -55,6 +56,7 @@ async function verifyLineIdToken(idToken: string): Promise<VerifiedLineProfile> 
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
     cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
   });
   const data = (await res.json()) as LineVerifyResponse;
   if (!res.ok || !data.sub) {
@@ -75,7 +77,7 @@ export async function getOrCreateUserFromLineToken(idToken: string) {
     const existing = await selectUserByLineId(connection, lineUserId);
     if (existing) {
       await connection.execute(
-        "UPDATE users SET picture_url = COALESCE(?, picture_url), status = IF(status = 'deleted', 'active', status) WHERE id = ?",
+        "UPDATE users SET picture_url = COALESCE(?, picture_url) WHERE id = ?",
         [pictureUrl, existing.id],
       );
       await ensureWalletAccount(connection, existing.id, 0, 0, 0);
@@ -116,17 +118,17 @@ export async function getOrCreateUserFromLineToken(idToken: string) {
 
 export async function getCurrentUser() {
   const cookieStore = await cookies();
-  const lineUserId = cookieStore.get("ppa_line_user_id")?.value;
+  const lineUserId = readSession("member", cookieStore.get("ppa_member_session")?.value || "");
   const devLineUserId = !isLineRequired() && process.env.NODE_ENV !== "production" ? "dev-line-user" : "";
   const lookup = lineUserId || devLineUserId;
   if (!lookup) return null;
 
   const rows = await query<CurrentUser>(
-    "SELECT id, line_user_id lineUserId, display_name displayName, member_code memberCode FROM users WHERE line_user_id = ? LIMIT 1",
+    "SELECT id, line_user_id lineUserId, display_name displayName, member_code memberCode FROM users WHERE line_user_id = ? AND status = 'active' LIMIT 1",
     [lookup],
   );
   if (rows[0]) return rows[0];
-  if (process.env.NODE_ENV === "production") return null;
+  if (lookup !== devLineUserId || !devLineUserId) return null;
 
   await query(
     "INSERT INTO users (line_user_id, display_name, member_code, avatar_tier) VALUES (?, 'PPA Member', 'PPA-DEV', 'พอตัว')",
@@ -158,10 +160,12 @@ export async function assertApiUser() {
 
 async function selectUserByLineId(connection: mysql.PoolConnection, lineUserId: string) {
   const [rows] = await connection.execute(
-    "SELECT id, line_user_id lineUserId, display_name displayName, member_code memberCode FROM users WHERE line_user_id = ? LIMIT 1 FOR UPDATE",
+    "SELECT id, line_user_id lineUserId, display_name displayName, member_code memberCode, status FROM users WHERE line_user_id = ? LIMIT 1 FOR UPDATE",
     [lineUserId],
   );
-  return (rows as CurrentUser[])[0] || null;
+  const user = (rows as (CurrentUser & { status: string })[])[0];
+  if (user && user.status !== "active") throw new ApiUnauthorizedError();
+  return user || null;
 }
 
 async function ensureWalletAccount(

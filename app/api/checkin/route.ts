@@ -30,6 +30,7 @@ export async function POST(req: Request) {
     )
   )[0];
   if (!booking) return NextResponse.json({ message: "QR ไม่ถูกต้องหรือยังไม่ได้ชำระเงิน" }, { status: 404 });
-  await query("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE id = ?", [booking.id]);
+  const result = await query("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE id = ? AND status = 'paid'", [booking.id]);
+  if (!(result as unknown as { affectedRows: number }).affectedRows) return NextResponse.json({ message: "Booking state changed" }, { status: 409 });
   return NextResponse.json({ ok: true });
 }

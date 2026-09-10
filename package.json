@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p 2344",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.mjs",
+    "test:security:http": "node scripts/security-smoke.mjs",
+    "test:responsive": "node scripts/responsive-check.mjs",
     "db:init": "node scripts/db-init.mjs",
     "production:check": "node scripts/production-check.mjs",
     "production:hardening:audit": "node scripts/production-hardening-audit.mjs",
@@ -29,9 +32,11 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "esbuild": "^0.28.2",
     "eslint": "latest",
     "eslint-config-next": "^16.3.4",
     "typescript": "latest"

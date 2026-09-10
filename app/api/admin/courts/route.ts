@@ -18,14 +18,14 @@ const courtSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   return NextResponse.json({ courts: await loadCourts() });
 }
 
 export async function POST(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   let body: z.infer<typeof courtSchema>;
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   let body: z.infer<typeof courtSchema> & { id: number };
@@ -80,7 +80,7 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const denied = assertAdminRequest(request);
+  const denied = await assertAdminRequest(request);
   if (denied) return denied;
 
   const id = Number(request.nextUrl.searchParams.get("id"));

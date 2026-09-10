@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { assertAdminRequest } from "@/lib/admin-auth";
+import { assertAdminRequest, getAdminIdentity, adminSessionCookieName, hasAdminPermission } from "@/lib/admin-auth";
 import { hashQrToken } from "@/lib/qr";
 import { pool } from "@/lib/db";
 import { parseJsonBody, secureResponse, validationErrorResponse } from "@/lib/security";
@@ -23,8 +23,10 @@ type QrRow = {
 };
 
 export async function POST(req: NextRequest) {
-  const adminError = assertAdminRequest(req);
+  const adminError = await assertAdminRequest(req);
   if (adminError) return adminError;
+  const admin = await getAdminIdentity(req.cookies.get(adminSessionCookieName())?.value || "");
+  if (!admin) return secureResponse(NextResponse.json({ message: "Admin access denied" }, { status: 401 }));
 
   let input: z.infer<typeof schema>;
   try {
@@ -40,7 +42,7 @@ export async function POST(req: NextRequest) {
   try {
     await conn.beginTransaction();
     const [rows] = await conn.execute(
-      "SELECT qt.id, qt.user_id userId, qt.purpose, qt.ref_id refId, qt.expires_at expiresAt, qt.used_at usedAt, qt.expires_at < NOW() expired, u.display_name displayName, u.member_code memberCode FROM qr_tokens qt JOIN users u ON u.id = qt.user_id WHERE qt.token_hash = ? FOR UPDATE",
+      "SELECT qt.id, qt.user_id userId, qt.purpose, qt.ref_id refId, qt.expires_at expiresAt, qt.used_at usedAt, qt.expires_at <= NOW() expired, u.display_name displayName, u.member_code memberCode FROM qr_tokens qt JOIN users u ON u.id = qt.user_id WHERE qt.token_hash = ? AND u.status = 'active' FOR UPDATE",
       [hashQrToken(token)],
     );
     const qr = (rows as QrRow[])[0];
@@ -54,24 +56,42 @@ export async function POST(req: NextRequest) {
     }
 
     let consumed = false;
+    const permission = qr.purpose === "coupon" ? "coupons.manage" : qr.purpose === "payment" ? "payments.manage" : "bookings.manage";
+    if (!hasAdminPermission(admin, permission)) {
+      await conn.rollback();
+      return secureResponse(NextResponse.json({ message: "Permission denied" }, { status: 403 }));
+    }
     if (input.consume) {
+      let affectedRows = 0;
       await conn.execute("UPDATE qr_tokens SET used_at = NOW() WHERE id = ?", [qr.id]);
       if (qr.purpose === "booking" && qr.refId) {
-        await conn.execute("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE booking_no = ? AND user_id = ? AND status = 'paid'", [qr.refId, qr.userId]);
+        const [result] = await conn.execute("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE booking_no = ? AND user_id = ? AND status = 'paid'", [qr.refId, qr.userId]);
+        affectedRows = (result as { affectedRows: number }).affectedRows;
       }
       if (qr.purpose === "coupon" && qr.refId) {
-        await conn.execute(
-          "UPDATE user_coupons SET remaining_uses = remaining_uses - 1, status = IF(remaining_uses <= 1, 'used', status) WHERE id = ? AND user_id = ? AND status = 'active' AND remaining_uses > 0",
+        const [result] = await conn.execute(
+          "UPDATE user_coupons SET status = IF(remaining_uses <= 1, 'used', status), remaining_uses = remaining_uses - 1 WHERE id = ? AND user_id = ? AND status = 'active' AND remaining_uses > 0 AND expires_at > NOW()",
           [Number(qr.refId), qr.userId],
         );
+        affectedRows = (result as { affectedRows: number }).affectedRows;
       }
       if (qr.purpose === "entitlement" && qr.refId) {
-        await conn.execute(
-          "UPDATE user_entitlements SET remaining_uses = IF(remaining_uses IS NULL, NULL, remaining_uses - 1), status = IF(remaining_uses IS NOT NULL AND remaining_uses <= 1, 'used', status) WHERE id = ? AND user_id = ? AND status = 'active' AND (remaining_uses IS NULL OR remaining_uses > 0)",
+        const [result] = await conn.execute(
+          "UPDATE user_entitlements SET status = IF(remaining_uses IS NOT NULL AND remaining_uses <= 1, 'used', status), remaining_uses = IF(remaining_uses IS NULL, NULL, remaining_uses - 1) WHERE id = ? AND user_id = ? AND status = 'active' AND (remaining_uses IS NULL OR remaining_uses > 0) AND (ends_at IS NULL OR ends_at > NOW())",
           [Number(qr.refId), qr.userId],
         );
+        affectedRows = (result as { affectedRows: number }).affectedRows;
       }
-      await conn.execute("INSERT INTO admin_audit_logs (staff_id, action, target_type, target_id, metadata) VALUES (NULL, 'qr.consume', 'qr_token', ?, JSON_OBJECT('purpose', ?, 'refId', ?))", [
+      if (qr.purpose === "member" && qr.refId) {
+        const [memberships] = await conn.execute("SELECT id FROM memberships WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() FOR UPDATE", [qr.refId, qr.userId]);
+        affectedRows = (memberships as unknown[]).length;
+      }
+      if (!affectedRows) {
+        await conn.rollback();
+        return secureResponse(NextResponse.json({ message: "สิทธิ์นี้ใช้ไม่ได้แล้ว" }, { status: 409 }));
+      }
+      await conn.execute("INSERT INTO admin_audit_logs (staff_id, action, target_type, target_id, metadata) VALUES (?, 'qr.consume', 'qr_token', ?, JSON_OBJECT('purpose', ?, 'refId', ?))", [
+        admin.id,
         qr.id,
         qr.purpose,
         qr.refId,

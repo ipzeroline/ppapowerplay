@@ -37,6 +37,7 @@ check(
 );
 check("Admin key configured", Boolean(env.ADMIN_ACCESS_KEY));
 check("Admin key length >= 32", (env.ADMIN_ACCESS_KEY || "").length >= 32);
+check("Session signing secret length >= 32", (env.SESSION_SECRET || env.ADMIN_ACCESS_KEY || "").length >= 32);
 check("LINE access token configured outside public env", Boolean(env.LINE_CHANNEL_ACCESS_TOKEN) && !Object.keys(env).some((key) => key.startsWith("NEXT_PUBLIC_") && key.includes("TOKEN")));
 
 let connection;

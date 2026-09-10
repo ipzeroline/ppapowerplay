@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 
 export function AdminLogin() {
-  const [key, setKey] = useState("");
+  const router = useRouter();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -15,10 +18,11 @@ export function AdminLogin() {
       const res = await fetch("/api/admin/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
+        body: JSON.stringify({ username, password }),
       });
-      if (!res.ok) throw new Error("Admin access denied");
-      window.location.href = "/AdminConsole";
+      if (!res.ok) throw new Error(res.status === 429 ? "ลองเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่" : "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+      router.replace("/AdminConsole");
+      router.refresh();
     } catch (error) {
       setMessage((error as Error).message);
     } finally {
@@ -29,16 +33,28 @@ export function AdminLogin() {
   return (
     <form className="admin-login-form" onSubmit={submit}>
       <input
-        autoComplete="current-password"
-        placeholder="ADMIN_ACCESS_KEY"
-        type="password"
-        value={key}
-        onChange={(event) => setKey(event.target.value)}
+        autoComplete="username"
+        aria-label="Username"
+        required
+        maxLength={80}
+        placeholder="Username"
+        value={username}
+        onChange={(event) => setUsername(event.target.value)}
       />
-      <button disabled={busy || key.length < 20} type="submit">
-        {busy ? "Checking..." : "Sign in"}
+      <input
+        autoComplete="current-password"
+        aria-label="Password"
+        required
+        maxLength={200}
+        placeholder="Password"
+        type="password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+      <button disabled={busy || username.trim().length < 3 || password.length < 8} type="submit">
+        {busy ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบ"}
       </button>
-      {message ? <p>{message}</p> : null}
+      {message ? <p role="alert">{message}</p> : null}
     </form>
   );
 }

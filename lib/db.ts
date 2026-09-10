@@ -1,8 +1,8 @@
 import "server-only";
 import mysql from "mysql2/promise";
+import { randomBytes } from "node:crypto";
 
 declare global {
-  // eslint-disable-next-line no-var
   var ppaPool: mysql.Pool | undefined;
 }
 
@@ -18,7 +18,8 @@ export const pool =
     connectionLimit: 10,
     maxIdle: 10,
     idleTimeout: 60_000,
-    queueLimit: 0,
+    queueLimit: 100,
+    connectTimeout: 10_000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10_000,
     timezone: "+07:00",
@@ -67,7 +68,7 @@ export async function transaction<T>(work: (connection: mysql.PoolConnection) =>
 
 export function createPublicId(prefix: string) {
   const stamp = Date.now().toString(36).toUpperCase();
-  const rnd = Math.random().toString(36).slice(2, 8).toUpperCase();
+  const rnd = randomBytes(8).toString("hex").toUpperCase();
   return `${prefix}${stamp}${rnd}`;
 }
 

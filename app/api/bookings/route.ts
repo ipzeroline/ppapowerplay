@@ -66,6 +66,7 @@ export async function POST(req: Request) {
   try {
     await conn.beginTransaction();
     if (input.courtId) {
+      await conn.execute("SELECT id FROM courts WHERE id = ? FOR UPDATE", [input.courtId]);
       const [rows] = await conn.execute(
         "SELECT id FROM bookings WHERE court_id = ? AND status IN ('hold','pending_payment','paid','checked_in') AND starts_at < ? AND ends_at > ? FOR UPDATE",
         [input.courtId, endsAt, startsAt],
@@ -114,6 +115,7 @@ export async function DELETE(req: Request) {
   if (!booking) return NextResponse.json({ message: "ไม่พบรายการจอง" }, { status: 404 });
   if (["checked_in", "cancelled", "expired"].includes(booking.status)) return NextResponse.json({ message: "รายการนี้ยกเลิกไม่ได้" }, { status: 409 });
   if (new Date(booking.startsAt).getTime() < Date.now() + 30 * 60 * 1000) return NextResponse.json({ message: "ยกเลิกได้ก่อนเวลาใช้งานอย่างน้อย 30 นาที" }, { status: 409 });
-  await query("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancel_reason = ? WHERE id = ?", [input.reason || "member cancelled", booking.id]);
+  const result = await query("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancel_reason = ? WHERE id = ? AND status IN ('hold','pending_payment','paid') AND starts_at >= DATE_ADD(NOW(), INTERVAL 30 MINUTE)", [input.reason || "member cancelled", booking.id]);
+  if (!(result as unknown as { affectedRows: number }).affectedRows) return NextResponse.json({ message: "Booking state changed" }, { status: 409 });
   return NextResponse.json({ ok: true });
 }
