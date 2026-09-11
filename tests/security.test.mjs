@@ -29,6 +29,61 @@ function load(file, mocks = {}, cache = new Map()) {
 process.env.SESSION_SECRET = "security-test-secret-only-32-characters-long";
 const session = load("lib/session.ts");
 
+test("QR errors distinguish membership, authentication, throttling and service failures", () => {
+  const { qrErrorKey } = load("lib/qr-presentation.ts");
+  assert.equal(qrErrorKey(404, "member"), "qr.error.membership");
+  assert.equal(qrErrorKey(404, "booking"), "qr.error.rights");
+  assert.equal(qrErrorKey(401, "member"), "qr.error.session");
+  assert.equal(qrErrorKey(403, "member"), "qr.error.forbidden");
+  assert.equal(qrErrorKey(429, "member"), "qr.error.rate");
+  assert.equal(qrErrorKey(503, "member"), "qr.error.service");
+  assert.equal(qrErrorKey(undefined, "member"), "qr.error.service");
+});
+
+test("QR issuance fails closed without rights and reports database failure separately", async () => {
+  const { NextRequest } = require("next/server");
+  let mode = "missing";
+  let connections = 0;
+  let released = 0;
+  const writes = [];
+  const route = load("app/api/qr/route.ts", {
+    "@/lib/auth": { assertApiUser: async () => ({ id: 7 }), authErrorResponse: () => Response.json({}, { status: 401 }) },
+    "@/lib/security": { checkRateLimit: () => null, clientIp: async () => "test", secureResponse: (response) => response },
+    "@/lib/db": {
+      query: async (sql, params) => {
+        assert.equal(params[0], 7);
+        if (mode === "failure") throw new Error("private database details");
+        return mode === "active" ? [{ id: 12, planName: "Active membership" }] : [];
+      },
+      pool: { getConnection: async () => {
+        connections++;
+        return { execute: async (...args) => { writes.push(args); }, release: () => { released++; } };
+      } },
+    },
+  });
+  const request = () => new NextRequest("http://localhost/api/qr?purpose=member");
+  let response = await route.GET(request());
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).code, "NO_ACTIVE_MEMBERSHIP");
+  assert.equal(connections, 0, "No token is issued without membership");
+  mode = "failure";
+  response = await route.GET(request());
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "QR_SERVICE_UNAVAILABLE");
+  assert.equal(connections, 0);
+  mode = "active";
+  response = await route.GET(request());
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.match(payload.svg, /<svg/);
+  assert.equal(payload.expiresIn, 30);
+  assert.equal(released, 1);
+  const insert = writes.find(([sql]) => sql.startsWith("INSERT"));
+  assert.deepEqual(insert[1].slice(0, 3), [7, "member", "12"]);
+  assert.match(insert[1][3], /^[a-f0-9]{64}$/);
+  assert.ok(!payload.verifyUrl.includes(insert[1][3]), "Only the hash is stored");
+});
+
 test("sessions reject tampering, expiry, wrong purpose and legacy identity cookies", () => {
   const token = session.signSession("member", "U-test-member", 60);
   assert.equal(session.readSession("member", token), "U-test-member");

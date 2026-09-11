@@ -26,20 +26,31 @@ export async function GET(req: NextRequest) {
   const purpose = purposeSchema.safeParse(req.nextUrl.searchParams.get("purpose") || "member");
   if (!purpose.success) return secureResponse(NextResponse.json({ message: "ประเภท QR ไม่ถูกต้อง" }, { status: 400 }));
 
-  const ref = await resolveRef(req, user.id, purpose.data);
-  if (!ref) return secureResponse(NextResponse.json({ message: "ไม่พบสิทธิ์สำหรับออก QR" }, { status: 404 }));
+  try {
+    return await issueQr(req, user.id, purpose.data);
+  } catch {
+    return secureResponse(NextResponse.json({ code: "QR_SERVICE_UNAVAILABLE", message: "บริการ QR ไม่พร้อมใช้งาน กรุณาลองใหม่" }, { status: 503 }));
+  }
+}
+
+async function issueQr(req: NextRequest, userId: number, purpose: z.infer<typeof purposeSchema>) {
+  const ref = await resolveRef(req, userId, purpose);
+  if (!ref) return secureResponse(NextResponse.json({
+    code: purpose === "member" ? "NO_ACTIVE_MEMBERSHIP" : "NO_QR_RIGHTS",
+    message: purpose === "member" ? "ไม่พบแพ็กเกจสมาชิกที่ใช้งานได้" : "ไม่พบสิทธิ์สำหรับออก QR",
+  }, { status: 404 }));
 
   const token = createQrToken();
   const tokenHash = hashQrToken(token);
-  const ttl = ttlSeconds(purpose.data);
+  const ttl = ttlSeconds(purpose);
   const verifyUrl = `${req.nextUrl.origin}/api/qr/verify?token=${encodeURIComponent(token)}`;
 
   const conn = await pool.getConnection();
   try {
-    await conn.execute("DELETE FROM qr_tokens WHERE user_id = ? AND expires_at < DATE_SUB(NOW(), INTERVAL 1 DAY)", [user.id]);
+    await conn.execute("DELETE FROM qr_tokens WHERE user_id = ? AND expires_at < DATE_SUB(NOW(), INTERVAL 1 DAY)", [userId]);
     await conn.execute(
       "INSERT INTO qr_tokens (user_id, purpose, ref_id, token_hash, expires_at) VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))",
-      [user.id, purpose.data, ref.refId, tokenHash, ttl],
+      [userId, purpose, ref.refId, tokenHash, ttl],
     );
   } finally {
     conn.release();

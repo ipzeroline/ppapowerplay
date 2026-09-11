@@ -2,6 +2,7 @@
 import Image from "next/image";
 import { Bell, House, Dumbbell, QrCode, CalendarDays, UserRound, ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { safeImageSource } from "@/lib/media";
+import { qrErrorKey } from "@/lib/qr-presentation";
 import { bangkokToday, type AvailabilityStatus } from "@/lib/court-availability";
 import { BookingCalendar } from "@/components/booking-calendar";
 import { AdminDialog } from "@/components/admin-dialog";
@@ -1723,6 +1724,7 @@ function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; b
   const [qr, setQr] = useState<(QrPayload & { selection: string }) | null>(null);
   const [remaining, setRemaining] = useState(0);
   const [qrError, setQrError] = useState("");
+  const [revision, setRevision] = useState(0);
   const bookingCode = booking ? bookingNo(booking) : "";
   const purpose = bookingCode ? "booking" : accessQr?.purpose || "member";
   const accessKey = accessQr?.purpose === "coupon" ? String(accessQr.couponId) : accessQr?.purpose === "entitlement" ? String(accessQr.entitlementId) : "";
@@ -1733,25 +1735,27 @@ function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; b
     let alive = true;
     let pending = false;
     let expiresAt = 0;
+    const controller = new AbortController();
     async function loadQr() {
       if (pending) return;
       pending = true;
+      setQrError("");
       const requestedAt = Date.now();
       try {
         const params = new URLSearchParams({ purpose });
         if (bookingCode) params.set("bookingNo", bookingCode);
         if (!bookingCode && accessQr?.purpose === "coupon") params.set("couponId", String(accessQr.couponId));
         if (!bookingCode && accessQr?.purpose === "entitlement") params.set("entitlementId", String(accessQr.entitlementId));
-        const nextQr = await api<QrPayload>(`/api/qr?${params.toString()}`);
+        const nextQr = await api<QrPayload>(`/api/qr?${params.toString()}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) });
         if (!alive) return;
         expiresAt = requestedAt + nextQr.expiresIn * 1000;
-        setRemaining(nextQr.expiresIn);
+        setRemaining(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
         setQr({ ...nextQr, selection });
         setQrError("");
-      } catch {
+      } catch (error) {
         if (!alive) return;
         setQr(null);
-        setQrError("ยังไม่สามารถออก QR ได้ โปรดตรวจสอบสิทธิ์หรือสถานะชำระเงิน");
+        setQrError(qrErrorKey((error as Error & { status?: number }).status, purpose));
       } finally {
         pending = false;
       }
@@ -1761,25 +1765,25 @@ function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; b
     const countdown = window.setInterval(() => setRemaining(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))), 1000);
     return () => {
       alive = false;
+      controller.abort();
       window.clearInterval(timer);
       window.clearInterval(countdown);
     };
-  }, [accessKey, accessQr, bookingCode, purpose, selection]);
+  }, [accessKey, accessQr, bookingCode, purpose, selection, revision]);
 
   return (
     <div className="page centered">
       <span className="eyebrow">{t("FAST ACCESS")}</span>
       <h1 className="scan-title">{t("สแกนเข้าใช้บริการ")}</h1>
-      <div className="qr-box">
+      <div className={qrError ? "qr-box qr-error-state" : "qr-box"}>
         {currentQr?.svg ? (
           <Image unoptimized width={220} height={220} alt={t("QR เข้าใช้บริการ")} className="qr-svg" src={`data:image/svg+xml,${encodeURIComponent(currentQr.svg)}`} />
         ) : (
-          <p role="status">{t(qrError) ? t("ไม่สามารถออก QR ได้") : t("กำลังโหลด QR...")}</p>
+          <div role="status"><p>{qrError ? t(qrError) : t("กำลังโหลด QR...")}</p>{qrError && <button className="ghost" onClick={() => setRevision((value) => value + 1)}>{t("ลองใหม่")}</button>}</div>
         )}
       </div>
       <h2>{bookingCode || data.user.memberCode}</h2>
       <p>{bookingCode ? t(booking?.title) : t(accessQr?.title) || t(qr?.title) || t("QR สมาชิกอายุสั้นสำหรับเข้าใช้ sport complex")}</p>
-      {t(qrError) ? <p className="form-error">{t(qrError)}</p> : null}
       {currentQr ? <div className="scan-meta"><span>{t("หมดอายุใน")}</span><strong>{remaining}{t("s")}</strong></div> : null}
       <button className="primary" onClick={onCheckin}>{t("✅ ไปหน้า Check-in")}</button>
     </div>

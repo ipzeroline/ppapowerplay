@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 import { build } from "esbuild";
+import QRCode from "qrcode";
 
 const base = "http://localhost:3000";
 const outDir = "/private/tmp/ppa-responsive";
+const fixtureQrSvg = await QRCode.toString("https://example.invalid/qr-test-only", { type: "svg", margin: 1, width: 220 });
 await mkdir(outDir, { recursive: true });
 const pageHtml = await (await fetch(base)).text();
 const styles = [...pageHtml.matchAll(/<link[^>]+rel="stylesheet"[^>]*>/g)].map((match) => match[0]).join("");
@@ -47,6 +49,7 @@ try {
   let failBootstrap = false;
   let failAvailability = false;
   let emptyMember = false;
+  let qrMode = "missing";
   const bookingRequests = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -77,7 +80,10 @@ try {
       bookingRequests.push(route.request().postDataJSON());
       return route.fulfill({ status: 409, json: { message: "ช่วงเวลานี้ถูกจองแล้ว" } });
     }
-    if (url.pathname === "/api/qr") return route.fulfill({ status: 404, json: { message: "No active rights" } });
+    if (url.pathname === "/api/qr") {
+      if (qrMode === "success") return route.fulfill({ json: { svg: fixtureQrSvg, title: "PPA", expiresIn: 30 } });
+      return route.fulfill({ status: qrMode === "failure" ? 503 : 404, json: { message: "QR unavailable" } });
+    }
     return route.fulfill({ status: 405, json: { message: "Read-only UI fixture" } });
   });
   const viewports = [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 844, height: 390 }];
@@ -240,6 +246,19 @@ try {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByRole('button', { name: 'เล่นสไลด์', exact: true }).waitFor({ state: 'hidden' });
   assert.equal(await page.getByRole('button', { name: 'เล่นสไลด์', exact: true }).count(), 0, 'Reduced motion disables autoplay');
+  await page.goto(`${base}/__responsive__/member?screen=home`);
+  await page.locator('.tabbar button').nth(2).click();
+  await page.locator('.qr-error-state').filter({ hasText: 'ไม่พบแพ็กเกจสมาชิก' }).waitFor();
+  qrMode = "failure";
+  await page.getByRole('button', { name: 'ลองใหม่', exact: true }).click();
+  await page.locator('.qr-error-state').filter({ hasText: 'เชื่อมต่อบริการ QR ไม่สำเร็จ' }).waitFor();
+  qrMode = "success";
+  await page.getByRole('button', { name: 'ลองใหม่', exact: true }).click();
+  await page.locator('.qr-svg').waitFor();
+  await page.waitForFunction(() => document.querySelector('.qr-svg')?.naturalWidth > 0);
+  assert.equal(await page.locator('.qr-error-state').count(), 0);
+  await page.screenshot({ path: `${outDir}/qr-retry-success.png` });
+  qrMode = "missing";
   const translatedScreens = ["home", "sports", "courts", "datetime", "summary", "payment", "mybooking", "profile", "membership", "wallet", "coupon", "trainer", "trainer-detail", "help", "notifications", "classhub", "classschedule", "livetv", "promotion", "scan"];
   for (const viewport of [viewports[0], viewports[2], viewports[4]]) {
     await page.setViewportSize(viewport);

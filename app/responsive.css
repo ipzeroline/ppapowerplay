@@ -16,6 +16,9 @@ html:lang(zh-CN) { --font-aura: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK
   .statusbar { padding-inline: 12px; gap: 8px; }
 }
 
+.qr-box.qr-error-state { display: grid; place-items: center; padding: 20px; height: auto; min-height: 180px; }
+.qr-error-state p { margin: 0 0 16px; color: #45454f; font-size: 14px; line-height: 1.6; }
+.qr-error-state .ghost { color: #25252d; border-color: #73737f; }
 .home-page { padding-top: 24px; padding-bottom: 28px; }
 .home-brand { margin: 5px 0 0; font-size: 12px; font-weight: 600; color: var(--muted); }
 .home-page .greet-copy .g2 { overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }

@@ -1,4 +1,10 @@
 export const additionalMessages: [string, string, string, string?][] = [
+  ["qr.error.session", "Your session expired. Please reopen this app in LINE.", "登录已过期，请在 LINE 中重新打开应用。", "เซสชันหมดอายุ กรุณาเปิดแอปผ่าน LINE ใหม่"],
+  ["qr.error.forbidden", "This account cannot issue an access QR. Please contact staff.", "此账号无法生成入场二维码，请联系工作人员。", "บัญชีนี้ไม่สามารถออก QR เข้าใช้บริการได้ กรุณาติดต่อเจ้าหน้าที่"],
+  ["qr.error.membership", "No active membership plan was found. Check your membership, or open a paid booking or coupon to use its QR.", "未找到有效会员套餐。请检查会员状态，或打开已付款预约或优惠券以使用其二维码。", "ไม่พบแพ็กเกจสมาชิกที่ใช้งานได้ กรุณาตรวจสอบสมาชิก หรือเปิดรายการจองที่ชำระแล้วหรือคูปองเพื่อใช้ QR ของรายการนั้น"],
+  ["qr.error.rights", "This item has no usable access rights. Please check its payment, expiry and remaining uses.", "此项目暂无可用权益，请检查付款状态、有效期及剩余次数。", "รายการนี้ไม่มีสิทธิ์ที่ใช้งานได้ กรุณาตรวจสอบการชำระเงิน วันหมดอายุ และจำนวนครั้งคงเหลือ"],
+  ["qr.error.rate", "Too many QR requests. Please wait a minute before retrying.", "二维码请求过多，请稍等一分钟后重试。", "ขอ QR บ่อยเกินไป กรุณารอหนึ่งนาทีแล้วลองใหม่"],
+  ["qr.error.service", "Unable to reach the QR service. Please check your connection and try again.", "暂时无法连接二维码服务，请检查网络后重试。", "เชื่อมต่อบริการ QR ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่"],
   ["EVENT", "EVENT", "活动", "กิจกรรม"],
   ["PROMOTION", "PROMOTION", "优惠", "โปรโมชั่น"],
   ["FOOD", "FOOD", "餐饮", "อาหาร"],
