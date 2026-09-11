@@ -18,8 +18,8 @@ Date: 2026-09-10
   automatic input zoom. Reduced-motion preferences are respected.
 - Removed the CSS Google Fonts import and standardized on the existing self-hosted
   Next.js fonts. No new runtime image or font service was added.
-- Removed the promotional auto-carousel in favor of a stable booking-first home.
-  Superseded court
+- Restored the original promotional carousel and home section order at the
+  user's request (see restoration follow-up below). Superseded court
   availability requests are cancelled. Initial loading failures expose a retry.
 - Image sources are limited to local paths or HTTPS without embedded credentials;
   executable/data schemes and protocol-relative URLs are rejected. Configurable
@@ -76,3 +76,20 @@ Remaining product work: wallet transaction history needs an authenticated data
 source; support contact details and rewards policies require operator verification.
 Trainer booking/payment acceptance still needs an end-to-end business review.
 Do not present these remaining areas as production-certified.
+
+## Original Layout Restoration
+
+- Restored the original home greeting/actions, lime member card, promotional
+  carousel, Live TV banner, Find Your Game, Quick Booking, GYMNOS banner,
+  sports/service grid and statistics layout from commit 55c3462.
+- Restored the Live TV stage presentation. Existing navigation, language selection,
+  real booking calendar, authorization and payment checks remain intact.
+- Configured home slides take priority. When none exist, four service navigation
+  slides preserve the carousel without inventing expired promotional offers.
+- Carousel supports arrows, dots, keyboard, touch swipes and pause; auto-advance
+  pauses on interaction/hidden tabs and respects reduced motion. Configured images
+  use the existing image URL validation.
+- Statistics use real member bookings, groups and coupons. No fake occupancy,
+  broadcast schedules, QR patterns, membership rights or sample bookings restored.
+- Responsive regression assertions now require the restored home sections and
+  exercise fallback/configured slide navigation.

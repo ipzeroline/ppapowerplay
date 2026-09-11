@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import { Bell, House, Dumbbell, QrCode, CalendarDays, UserRound, ChevronLeft } from "lucide-react";
+import { Bell, House, Dumbbell, QrCode, CalendarDays, UserRound, ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { safeImageSource } from "@/lib/media";
 import { bangkokToday, type AvailabilityStatus } from "@/lib/court-availability";
 import { BookingCalendar } from "@/components/booking-calendar";
@@ -11,7 +11,7 @@ import { LanguageSwitcher, MemberLocaleSync, useMemberLocale } from "@/component
 
 import liff from "@line/liff";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Sport = {
   id: number;
@@ -720,59 +720,55 @@ function MemberApp() {
           )}
 
           {screen === "home" && (
-            <div className="page home-page club-home">
-              <header className="club-heading">
-                <div><span className="club-eyebrow">POWER PLAY ASIA</span><h1>PPA Sport Complex</h1><p>{t("สวัสดี")} {data.user.displayName || t("PPA Member")}</p></div>
-                <button className="club-icon-button" title={t("การแจ้งเตือน")} aria-label={t("การแจ้งเตือน {{value0}} รายการใหม่", { value0: unreadCount })} onClick={() => go("notifications")}>
-                  <Bell size={22} aria-hidden="true" />{unreadCount > 0 && <span className="club-count">{unreadCount > 99 ? "99+" : unreadCount}</span>}
-                </button>
+            <div className="page home-page">
+              <header className="greet">
+                <div className="greet-copy"><div className="g1">{t("สวัสดี")}</div><div className="g2">{data.user.displayName || t("PPA Member")}</div><h1 className="home-brand">PPA Sport Complex</h1></div>
+                <button className="home-bubble reward" onClick={() => go("reward")}><span aria-hidden="true">🪙</span><small>{t("แลกรางวัล")}</small></button>
+                <button className="home-bubble level" onClick={() => go("profile")}><span aria-hidden="true">{data.user.avatar || "💪"}</span><small>{t("ระดับ")}</small></button>
               </header>
 
-              <div className="club-primary-actions">
-                <button className="club-book-action" onClick={() => go("sports")}><span>{t("จองสนาม")}</span><small>{t("เลือกกีฬา วัน และเวลา")}</small><span aria-hidden="true" className="club-action-arrow">↗</span></button>
-                <button className="club-qr-action" onClick={() => { setPendingBooking(null); setAccessQr({ purpose: "member" }); go("scan"); }}><TabBarIcon name="scan" /><span>{t("QR เข้าใช้บริการ")}</span></button>
+              <button className="member-card premium-card" onClick={() => go("membership")}>
+                <div><span className="m1">{activeMembership ? t("Premium Member") : t("สมาชิก PPA")}</span><small className="m2">{activeMembership ? t("ใช้ได้ถึง {{value0}}", { value0: membershipExpiry }) : t("เลือกแพ็กเกจเพื่อเปิดสิทธิ์สมาชิก")}</small></div>
+                <span className="mini-qr" aria-hidden="true"><QrCode size={40} /></span>
+              </button>
+
+              <HomeCarousel items={managedSlides} onOpen={go} />
+
+              <button className="live-banner" onClick={() => go("livetv")}>
+                <div className="lb-head"><span className="live-pill">{t("Live TV")}</span><strong>{t("BIG SCREEN LIVE")}</strong></div>
+                <div className="ticker-wrap">{liveItems.length ? <div className="live-ticker-track">{liveItems.map((item) => <span key={item.id}>{item.icon} {t(item.title)} · {t(item.subtitle) || t(item.body)}</span>)}</div> : t("ยังไม่มีรายการถ่ายทอดสด")}</div>
+                <small>{t("แมตช์สดในคลับ")}</small>
+              </button>
+
+              <div className="sec-head"><strong>{t("Find Your Game")}</strong></div>
+              <div className="fyg-row">
+                {data.groups.slice(0, 3).map((group) => <button key={group.id} onClick={() => go("groups")}><strong>{group.name}</strong><small>{t(group.sportName)} · {t(group.levelName)}</small></button>)}
+                {!data.groups.length && <button onClick={() => go("groups")}><strong>{t("Find Your Game")}</strong><small>{t("ยังไม่มีก๊วน")}</small></button>}
               </div>
 
-              <section className="club-section" aria-labelledby="next-booking-title">
-                <div className="club-section-heading"><h2 id="next-booking-title">{t("การจองครั้งถัดไป")}</h2><button onClick={() => go("mybooking")}>{t("ดูทั้งหมด")} <span aria-hidden="true">→</span></button></div>
-                {upcomingBookings[0] ? <BookingRow now={now} booking={upcomingBookings[0]} onClick={() => { setPendingBooking(upcomingBookings[0]); setAccessQr({ purpose: "member" }); go("scan"); }} />
-                  : <div className="club-empty"><strong>{t("ยังไม่มีนัดหมายที่กำลังจะมาถึง")}</strong><button onClick={() => go("sports")}>{t("เลือกสนามและเวลา")} <span aria-hidden="true">→</span></button></div>}
-              </section>
+              <div className="sec-head"><strong>{t("Quick Booking")}</strong></div>
+              <div className="quick-booking-row">
+                {data.sports.filter((sport) => sport.requiresBooking).map((sport) => <button key={sport.slug} onClick={() => pickSport(sport)}><span aria-hidden="true">{sport.icon}</span><small>{t(sport.name)}</small></button>)}
+              </div>
+              {!data.sports.length && <Empty text={t("ยังไม่มีบริการเปิดให้จอง")} />}
 
-              <section className="club-section" aria-labelledby="club-sports-title">
-                <div className="club-section-heading"><h2 id="club-sports-title">{t("กีฬาและบริการ")}</h2><button onClick={() => go("sports")}>{t("ดูทั้งหมด")} <span aria-hidden="true">→</span></button></div>
-                <div className="club-sports">
-                  {data.sports.map((sport) => <button key={sport.slug} onClick={() => pickSport(sport)}>
-                    <span className="club-sport-icon" aria-hidden="true">{sport.icon}</span>
-                    <span><strong>{t(sport.name)}</strong><small>{t("เริ่ม")} {money(sport.baseRate)} ฿{sport.requiresBooking ? t(" / ชม.") : ""}</small></span>
-                    <span className="club-row-arrow" aria-hidden="true">↗</span>
-                  </button>)}
-                </div>
-                {!data.sports.length && <Empty text={t("ยังไม่มีบริการเปิดให้จอง")} />}
-              </section>
+              <div className="sec-head"><strong>{t("กีฬาและบริการ")}</strong></div>
+              <button className="gymnos-banner" onClick={() => go("gymnos")}><div><strong>GYMNOS</strong><small>{t("Fitness, HYROX, Airfit")}</small></div><span aria-hidden="true">›</span></button>
+              <div className="svc-grid">
+                {data.sports.slice(0, 8).map((sport) => <button key={sport.slug} onClick={() => pickSport(sport)}><span aria-hidden="true">{sport.icon}</span><div><strong>{t(sport.name)}</strong><small>{t(sport.description)}</small></div></button>)}
+              </div>
 
-              <section className="club-section" aria-labelledby="club-member-title">
-                <div className="club-section-heading"><h2 id="club-member-title">{t("สมาชิกของคุณ")}</h2><button onClick={() => go("membership")}>{t("ดูสิทธิ์")} <span aria-hidden="true">→</span></button></div>
-                <div className="club-membership"><div><strong>{t(activeMembership?.planName) || t("สมาชิก PPA")}</strong><small>{activeMembership ? t("ใช้ได้ถึง {{value0}}", { value0: membershipExpiry }) : t("ยังไม่มีแพ็กเกจที่ใช้งานอยู่")}</small></div><span>{data.user.memberCode}</span></div>
-                <div className="club-balances">
-                  <button onClick={() => go("wallet")}><small>{t("ยอดเงินคงเหลือ")}</small><strong>{money(data.wallet.balance)} <span>฿</span></strong></button>
-                  <button onClick={() => go("coupon")}><small>{t("คูปองของฉัน")}</small><strong>{data.coupons.length} <span>{t("รายการ")}</span></strong></button>
-                  <button onClick={() => go("reward")}><small>{t("Coins")}</small><strong>{money(data.wallet.coinBalance)}</strong></button>
-                </div>
-              </section>
+              <div className="sec-head"><strong>{t("Statistics")}</strong></div>
+              <div className="stat-row">
+                <div><strong>{upcomingBookings.length}</strong><small>{t("Bookings")}</small></div>
+                <div><strong>{data.groups.length}</strong><small>{t("Groups")}</small></div>
+                <div><strong>{data.coupons.length}</strong><small>{t("Coupons")}</small></div>
+              </div>
 
-              {managedSlides.length > 0 && <section className="club-section" aria-labelledby="club-news-title">
-                <div className="club-section-heading"><h2 id="club-news-title">{t("ข่าวสารและกิจกรรม")}</h2></div>
-                <div className="club-news">{managedSlides.map((item) => <button key={item.id} onClick={() => go((item.targetScreen as Screen) || "promotion")}>
-                  {safeImageSource(item.imageUrl) && <Image src={safeImageSource(item.imageUrl)!} alt="" width={640} height={360} referrerPolicy="no-referrer" unoptimized />}
-                  <strong>{t(item.title)}</strong><small>{t(item.subtitle) || t(item.body)}</small>
-                </button>)}</div>
-              </section>}
-
-              {data.trainers.length > 0 && <section className="club-section" aria-labelledby="club-trainers-title">
-                <div className="club-section-heading"><h2 id="club-trainers-title">{t("เทรนเนอร์")}</h2><button onClick={() => { setTrainerDetail(false); go("trainer"); }}>{t("ดูทั้งหมด")} <span aria-hidden="true">→</span></button></div>
-                <TrainerStrip trainers={data.trainers} onOpen={(trainer) => { setSelectedTrainer(trainer); setTrainerDetail(true); go("trainer"); }} />
-              </section>}
+              <div className="sec-head"><strong>{t("การจองครั้งถัดไป")}</strong><button className="home-text-action" onClick={() => go("mybooking")}>{t("ดูทั้งหมด")}</button></div>
+              {upcomingBookings[0] ? <BookingRow now={now} booking={upcomingBookings[0]} onClick={() => { setPendingBooking(upcomingBookings[0]); setAccessQr({ purpose: "member" }); go("scan"); }} /> : <Empty text={t("ยังไม่มีนัดหมายที่กำลังจะมาถึง")} />}
+              <div className="sec-head"><strong>{t("บริการเพิ่มเติม")}</strong><button className="club-icon-button" title={t("การแจ้งเตือน")} aria-label={t("การแจ้งเตือน {{value0}} รายการใหม่", { value0: unreadCount })} onClick={() => go("notifications")}><Bell size={20} aria-hidden="true" /></button></div>
+              <div className="svc-grid">{serviceShortcuts.map((item) => <button key={item.screen} onClick={() => go(item.screen)}><span aria-hidden="true">{item.icon}</span><div><strong>{t(item.title)}</strong><small>{t(item.text)}</small></div></button>)}</div>
             </div>
           )}
 
@@ -944,6 +940,7 @@ function MemberApp() {
           {screen === "livetv" && (
             <div className="page">
               <Top title={t("Live TV")} onBack={() => go("home")} />
+              <div className="tv-stage"><span>{t("Live TV")}</span><strong>PPA Arena Channel</strong><small>{t(liveItems[0]?.body) || t("ยังไม่มีรายการถ่ายทอดสด")}</small></div>
               <div className="list compact">
                 {liveItems.map((item) => <article className="club-broadcast" key={item.id}><strong>{t(item.title)}</strong><p>{t(item.subtitle) || t(item.body) || "-"}</p></article>)}
                 {!liveItems.length && <Empty text={t("ยังไม่มีตารางถ่ายทอดสดประกาศในขณะนี้")} />}
@@ -1853,6 +1850,69 @@ function ManagedFeatureScreen({ items, onBack, onBuy, screen }: { items: Content
         )) : <Empty text={t("ยังไม่มีข้อมูลในหลังบ้าน")} />}
       </div>
     </div>
+  );
+}
+
+const defaultHomeSlides: ContentItem[] = [
+  { id: -1, contentType: "home_slide", slug: "hyrox", icon: "🏆", title: "HYROX", subtitle: "คลาสและบริการเสริม", targetScreen: "hyrox", price: 0, metadata: { tag: "PPA", tone: "event" } },
+  { id: -2, contentType: "home_slide", slug: "promotion", icon: "🎁", title: "Promotion", subtitle: "ดีลสมาชิก", targetScreen: "promotion", price: 0, metadata: { tag: "PPA", tone: "shop" } },
+  { id: -3, contentType: "home_slide", slug: "coupon", icon: "🎫", title: "Coupon", subtitle: "ซื้อและใช้คูปอง", targetScreen: "coupon", price: 0, metadata: { tag: "PPA", tone: "food" } },
+  { id: -4, contentType: "home_slide", slug: "airfit", icon: "🪂", title: "Airfit", subtitle: "คลาสและบริการเสริม", targetScreen: "airfit", price: 0, metadata: { tag: "PPA", tone: "airfit" } },
+];
+
+function HomeCarousel({ items, onOpen }: { items: ContentItem[]; onOpen: (screen: Screen) => void }) {
+  const slides = items.length ? items : defaultHomeSlides;
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [interacting, setInteracting] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(true);
+  const touchStart = useRef<number | null>(null);
+  const suppressClickUntil = useRef(0);
+  const active = index % slides.length;
+  const move = (delta: number) => setIndex((value) => (value + delta + slides.length) % slides.length);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (paused || interacting || reducedMotion || slides.length < 2) return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) setIndex((value) => (value + 1) % slides.length);
+    }, 4200);
+    return () => window.clearInterval(timer);
+  }, [paused, interacting, reducedMotion, slides.length]);
+  return (
+    <section className="ad-carousel home-carousel" aria-label={t("ข่าวสารและกิจกรรม")}
+      onMouseEnter={() => setInteracting(true)} onMouseLeave={() => setInteracting(false)}
+      onFocusCapture={() => setInteracting(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setInteracting(false); }}
+      onKeyDown={(event) => { if (event.key === "ArrowRight" || event.key === "ArrowLeft") { event.preventDefault(); move(event.key === "ArrowRight" ? 1 : -1); } }}
+      onTouchStart={(event) => { touchStart.current = event.touches[0].clientX; suppressClickUntil.current = 0; }}
+      onTouchEnd={(event) => { const delta = event.changedTouches[0].clientX - (touchStart.current ?? event.changedTouches[0].clientX); if (Math.abs(delta) > 45) { move(delta < 0 ? 1 : -1); suppressClickUntil.current = Date.now() + 400; } touchStart.current = null; }}
+      onClickCapture={(event) => { if (Date.now() < suppressClickUntil.current) { event.preventDefault(); event.stopPropagation(); } suppressClickUntil.current = 0; }}>
+      <div className="ad-track" style={{ transform: `translateX(-${active * 100}%)` }}>
+        {slides.map((slide, slideIndex) => {
+          const meta = contentMeta(slide);
+          const tone = ["event", "shop", "food", "airfit"].includes(String(meta.tone)) ? String(meta.tone) : "event";
+          const src = safeImageSource(slide.imageUrl);
+          const target = slide.targetScreen as Screen;
+          const validTarget = [...richMenuScreens, ...managedPrototypeScreens, ...serviceShortcuts.map((item) => item.screen), "hyrox", "airfit", "fitness", "plans"].includes(target);
+          return <button className={`ad-slide ${tone}`} key={slide.id} aria-hidden={slideIndex !== active} tabIndex={slideIndex === active ? 0 : -1} onClick={() => onOpen(validTarget ? target : "promotion")}>
+            {src && <Image className="home-slide-image" src={src} alt="" width={640} height={360} unoptimized referrerPolicy="no-referrer" />}
+            <span className="ad-tag">{typeof meta.tag === "string" ? t(meta.tag) : "PPA"}</span>
+            <strong>{slide.icon} {t(slide.title)}</strong><small>{t(slide.subtitle) || t(slide.body)}</small>
+          </button>;
+        })}
+      </div>
+      {slides.length > 1 && <div className="home-slide-controls">
+        <button title={t("สไลด์ก่อนหน้า")} aria-label={t("สไลด์ก่อนหน้า")} onClick={() => move(-1)}><ChevronLeft size={16} /></button>
+        <div className="ad-dots">{slides.map((slide, slideIndex) => <button key={slide.id} aria-label={t("ดูสไลด์ {{number}}", { number: slideIndex + 1 })} aria-current={active === slideIndex ? "true" : undefined} className={active === slideIndex ? "on" : ""} onClick={() => setIndex(slideIndex)} />)}</div>
+        <button title={t("สไลด์ถัดไป")} aria-label={t("สไลด์ถัดไป")} onClick={() => move(1)}><ChevronRight size={16} /></button>
+        {!reducedMotion && <button title={t(paused ? "เล่นสไลด์" : "หยุดสไลด์")} aria-label={t(paused ? "เล่นสไลด์" : "หยุดสไลด์")} onClick={() => setPaused((value) => !value)}>{paused ? <Play size={14} /> : <Pause size={14} />}</button>}
+      </div>}
+    </section>
   );
 }
 

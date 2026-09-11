@@ -90,6 +90,7 @@ try {
       if (["mybooking", "profile", "scan"].includes(screen)) await page.locator('.tabbar button').nth({ mybooking: 3, profile: 4, scan: 2 }[screen]).click();
       if (screen === "home") {
         await page.getByRole('heading', { name: 'PPA Sport Complex', exact: true }).waitFor();
+        for (const selector of ['.member-card', '.home-carousel', '.live-banner', '.fyg-row', '.quick-booking-row', '.gymnos-banner', '.svc-grid', '.stat-row']) assert.ok(await page.locator(selector).count(), 'Original home section is present: ' + selector);
         assert.equal(await page.locator('.qr-mini-grid').count(), 0, 'Home must not render fake QR patterns');
         assert.equal(await page.getByText('Premium Member', { exact: true }).count(), 0, 'Inactive members must not be labeled premium');
       }
@@ -137,7 +138,11 @@ try {
       assert.ok(metrics.docWidth <= viewport.width + 1 && metrics.docHeight <= viewport.height + 1, JSON.stringify({ screen, viewport, metrics }));
       assert.ok(metrics.contentOverflow <= 1, JSON.stringify({ screen, viewport, metrics }));
       assert.ok(metrics.navBottom <= viewport.height + 1, "Bottom navigation must fit");
-      if (screen === "home" && [390, 768, 1440].includes(viewport.width)) await page.screenshot({ path: `${outDir}/member-${viewport.width}.png` });
+      if (screen === "home" && [390, 768, 1440].includes(viewport.width)) {
+        await page.screenshot({ path: `${outDir}/member-${viewport.width}.png` });
+        await page.locator('.stat-row').scrollIntoViewIfNeeded();
+        await page.screenshot({ path: `${outDir}/member-home-services-${viewport.width}.png` });
+      }
       results.push({ area: "member", screen, viewport, metrics });
     }
     for (const tab of ["dashboard", "members", "bookings", "staff", "roles", "reports", "trainers", "content"]) {
@@ -188,7 +193,7 @@ try {
   await page.locator('.booking-calendar [data-status="available"]').first().waitFor();
   emptyMember = true;
   await page.goto(`${base}/__responsive__/member?screen=home`);
-  await page.getByText('ยังไม่มีนัดหมายที่กำลังจะมาถึง', { exact: true }).waitFor();
+  await page.locator('.empty').filter({ hasText: 'ยังไม่มีนัดหมายที่กำลังจะมาถึง' }).waitFor();
   await page.locator('.tabbar button').nth(3).click();
   await page.getByText('ยังไม่มีรายการจองที่กำลังจะมาถึง', { exact: true }).waitFor();
   assert.equal(await page.locator('.booking-row-ui').count(), 0, 'Empty accounts must not see demo bookings');
@@ -206,6 +211,35 @@ try {
   assert.equal(await page.locator('.chip-grid button').count(), 1);
   assert.ok(await page.locator('.chip-grid button').isDisabled(), 'A fully booked schedule must not fall back to generated availability');
   member.contentItems = [];
+  await page.goto(`${base}/__responsive__/member?screen=home`);
+  await page.locator('.home-carousel').waitFor();
+  assert.equal(await page.locator('.home-carousel .ad-slide').count(), 4);
+  await page.getByRole('button', { name: 'สไลด์ถัดไป', exact: true }).click();
+  assert.equal(await page.locator('.ad-dots button[aria-current="true"]').getAttribute('aria-label'), 'ดูสไลด์ 2');
+  await page.getByRole('button', { name: 'สไลด์ก่อนหน้า', exact: true }).click();
+  assert.equal(await page.locator('.ad-dots button[aria-current="true"]').getAttribute('aria-label'), 'ดูสไลด์ 1');
+  await page.getByRole('button', { name: 'ดูสไลด์ 3', exact: true }).click();
+  await page.locator('.ad-slide[aria-hidden="false"]').click();
+  await page.locator('.coupon-list').first().waitFor({ state: 'attached' });
+  assert.equal(await page.locator('.home-carousel').count(), 0, 'Coupon slide navigates away from home');
+  member.contentItems = [{ id: 101, contentType: 'home_slide', slug: 'managed-slide', title: 'Managed slide fixture', subtitle: 'Managed content', icon: '', price: 0, targetScreen: 'wallet', metadata: { tone: 'shop' } }];
+  await page.goto(`${base}/__responsive__/member?screen=home`);
+  await page.getByText('Managed slide fixture', { exact: true }).waitFor();
+  assert.equal(await page.locator('.ad-slide').count(), 1, 'Configured slides replace default slides');
+  assert.equal(await page.locator('.home-slide-controls').count(), 0, 'Single slide has no unnecessary controls');
+  await page.locator('.ad-slide').click();
+  await page.locator('.wallet-actions').waitFor();
+  member.contentItems = [];
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${base}/__responsive__/member?screen=home`);
+  await page.getByRole('button', { name: 'หยุดสไลด์', exact: true }).waitFor();
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => document.querySelector('.ad-dots button[aria-current="true"]')?.getAttribute('aria-label') === 'ดูสไลด์ 2', undefined, { timeout: 7000 });
+  await page.getByRole('button', { name: 'หยุดสไลด์', exact: true }).click();
+  await page.getByRole('button', { name: 'เล่นสไลด์', exact: true }).waitFor();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.getByRole('button', { name: 'เล่นสไลด์', exact: true }).waitFor({ state: 'hidden' });
+  assert.equal(await page.getByRole('button', { name: 'เล่นสไลด์', exact: true }).count(), 0, 'Reduced motion disables autoplay');
   const translatedScreens = ["home", "sports", "courts", "datetime", "summary", "payment", "mybooking", "profile", "membership", "wallet", "coupon", "trainer", "trainer-detail", "help", "notifications", "classhub", "classschedule", "livetv", "promotion", "scan"];
   for (const viewport of [viewports[0], viewports[2], viewports[4]]) {
     await page.setViewportSize(viewport);

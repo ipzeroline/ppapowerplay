@@ -16,6 +16,28 @@ html:lang(zh-CN) { --font-aura: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK
   .statusbar { padding-inline: 12px; gap: 8px; }
 }
 
+.home-page { padding-top: 24px; padding-bottom: 28px; }
+.home-brand { margin: 5px 0 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.home-page .greet-copy .g2 { overflow: hidden; text-overflow: ellipsis; line-height: 1.4; }
+.home-page .member-card > div { min-width: 0; }
+.home-page .mini-qr { flex: 0 0 52px; }
+.home-page .home-bubble small { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.home-page .sec-head { gap: 12px; }
+.home-text-action { border: 0; background: transparent; color: var(--muted); min-height: 44px; font-size: 12px; }
+.home-carousel .ad-track { align-items: stretch; }
+.home-carousel .ad-slide { flex: 0 0 100%; min-width: 0; min-height: 96px; justify-content: center; color: #fff; }
+.home-carousel .ad-slide strong, .home-carousel .ad-slide small { max-width: 100%; overflow-wrap: anywhere; }
+.home-carousel .home-slide-image { width: 100%; height: auto; max-height: 240px; object-fit: contain; margin-bottom: 12px; border-radius: 6px; }
+.home-slide-controls { display: flex; justify-content: center; align-items: center; gap: 4px; padding: 0 8px; }
+.home-slide-controls > button { display: grid; place-items: center; flex: 0 0 36px; height: 36px; border: 0; background: transparent; color: var(--text); }
+.home-carousel .ad-dots { position: static; display: flex; flex-wrap: wrap; justify-content: center; gap: 0; }
+.home-carousel .ad-dots button, .home-carousel .ad-dots button.on { width: 28px; height: 36px; padding: 0; background: transparent; border-radius: 0; display: grid; place-items: center; }
+.home-carousel .ad-dots button::after { content: ""; display: block; width: 6px; height: 6px; background: var(--muted); border-radius: 3px; }
+.home-carousel .ad-dots button.on::after { width: 16px; background: var(--orange); }
+.home-page .lb-head { flex-wrap: wrap; padding-right: 0; }
+.home-page .live-banner:hover .live-ticker-track, .home-page .live-banner:focus .live-ticker-track { animation-play-state: paused; }
+.home-page .svc-grid > button { min-width: 0; }
+.home-page .svc-grid > button > div { min-width: 0; }
 .club-home { padding-top: 16px; padding-bottom: 28px; }
 .club-home .trainer-strip { width: 100%; margin-inline: 0; padding-inline: 0; }
 .club-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-block: 12px 24px; }
