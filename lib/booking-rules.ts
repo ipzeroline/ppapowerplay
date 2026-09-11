@@ -14,12 +14,14 @@ export const bookingSlots = [
   "18:00",
   "19:00",
   "20:00",
+  "21:00",
+  "22:00",
 ] as const;
 
 export const activeBookingStatuses = ["hold", "pending_payment", "paid", "checked_in"] as const;
 
 export function isPastSlot(date: string, time: string) {
-  return new Date(`${date}T${time}:00+07:00`).getTime() < Date.now() - 60_000;
+  return new Date(`${date}T${time}:00+07:00`).getTime() < Date.now();
 }
 
 export function buildSlotRange(date: string, time: string, durationHours = 1) {

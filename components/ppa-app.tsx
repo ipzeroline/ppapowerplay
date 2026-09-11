@@ -1,6 +1,13 @@
 "use client";
 import Image from "next/image";
+import { Bell, House, Dumbbell, QrCode, CalendarDays, UserRound, ChevronLeft } from "lucide-react";
 import { safeImageSource } from "@/lib/media";
+import { bangkokToday, type AvailabilityStatus } from "@/lib/court-availability";
+import { BookingCalendar } from "@/components/booking-calendar";
+import { AdminDialog } from "@/components/admin-dialog";
+import { upcomingBooking, bookingStatusLabel } from "@/lib/booking-presentation";
+import { t, localeTag, localizedContent, courtName } from "@/lib/i18n";
+import { LanguageSwitcher, MemberLocaleSync, useMemberLocale } from "@/components/language-switcher";
 
 import liff from "@line/liff";
 import type { ReactNode } from "react";
@@ -22,6 +29,8 @@ type Slot = {
   time: string;
   available: boolean;
   rate: number;
+  capacity: number;
+  status: AvailabilityStatus;
 };
 
 type Booking = {
@@ -214,40 +223,6 @@ function initialScreenFromUrl(): Screen {
   return richMenuScreens.includes(screenParam as Screen) ? (screenParam as Screen) : "home";
 }
 
-const homeSlides = [
-  {
-    tag: "EVENT",
-    title: "🏆 PPA HYROX Challenge 2026",
-    text: "สมัครแข่งวันนี้ - 30 มิ.ย. · รับเสื้อ Finisher ฟรี",
-    action: "สมัคร",
-    target: "hyrox" as Screen,
-    tone: "event",
-  },
-  {
-    tag: "PROMOTION",
-    title: "🛍️ รองเท้าแบด ลดสูงสุด 40%",
-    text: "PPA Pro Shop · เฉพาะสมาชิก ถึง 31 พ.ค.",
-    action: "ดูดีล",
-    target: "promotion" as Screen,
-    tone: "shop",
-  },
-  {
-    tag: "FOOD",
-    title: "🍜 ส่วนลดร้านอาหาร 15%",
-    text: "PPA Cafe & Restaurant · โชว์ QR สมาชิกรับสิทธิ์",
-    action: "รับสิทธิ์",
-    target: "coupon" as Screen,
-    tone: "food",
-  },
-  {
-    tag: "NEW",
-    title: "🪂 เปิดคลาส Airfit ใหม่!",
-    text: "ทดลองเรียนครั้งแรก 199 ฿ · จองผ่านแอปเท่านั้น",
-    action: "จอง",
-    target: "airfit" as Screen,
-    tone: "airfit",
-  },
-] as const;
 
 const serviceShortcuts: { icon: string; title: string; text: string; screen: Screen }[] = [
   { icon: "🏋️", title: "Gymnos Hub", text: "Fitness, HYROX, Airfit", screen: "gymnos" },
@@ -260,40 +235,8 @@ const serviceShortcuts: { icon: string; title: string; text: string; screen: Scr
   { icon: "👥", title: "Find Your Game", text: "ก๊วนและ Open Run", screen: "groups" },
 ];
 
-const classPacks: AppPack[] = [
-  { key: "fitness", icon: "💪", name: "Fitness Pack", price: 299, desc: "Day pass, monthly access และ PT starter" },
-  { key: "hyrox", icon: "🔥", name: "HYROX Simulation", price: 1300, desc: "แข่งจำลองพร้อม coach station" },
-  { key: "pilates", icon: "🤸", name: "Pilates Group 10", price: 8500, desc: "Reformer group class 10 ครั้ง" },
-  { key: "airfit", icon: "🪂", name: "Airfit Trial", price: 199, desc: "ทดลองเรียน 1 ครั้ง" },
-];
-
 const timeChoices = ["08:00", "09:30", "11:00", "12:30", "14:00", "15:30", "17:00", "18:30", "20:00"];
 const levelChoices = ["มือใหม่", "ฝึกหน้าบ้าน", "พอตัว", "แข่งขัน"];
-const trainerDays = [
-  { day: "จันทร์", date: "13" },
-  { day: "อังคาร", date: "14" },
-  { day: "พุธ", date: "15" },
-  { day: "พฤหัสฯ", date: "16" },
-  { day: "ศุกร์", date: "17" },
-  { day: "เสาร์", date: "18" },
-  { day: "อาทิตย์", date: "19" },
-];
-const trainerSlots = ["08:00", "09:30", "11:00", "14:00", "16:00", "18:00", "19:30", "20:30"];
-
-const findYourGame = [
-  { icon: "🏀", title: "Basketball Open Run", text: "เหลือ 2 ที่เท่านั้น", screen: "groups" as Screen },
-  { icon: "🏸", title: "Badminton", text: "ขาดคู่ดับเบิ้ลอีก 1 คน", screen: "groups" as Screen },
-  { icon: "🥒", title: "Pickleball", text: "เปิดรับเพิ่มอีก 2 คน", screen: "groups" as Screen },
-];
-
-const quickBooking = [
-  { icon: "🎾", label: "เทนนิส", slug: "tennis" },
-  { icon: "🏸", label: "แบดมินตัน", slug: "badminton" },
-  { icon: "🏀", label: "บาสเกตบอล", slug: "basketball" },
-  { icon: "🎯", label: "พาเดล", slug: "padel" },
-  { icon: "🥒", label: "Pickleball", slug: "pickleball" },
-];
-
 const coinRewards = [
   { name: "น้ำเปล่า PPA", detail: "1 ขวด", icon: "💧", cost: 5 },
   { name: "ผ้าขนหนูกีฬา", detail: "ลาย PPA สุดพิเศษ", icon: "🧺", cost: 15 },
@@ -349,13 +292,11 @@ const statIcons: Record<string, string> = {
 };
 
 function today() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
+  return bangkokToday();
 }
 
 function money(amount: number | string | undefined) {
-  return Number(amount || 0).toLocaleString("th-TH");
+  return Number(amount || 0).toLocaleString(localeTag());
 }
 
 function bookingNo(booking: Booking | null) {
@@ -383,6 +324,16 @@ async function api<T>(url: string, init?: RequestInit) {
 }
 
 export function PpaApp() {
+  useMemberLocale();
+  return <><MemberLocaleSync /><MemberApp /></>;
+}
+
+function MemberApp() {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [screen, setScreen] = useState<Screen>(initialScreenFromUrl);
   const [lineReady, setLineReady] = useState(false);
   const [lineBlocked, setLineBlocked] = useState(false);
@@ -393,19 +344,22 @@ export function PpaApp() {
   const [date, setDate] = useState(today());
   const [slots, setSlots] = useState<Slot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
-  const [selectedTime, setSelectedTime] = useState("18:30");
+  const [selectedTime, setSelectedTime] = useState("18:00");
+  const [availabilityRevision, setAvailabilityRevision] = useState(0);
+  const [slotsResult, setSlotsResult] = useState<{ key: string; error?: string } | null>(null);
+  const availabilityKey = `${selectedSport?.slug}:${date}:${availabilityRevision}`;
+  const slotsLoading = slotsResult?.key !== availabilityKey;
   const [players, setPlayers] = useState(2);
   const [pendingBooking, setPendingBooking] = useState<Booking | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
   const [pendingItem, setPendingItem] = useState<{ title: string; amount: number; back: Screen; save?: "coupon" | "topup" | "class" | "membership"; couponId?: number; contentId?: number; trainerId?: number; trainerPackage?: string; itemType?: string } | null>(null);
   const [accessQr, setAccessQr] = useState<AccessQr>({ purpose: "member" });
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastPaymentStatus, setLastPaymentStatus] = useState<"paid" | "created">("paid");
-  const [activeSlide, setActiveSlide] = useState(0);
   const qrSeconds = 20;
   const [groupName, setGroupName] = useState("");
   const [groupLevel, setGroupLevel] = useState(levelChoices[0]);
-  const [profileName, setProfileName] = useState("");
   const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
   const [trainerDetail, setTrainerDetail] = useState(false);
   const [myTrainerSlug, setMyTrainerSlug] = useState("");
@@ -452,31 +406,35 @@ export function PpaApp() {
     });
   }, [lineReady, requireLine]);
 
-  const appContent = data?.contentItems || [];
+  const appContent = (data?.contentItems || []).map(localizedContent);
   const managedSlides = contentByType(appContent, "home_slide");
-  const visibleHomeSlides = managedSlides.length ? managedSlides.map(contentToSlide) : homeSlides;
   const servicePackages = contentByType(appContent, "service_package");
   const liveItems = contentByType(appContent, "live_tv");
   const classScheduleItems = contentByType(appContent, "class_schedule");
   const membershipPlans = contentByType(appContent, "membership_plan");
 
-  useEffect(() => {
-    if (screen !== "home" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") setActiveSlide((current) => (current + 1) % Math.max(visibleHomeSlides.length, 1));
-    }, 4200);
-    return () => window.clearInterval(timer);
-  }, [visibleHomeSlides.length, screen]);
 
   useEffect(() => {
-    if (!selectedSport) return;
+    if (!selectedSport?.requiresBooking || !["courts", "datetime", "summary"].includes(screen)) return;
     const controller = new AbortController();
     const params = new URLSearchParams({ sport: selectedSport.slug, date });
-    api<{ slots: Slot[] }>(`/api/courts/availability?${params.toString()}`, { signal: controller.signal })
-      .then((res) => setSlots(res.slots))
-      .catch((error) => { if (!controller.signal.aborted) notice(error.message); });
-    return () => controller.abort();
-  }, [selectedSport, date]);
+    const refreshSlots = () => api<{ slots: Slot[] }>(`/api/courts/availability?${params.toString()}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) })
+      .then((res) => {
+        if (controller.signal.aborted) return;
+        setSlots(res.slots);
+        setSlotsResult({ key: availabilityKey });
+        setSelectedSlot((current) => current ? res.slots.find((slot) => slot.courtId === current.courtId && slot.time === current.time && slot.available) || null : null);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setSlots([]);
+        setSelectedSlot(null);
+        setSlotsResult({ key: availabilityKey, error: error.message });
+      });
+    void refreshSlots();
+    const timer = window.setInterval(() => { if (!document.hidden) void refreshSlots(); }, 30000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [selectedSport, date, availabilityKey, screen]);
 
   const slotGroups = useMemo(() => {
     const map = new Map<string, Slot[]>();
@@ -484,7 +442,7 @@ export function PpaApp() {
     return [...map.entries()];
   }, [slots]);
 
-  const selectedSportSlots = selectedSport?.requiresBooking ? slotGroups : [];
+  const selectedSportSlots = selectedSport?.requiresBooking && !slotsLoading ? slotGroups : [];
   const unreadCount = data?.notifications.filter((item) => item.status === "unread").length ?? 0;
 
   function notice(message: string) {
@@ -500,7 +458,6 @@ export function PpaApp() {
   async function refresh() {
     const next = await api<Bootstrap>("/api/bootstrap");
     setData(next);
-    setProfileName(next.user.displayName);
     setSelectedTrainer((current) => current || next.trainers[0] || null);
     setSelectedSport((current) => current || next.sports.find((s) => s.requiresBooking) || next.sports[0] || null);
   }
@@ -522,8 +479,9 @@ export function PpaApp() {
   }
 
   async function createBooking() {
+    if (busy) return;
     if (!selectedSport) return;
-    if (selectedSport.requiresBooking && !selectedSlot) {
+    if (selectedSport.requiresBooking && (!selectedSlot || slotsLoading)) {
       notice("กรุณาเลือกสนามและเวลา");
       return;
     }
@@ -544,6 +502,11 @@ export function PpaApp() {
       setPendingItem(null);
       go("payment");
     } catch (error) {
+      if ((error as Error & { status?: number }).status === 409) {
+        setSelectedSlot(null);
+        setAvailabilityRevision((value) => value + 1);
+        go("courts");
+      }
       notice((error as Error).message);
     } finally {
       setBusy(false);
@@ -656,12 +619,31 @@ export function PpaApp() {
 
   async function cancelBooking(booking: Booking) {
     const no = bookingNo(booking);
-    if (!no) return;
+    if (!no || busy) return;
     setBusy(true);
     try {
       await api("/api/bookings", { method: "DELETE", body: JSON.stringify({ bookingNo: no, reason: "member cancelled from app" }) });
       await refresh();
+      setCancelTarget(null);
       notice("ยกเลิกรายการจองแล้ว");
+    } catch (error) {
+      notice((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function logout() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await api("/api/auth/line", { method: "DELETE" });
+      setLineBlocked(true);
+      setData(null);
+      setPendingBooking(null);
+      setCancelTarget(null);
+      setSelectedSlot(null);
+      setSlots([]);
     } catch (error) {
       notice((error as Error).message);
     } finally {
@@ -698,23 +680,12 @@ export function PpaApp() {
     );
   }
 
-  const fallbackBookings: Booking[] = [
-    { title: "🏸 แบดมินตัน · สนาม 1", startsAt: "2026-05-15T09:00:00+07:00", amount: 200, status: "upcoming", bookingNo: "PPA-DEMO-001" },
-    { title: "🔥 HYROX Class", startsAt: "2026-05-16T08:00:00+07:00", amount: 700, status: "upcoming", bookingNo: "PPA-DEMO-002" },
-    { title: "🎾 เทนนิส · สนาม 2", startsAt: "2026-05-18T18:00:00+07:00", amount: 400, status: "upcoming", bookingNo: "PPA-DEMO-003" },
-    { title: "🥒 พิคเคิลบอล · สนาม 1", startsAt: "2026-05-20T17:00:00+07:00", amount: 250, status: "upcoming", bookingNo: "PPA-DEMO-004" },
-  ];
-  const fallbackHistory: Booking[] = [
-    { title: "🏸 แบดมินตัน · สนาม 4", startsAt: "2026-05-10T19:00:00+07:00", amount: 200, status: "done", bookingNo: "PPA-DEMO-101" },
-    { title: "🧘 Yoga Class", startsAt: "2026-05-06T14:00:00+07:00", amount: 0, status: "done", bookingNo: "PPA-DEMO-102" },
-  ];
-  const realUpcoming = data.bookings.filter((booking) => !["done", "completed", "used", "checked_in", "cancelled"].includes(booking.status));
-  const realHistory = data.bookings.filter((booking) => ["done", "completed", "used", "checked_in", "cancelled"].includes(booking.status));
-  const upcomingBookings = realUpcoming.length ? realUpcoming : fallbackBookings;
-  const historyBookings = realHistory.length ? realHistory : fallbackHistory;
+  const isUpcoming = (booking: Booking) => upcomingBooking(booking, now);
+  const upcomingBookings = data.bookings.filter(isUpcoming).sort((a, b) => new Date(a.startsAt || a.starts_at || "").getTime() - new Date(b.startsAt || b.starts_at || "").getTime());
+  const historyBookings = data.bookings.filter((booking) => !isUpcoming(booking)).sort((a, b) => new Date(b.startsAt || b.starts_at || "").getTime() - new Date(a.startsAt || a.starts_at || "").getTime());
   const myTrainer = data.trainers.find((trainer) => trainer.slug === myTrainerSlug);
-  const activeMembership = data.memberships[0] || null;
-  const membershipExpiry = activeMembership ? new Date(activeMembership.endsAt).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }) : "ยังไม่มีแพ็กเกจ";
+  const activeMembership = data.memberships.find((membership) => membership.status === "active" && new Date(membership.startsAt).getTime() <= now && new Date(membership.endsAt).getTime() > now) || null;
+  const membershipExpiry = activeMembership ? new Date(activeMembership.endsAt).toLocaleDateString(localeTag(), { day: "numeric", month: "short", year: "numeric" }) : "ยังไม่มีแพ็กเกจ";
   const selectedTrainerSchedule = selectedTrainer ? trainerSchedule(selectedTrainer) : [];
   const activeTrainerDay = selectedTrainerSchedule[Math.min(trainerDayIndex, Math.max(selectedTrainerSchedule.length - 1, 0))];
 
@@ -723,9 +694,10 @@ export function PpaApp() {
       <section className="phone">
         <div className="statusbar">
           <span>PPA</span>
+          <LanguageSwitcher />
           <button className="status-member-chip" onClick={() => go("profile")}>
             <span>{memberInitial(data.user.displayName)}</span>
-            <b>{data.user.displayName || "PPA Member"}</b>
+            <b>{data.user.displayName || t("PPA Member")}</b>
             <i />
           </button>
         </div>
@@ -734,160 +706,94 @@ export function PpaApp() {
             <div className="page centered splash">
               <div className="brand">PPA<span>.</span></div>
               <p>Power Play Asia Sport Complex</p>
-              <button className="primary" onClick={() => go("home")}>🚀 เลื่อนเพื่อเริ่มต้น</button>
+              <button className="primary" onClick={() => go("home")}>{t("🚀 เลื่อนเพื่อเริ่มต้น")}</button>
             </div>
           )}
 
           {screen === "login" && (
             <div className="page centered">
               <div className="brand">PPA<span>.</span></div>
-              <p>เข้าสู่ระบบสมาชิกเพื่อจองและใช้งาน QR เข้าใช้บริการ</p>
-              <button className="primary" onClick={() => go("home")}>💬 Continue with LINE</button>
-              <button className="ghost" onClick={() => go("home")}>👤 ใช้งานแบบสมาชิกเดโม</button>
+              <p>{t("เข้าสู่ระบบสมาชิกเพื่อจองและใช้งาน QR เข้าใช้บริการ")}</p>
+              <button className="primary" onClick={() => go("home")}>{t("💬 Continue with LINE")}</button>
+              <button className="ghost" onClick={() => go("home")}>{t("👤 ใช้งานแบบสมาชิกเดโม")}</button>
             </div>
           )}
 
           {screen === "home" && (
-            <div className="page home-page">
-              <header className="greet">
-                <div className="greet-copy">
-                  <div className="g1">สวัสดีตอนเย็น 🌆</div>
-                  <div className="g2">{data.user.displayName || "PPA Member"}</div>
-                </div>
-                <button className="home-bubble reward" onClick={() => go("reward")}>
-                  <span>🪙</span>
-                  <small>แลกรางวัล</small>
-                </button>
-                <button className="home-bubble level" onClick={() => go("profile")}>
-                  <span>{data.user.avatar || "💪"}</span>
-                  <small>ระดับ</small>
+            <div className="page home-page club-home">
+              <header className="club-heading">
+                <div><span className="club-eyebrow">POWER PLAY ASIA</span><h1>PPA Sport Complex</h1><p>{t("สวัสดี")} {data.user.displayName || t("PPA Member")}</p></div>
+                <button className="club-icon-button" title={t("การแจ้งเตือน")} aria-label={t("การแจ้งเตือน {{value0}} รายการใหม่", { value0: unreadCount })} onClick={() => go("notifications")}>
+                  <Bell size={22} aria-hidden="true" />{unreadCount > 0 && <span className="club-count">{unreadCount > 99 ? "99+" : unreadCount}</span>}
                 </button>
               </header>
 
-              <button className="member-card premium-card" onClick={() => go("membership")}>
-                <div>
-                  <span className="m1">Premium Member</span>
-                  <small className="m2">{activeMembership ? `หมดอายุ ${membershipExpiry} · ${activeMembership.planName}` : "เลือกแพ็กเกจเพื่อเปิดสิทธิ์สมาชิก"}</small>
-                </div>
-                <div className="mini-qr">
-                  <div className="qr-mini-grid">{Array.from({ length: 81 }).map((_, i) => <i key={i} className={(i * 7 + qrSeconds) % 5 === 0 ? "w" : ""} />)}</div>
-                </div>
-              </button>
-
-              <div className="ad-carousel home-carousel">
-                <div className="ad-track" style={{ transform: `translateX(-${activeSlide * 100}%)` }}>
-                  {visibleHomeSlides.map((slide) => (
-                    <button className={`ad-slide ${slide.tone}`} key={slide.title} onClick={() => go(slide.target)}>
-                      <span className="ad-tag">{slide.tag}</span>
-                      <strong>{slide.title}</strong>
-                      <small>{slide.text}</small>
-                    </button>
-                  ))}
-                </div>
-                <div className="ad-dots">
-                  {visibleHomeSlides.map((slide, index) => (
-                    <button aria-label={`ดูสไลด์ ${index + 1}`} className={index === activeSlide ? "on" : ""} key={slide.title} onClick={() => setActiveSlide(index)} />
-                  ))}
-                </div>
+              <div className="club-primary-actions">
+                <button className="club-book-action" onClick={() => go("sports")}><span>{t("จองสนาม")}</span><small>{t("เลือกกีฬา วัน และเวลา")}</small><span aria-hidden="true" className="club-action-arrow">↗</span></button>
+                <button className="club-qr-action" onClick={() => { setPendingBooking(null); setAccessQr({ purpose: "member" }); go("scan"); }}><TabBarIcon name="scan" /><span>{t("QR เข้าใช้บริการ")}</span></button>
               </div>
 
-              <button className="live-banner" onClick={() => go("livetv")}>
-                <div className="lb-head">
-                  <span className="live-pill"><i />LIVE</span>
-                  <strong>BIG SCREEN LIVE 📺</strong>
+              <section className="club-section" aria-labelledby="next-booking-title">
+                <div className="club-section-heading"><h2 id="next-booking-title">{t("การจองครั้งถัดไป")}</h2><button onClick={() => go("mybooking")}>{t("ดูทั้งหมด")} <span aria-hidden="true">→</span></button></div>
+                {upcomingBookings[0] ? <BookingRow now={now} booking={upcomingBookings[0]} onClick={() => { setPendingBooking(upcomingBookings[0]); setAccessQr({ purpose: "member" }); go("scan"); }} />
+                  : <div className="club-empty"><strong>{t("ยังไม่มีนัดหมายที่กำลังจะมาถึง")}</strong><button onClick={() => go("sports")}>{t("เลือกสนามและเวลา")} <span aria-hidden="true">→</span></button></div>}
+              </section>
+
+              <section className="club-section" aria-labelledby="club-sports-title">
+                <div className="club-section-heading"><h2 id="club-sports-title">{t("กีฬาและบริการ")}</h2><button onClick={() => go("sports")}>{t("ดูทั้งหมด")} <span aria-hidden="true">→</span></button></div>
+                <div className="club-sports">
+                  {data.sports.map((sport) => <button key={sport.slug} onClick={() => pickSport(sport)}>
+                    <span className="club-sport-icon" aria-hidden="true">{sport.icon}</span>
+                    <span><strong>{t(sport.name)}</strong><small>{t("เริ่ม")} {money(sport.baseRate)} ฿{sport.requiresBooking ? t(" / ชม.") : ""}</small></span>
+                    <span className="club-row-arrow" aria-hidden="true">↗</span>
+                  </button>)}
                 </div>
-                <div className="ticker-wrap" aria-label="รายการถ่ายทอดสด">
-                  <div className="live-ticker-track">
-                    {[
-                      "🔴 คืนนี้ 20:00 · FIFA World Cup รอบรองฯ · Zone A",
-                      "🏸 พรุ่งนี้ 18:00 · BWF World Tour Finals · Zone A",
-                      "🔥 เสาร์นี้ 14:00 · PPA HYROX Challenge รอบชิง · Arena",
-                      "🎾 ตอนนี้ · Wimbledon รอบ 8 คน · Zone B",
-                      "🏀 22:30 · NBA Finals Game 3 · Zone B",
-                    ].concat([
-                      "🔴 คืนนี้ 20:00 · FIFA World Cup รอบรองฯ · Zone A",
-                      "🏸 พรุ่งนี้ 18:00 · BWF World Tour Finals · Zone A",
-                      "🔥 เสาร์นี้ 14:00 · PPA HYROX Challenge รอบชิง · Arena",
-                      "🎾 ตอนนี้ · Wimbledon รอบ 8 คน · Zone B",
-                      "🏀 22:30 · NBA Finals Game 3 · Zone B",
-                    ]).map((text, index) => (
-                      <span key={`${text}-${index}`}>{text}</span>
-                    ))}
-                  </div>
+                {!data.sports.length && <Empty text={t("ยังไม่มีบริการเปิดให้จอง")} />}
+              </section>
+
+              <section className="club-section" aria-labelledby="club-member-title">
+                <div className="club-section-heading"><h2 id="club-member-title">{t("สมาชิกของคุณ")}</h2><button onClick={() => go("membership")}>{t("ดูสิทธิ์")} <span aria-hidden="true">→</span></button></div>
+                <div className="club-membership"><div><strong>{t(activeMembership?.planName) || t("สมาชิก PPA")}</strong><small>{activeMembership ? t("ใช้ได้ถึง {{value0}}", { value0: membershipExpiry }) : t("ยังไม่มีแพ็กเกจที่ใช้งานอยู่")}</small></div><span>{data.user.memberCode}</span></div>
+                <div className="club-balances">
+                  <button onClick={() => go("wallet")}><small>{t("ยอดเงินคงเหลือ")}</small><strong>{money(data.wallet.balance)} <span>฿</span></strong></button>
+                  <button onClick={() => go("coupon")}><small>{t("คูปองของฉัน")}</small><strong>{data.coupons.length} <span>{t("รายการ")}</span></strong></button>
+                  <button onClick={() => go("reward")}><small>{t("Coins")}</small><strong>{money(data.wallet.coinBalance)}</strong></button>
                 </div>
-                <small>ถ่ายทอดสดคู่สำคัญ & การแข่งขันในโครงการ บนจอยักษ์ PPA</small>
-              </button>
+              </section>
 
-              <div className="sec-head">
-                <strong>🎯 Find Your Game</strong>
-                <span className="fyg-live"><i />LIVE</span>
-              </div>
-              <div className="fyg-row">
-                {findYourGame.map((item) => (
-                  <button key={item.title} onClick={() => go(item.screen)}>
-                    <strong>{item.icon} {item.title}</strong>
-                    <small>{item.text}</small>
-                  </button>
-                ))}
-              </div>
+              {managedSlides.length > 0 && <section className="club-section" aria-labelledby="club-news-title">
+                <div className="club-section-heading"><h2 id="club-news-title">{t("ข่าวสารและกิจกรรม")}</h2></div>
+                <div className="club-news">{managedSlides.map((item) => <button key={item.id} onClick={() => go((item.targetScreen as Screen) || "promotion")}>
+                  {safeImageSource(item.imageUrl) && <Image src={safeImageSource(item.imageUrl)!} alt="" width={640} height={360} referrerPolicy="no-referrer" unoptimized />}
+                  <strong>{t(item.title)}</strong><small>{t(item.subtitle) || t(item.body)}</small>
+                </button>)}</div>
+              </section>}
 
-              <div className="sec-head"><strong>Quick Booking</strong></div>
-              <div className="quick-booking-row">
-                {quickBooking.map((item) => {
-                  const sport = data.sports.find((entry) => entry.slug === item.slug);
-                  return (
-                    <button
-                      key={item.slug}
-                      onClick={() => sport ? pickSport(sport) : go("sports")}
-                    >
-                      <span>{item.icon}</span>
-                      <small>{item.label}</small>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="sec-head"><strong>กีฬา & บริการ</strong></div>
-              <button className="gymnos-banner" onClick={() => go("gymnos")}>
-                <div><strong>GYMNOS</strong><small>Fitness · Swim · HYROX · Pilates · Airfit · Promotion</small></div>
-                <span>›</span>
-              </button>
-              <div className="svc-grid">
-                {data.sports.slice(0, 8).map((sport) => (
-                  <button key={sport.slug} onClick={() => pickSport(sport)}>
-                    <span>{sport.icon}</span>
-                    <div><strong>{sport.name}</strong><small>{sport.description}</small></div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="sec-head"><strong>Statistics</strong></div>
-              <div className="stat-row">
-                <div><strong>48</strong><small>Players Today</small></div>
-                <div><strong>{data.groups.length || 12}</strong><small>Games</small></div>
-                <div><strong>{Math.max(9, data.bookings.length)}</strong><small>Courts In Use</small></div>
-              </div>
+              {data.trainers.length > 0 && <section className="club-section" aria-labelledby="club-trainers-title">
+                <div className="club-section-heading"><h2 id="club-trainers-title">{t("เทรนเนอร์")}</h2><button onClick={() => { setTrainerDetail(false); go("trainer"); }}>{t("ดูทั้งหมด")} <span aria-hidden="true">→</span></button></div>
+                <TrainerStrip trainers={data.trainers} onOpen={(trainer) => { setSelectedTrainer(trainer); setTrainerDetail(true); go("trainer"); }} />
+              </section>}
             </div>
           )}
 
           {screen === "sports" && (
             <div className="page">
-              <Top title="เลือกกีฬา" onBack={() => go("home")} />
+              <Top title={t("เลือกกีฬา")} onBack={() => go("home")} />
               <div className="prototype-list">
                 {data.sports.map((sport) => (
                   <SportRow
                     key={sport.slug}
                     icon={sport.icon}
-                    title={sport.name}
-                    text={`${sport.description}${sport.requiresBooking ? ` · เริ่ม ${money(sport.baseRate)} ฿/ชม.` : " · ใช้ได้ทันที"}`}
+                    title={t(sport.name)}
+                    text={`${t(sport.description)}${sport.requiresBooking ? t(" · เริ่ม {{value0}} ฿/ชม.", { value0: money(sport.baseRate) }) : t(" · ใช้ได้ทันที")}`}
                     onClick={() => pickSport(sport)}
                   />
                 ))}
               </div>
-              <SectionTitle title="คลาสและบริการเสริม" />
+              <SectionTitle title={t("คลาสและบริการเสริม")} />
               <div className="prototype-list">
                 {serviceShortcuts.slice(0, 6).map((item) => (
-                  <SportRow key={item.title} icon={item.icon} title={item.title} text={item.text} onClick={() => go(item.screen)} />
+                  <SportRow key={item.title} icon={item.icon} title={t(item.title)} text={t(item.text)} onClick={() => go(item.screen)} />
                 ))}
               </div>
             </div>
@@ -895,40 +801,41 @@ export function PpaApp() {
 
           {screen === "courts" && (
             <div className="page">
-              <Top title={selectedSport ? `${selectedSport.icon} ${selectedSport.name}` : "จองสนาม"} onBack={() => go("sports")} />
+              <Top title={selectedSport ? `${selectedSport.icon} ${t(selectedSport.name)}` : t("จองสนาม")} onBack={() => go("sports")} />
               <div className="booking-focus">
-                <span>เลือกบริการ</span>
-                <strong>{selectedSport?.icon} {selectedSport?.name}</strong>
-                <small>{selectedSport?.description}</small>
+                <span>{t("เลือกบริการ")}</span>
+                <strong>{selectedSport?.icon} {t(selectedSport?.name)}</strong>
+                <small>{t(selectedSport?.description)}</small>
               </div>
               <div className="sport-strip">
                 {data.sports.map((sport) => (
                   <button className={selectedSport?.slug === sport.slug ? "on" : ""} key={sport.slug} onClick={() => pickSport(sport)}>
-                    {sport.icon}<span>{sport.name}</span>
+                    {sport.icon}<span>{t(sport.name)}</span>
                   </button>
                 ))}
               </div>
-              <label className="field">วันที่<input type="date" min={today()} value={date} onChange={(event) => setDate(event.target.value)} /></label>
-              <div className="slot-toolbar"><span>เวลาว่าง</span><strong>{selectedSportSlots.length} ช่วงเวลา</strong></div>
+              {selectedSport && <BookingCalendar key={selectedSport.slug} sport={selectedSport.slug} value={date} revision={availabilityRevision} onChange={(nextDate) => { setSelectedSlot(null); setDate(nextDate); }} />}
+              <div className="slot-toolbar"><span>{new Date(`${date}T00:00:00+07:00`).toLocaleDateString(localeTag(), { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok" })}</span><strong>{slotsLoading ? t("กำลังตรวจสอบ…") : t("{{value0}} ช่วงเวลาว่าง", { value0: selectedSportSlots.filter(([, group]) => group.some((slot) => slot.available)).length })}</strong></div>
+              {!slotsLoading && slotsResult?.error && <div role="alert" className="calendar-error">{t("โหลดเวลาว่างไม่สำเร็จ")}<button onClick={() => setAvailabilityRevision((value) => value + 1)}>{t("ลองใหม่")}</button></div>}
               <div className="slot-list">
                 {selectedSportSlots.map(([time, group]) => (
                   <article key={time}>
                     <strong>{time}</strong>
                     <div>
                       {group.map((slot) => (
-                        <button disabled={!slot.available} className={selectedSlot === slot ? "on" : ""} key={`${slot.courtId}-${slot.time}`} onClick={() => setSelectedSlot(slot)}>
-                          {slot.courtName}<small>{slot.available ? `${money(slot.rate)} ฿` : "เต็ม"}</small>
+                        <button disabled={!slot.available} className={selectedSlot === slot ? "on" : ""} key={`${slot.courtId}-${slot.time}`} onClick={() => { setSelectedSlot(slot); setPlayers((value) => Math.min(value, slot.capacity)); }}>
+                          {courtName(slot.courtName)}<small>{slot.available ? t("{{value0}} ฿", { value0: money(slot.rate) }) : slot.status === "past" ? t("ผ่านเวลาแล้ว") : slot.status === "closed" ? t("ปิดให้บริการ") : t("เต็ม")}</small>
                         </button>
                       ))}
                     </div>
                   </article>
                 ))}
               </div>
-              {!selectedSportSlots.length && <Empty text="ไม่พบช่วงเวลาว่างของบริการนี้" />}
-              {selectedSlot && (
+              {!slotsLoading && !slotsResult?.error && !selectedSportSlots.length && <Empty text={t("ยังไม่มีสนามเปิดให้จองสำหรับบริการนี้")} />}
+              {selectedSlot && !slotsLoading && (
                 <div className="sticky-summary">
-                  <Summary sport={selectedSport} slot={selectedSlot} players={players} />
-                  <button className="primary" disabled={busy} onClick={() => go("datetime")}>👥 เลือกจำนวนผู้เล่นและสรุป</button>
+                  <Summary sport={selectedSport} slot={selectedSlot} players={players} date={date} />
+                  <button className="primary" disabled={busy} onClick={() => go("datetime")}>{t("👥 เลือกจำนวนผู้เล่นและสรุป")}</button>
                 </div>
               )}
             </div>
@@ -936,28 +843,28 @@ export function PpaApp() {
 
           {screen === "datetime" && (
             <div className="page">
-              <Top title="วันที่และเวลา" onBack={() => go("courts")} />
-              <label className="field">วันที่<input type="date" min={today()} value={date} onChange={(event) => setDate(event.target.value)} /></label>
-              <label className="field">จำนวนผู้เล่น<input type="number" min={1} max={20} value={players} onChange={(event) => setPlayers(Math.min(20, Math.max(1, Number(event.target.value))))} /></label>
-              <SectionTitle title="เวลายอดนิยม" />
-              <div className="chip-grid">
+              <Top title={t("วันที่และเวลา")} onBack={() => go("courts")} />
+              <Summary sport={selectedSport} slot={selectedSlot} players={players} date={date} />
+              <button className="ghost" onClick={() => go("courts")}>{t("เปลี่ยนวัน สนาม หรือเวลา")}</button>
+              <label className="field">{t("จำนวนผู้เล่น")}<input type="number" min={1} max={selectedSlot?.capacity || 20} value={players} onChange={(event) => setPlayers(Math.min(selectedSlot?.capacity || 20, Math.max(1, Number(event.target.value))))} /></label>
+              {!selectedSport?.requiresBooking && <><SectionTitle title={t("เวลายอดนิยม")} /><div className="chip-grid">
                 {timeChoices.map((time) => (
                   <button className={(selectedSlot?.time || selectedTime) === time ? "on" : ""} key={time} onClick={() => setSelectedTime(time)}>{time}</button>
                 ))}
-              </div>
-              <button className="primary" onClick={() => go("summary")}>🧾 ไปหน้าสรุป</button>
+              </div></>}
+              <button className="primary" disabled={Boolean(selectedSport?.requiresBooking) && (!selectedSlot || slotsLoading)} onClick={() => go("summary")}>{t("🧾 ไปหน้าสรุป")}</button>
             </div>
           )}
 
           {screen === "summary" && (
             <div className="page">
-              <Top title="สรุปรายการ" onBack={() => selectedSport?.requiresBooking ? go("courts") : go("sports")} />
-              <Summary sport={selectedSport} slot={selectedSlot} players={players} />
+              <Top title={t("สรุปรายการ")} onBack={() => selectedSport?.requiresBooking ? go("courts") : go("sports")} />
+              <Summary sport={selectedSport} slot={selectedSlot} players={players} date={date} />
               <div className="secure-note">
-                <strong>ตรวจสอบก่อนชำระเงิน</strong>
-                <small>ระบบจะกันสนามหลังสร้าง booking และ QR จะใช้งานได้เมื่อชำระเงินสำเร็จเท่านั้น</small>
+                <strong>{t("ตรวจสอบก่อนชำระเงิน")}</strong>
+                <small>{t("ระบบจะกันสนามหลังสร้าง booking และ QR จะใช้งานได้เมื่อชำระเงินสำเร็จเท่านั้น")}</small>
               </div>
-              <button className="primary" disabled={busy || (Boolean(selectedSport?.requiresBooking) && !selectedSlot)} onClick={createBooking}>🔐 ยืนยันและชำระเงิน</button>
+              <button className="primary" disabled={busy || (Boolean(selectedSport?.requiresBooking) && (!selectedSlot || slotsLoading))} onClick={createBooking}>{t("🔐 ยืนยันและชำระเงิน")}</button>
             </div>
           )}
 
@@ -975,10 +882,10 @@ export function PpaApp() {
           {screen === "success" && (
             <div className="page centered">
               <div className="check">{lastPaymentStatus === "paid" ? "✓" : "!"}</div>
-              <h2>{lastPaymentStatus === "paid" ? "สำเร็จแล้ว" : "รอการยืนยัน"}</h2>
-              <p>{lastPaymentStatus === "paid" ? "รายการถูกบันทึกแล้ว คุณสามารถดูประวัติหรือเปิด QR สำหรับเข้าใช้บริการได้ทันที" : "ระบบบันทึกรายการแล้ว แต่ยังไม่เปิดสิทธิ์จนกว่าการชำระเงินจะถูกยืนยัน"}</p>
-              <button className="primary" onClick={() => go("mybooking")}>📋 ดูรายการของฉัน</button>
-              {lastPaymentStatus === "paid" && <button className="ghost" onClick={() => go("scan")}>▣ เปิด QR เข้าใช้บริการ</button>}
+              <h2>{lastPaymentStatus === "paid" ? t("สำเร็จแล้ว") : t("รอการยืนยัน")}</h2>
+              <p>{lastPaymentStatus === "paid" ? t("รายการถูกบันทึกแล้ว คุณสามารถดูประวัติหรือเปิด QR สำหรับเข้าใช้บริการได้ทันที") : t("ระบบบันทึกรายการแล้ว แต่ยังไม่เปิดสิทธิ์จนกว่าการชำระเงินจะถูกยืนยัน")}</p>
+              <button className="primary" onClick={() => go("mybooking")}>{t("📋 ดูรายการของฉัน")}</button>
+              {lastPaymentStatus === "paid" && <button className="ghost" onClick={() => go("scan")}>{t("▣ เปิด QR เข้าใช้บริการ")}</button>}
             </div>
           )}
 
@@ -986,114 +893,108 @@ export function PpaApp() {
 
           {screen === "checkin" && (
             <div className="page">
-              <Top title="Check In" onBack={() => go("scan")} />
+              <Top title={t("Check In")} onBack={() => go("scan")} />
               <div className="scan-ring"><div className="icn">▣</div></div>
-              <p className="center-text">เลือก booking ที่ชำระแล้วเพื่อ check-in อย่างปลอดภัย</p>
+              <p className="center-text">{t("เลือก booking ที่ชำระแล้วเพื่อ check-in อย่างปลอดภัย")}</p>
               <div className="list">
                 {data.bookings.filter((booking) => booking.status === "paid").map((booking) => (
                   <button key={bookingNo(booking)} disabled={busy} onClick={() => checkIn(booking)}>
-                    {booking.title}<small>{bookingNo(booking)} · แตะเพื่อ check-in</small>
+                    {t(booking.title)}<small>{bookingNo(booking)} {t("· แตะเพื่อ check-in")}</small>
                   </button>
                 ))}
-                {!data.bookings.some((booking) => booking.status === "paid") && <Empty text="ยังไม่มี booking ที่พร้อม check-in" />}
+                {!data.bookings.some((booking) => booking.status === "paid") && <Empty text={t("ยังไม่มี booking ที่พร้อม check-in")} />}
               </div>
             </div>
           )}
 
           {screen === "mybooking" && (
             <div className="page mybooking-page">
-              <Top title="การจองของฉัน" />
+              <Top title={t("การจองของฉัน")} />
               <div className="seg booking-seg">
-                <button className={bookingTab === "up" ? "on" : ""} onClick={() => setBookingTab("up")}>Upcoming</button>
-                <button className={bookingTab === "his" ? "on" : ""} onClick={() => setBookingTab("his")}>History</button>
+                <button className={bookingTab === "up" ? "on" : ""} onClick={() => setBookingTab("up")}>{t("Upcoming")}</button>
+                <button className={bookingTab === "his" ? "on" : ""} onClick={() => setBookingTab("his")}>{t("History")}</button>
               </div>
               <div className="booking-list">
                 {(bookingTab === "up" ? upcomingBookings : historyBookings).map((booking, index) => (
-                  <BookingRow key={`${bookingNo(booking)}-${index}`} booking={booking} onCancel={() => cancelBooking(booking)} onClick={() => { setAccessQr({ purpose: "member" }); setPendingBooking(booking); go("scan"); }} />
+                  <BookingRow now={now} key={`${bookingNo(booking)}-${index}`} booking={booking} onCancel={() => setCancelTarget(booking)} onClick={() => { setAccessQr({ purpose: "member" }); setPendingBooking(booking); go("scan"); }} />
                 ))}
+                {!(bookingTab === "up" ? upcomingBookings : historyBookings).length && <div className="club-empty"><strong>{bookingTab === "up" ? t("ยังไม่มีรายการจองที่กำลังจะมาถึง") : t("ยังไม่มีประวัติการจอง")}</strong><button onClick={() => go("sports")}>{t("จองสนาม")}</button></div>}
               </div>
             </div>
           )}
 
-          {screen === "gymnos" && <HubScreen title="Gymnos Hub" back={() => go("home")} items={servicePackages.length ? servicePackages.map(contentToPack) : classPacks.slice(0, 2)} onSelect={selectClass} extra={<button className="primary" onClick={() => go("fitness")}>💪 ดู Fitness Pack</button>} />}
-          {screen === "fitness" && <HubScreen title="Fitness Pack" back={() => go("gymnos")} items={(servicePackages.length ? servicePackages.map(contentToPack).filter((item) => item.screen === "fitness" || item.key.includes("fitness")) : [classPacks[0]])} onSelect={selectClass} extra={<TrainerStrip trainers={data.trainers} onOpen={(trainer) => { setSelectedTrainer(trainer); setTrainerDetail(true); go("trainer"); }} />} />}
-          {screen === "swim" && <SimplePack title="Swim Pack" icon="🏊" price={1200} back={() => go("home")} onBuy={(title, amount) => { setPendingItem({ title, amount, back: "swim", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />}
-          {screen === "hyrox" && <HubScreen title="HYROX" back={() => go("home")} items={packagesForScreen(servicePackages, "hyrox", [classPacks[1]])} onSelect={selectClass} extra={<Schedule title="HYROX Class Schedule" items={scheduleForScreen(classScheduleItems, "hyrox")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "HYROX Class"} · ${time}`, amount: Number(item?.price || 700), back: "hyrox", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
-          {screen === "pilates" && <HubScreen title="Pilates" back={() => go("home")} items={packagesForScreen(servicePackages, "pilates", [classPacks[2]])} onSelect={selectClass} extra={<Schedule title="Reformer Schedule" items={scheduleForScreen(classScheduleItems, "pilates")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Pilates Reformer"} · ${time}`, amount: Number(item?.price || 950), back: "pilates", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
-          {screen === "airfit" && <HubScreen title="Airfit" back={() => go("home")} items={packagesForScreen(servicePackages, "airfit", [classPacks[3]])} onSelect={selectClass} extra={<Schedule title="Airfit Slots" items={scheduleForScreen(classScheduleItems, "airfit")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Airfit"} · ${time}`, amount: Number(item?.price || 199), back: "airfit", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "gymnos" && <HubScreen title={t("Gymnos Hub")} back={() => go("home")} items={servicePackages.map(contentToPack)} onSelect={selectClass} extra={<button className="primary" onClick={() => go("fitness")}>{t("💪 ดู Fitness Pack")}</button>} />}
+          {screen === "fitness" && <HubScreen title={t("Fitness Pack")} back={() => go("gymnos")} items={servicePackages.map(contentToPack).filter((item) => item.screen === "fitness" || item.key.includes("fitness"))} onSelect={selectClass} extra={<TrainerStrip trainers={data.trainers} onOpen={(trainer) => { setSelectedTrainer(trainer); setTrainerDetail(true); go("trainer"); }} />} />}
+          {screen === "swim" && <HubScreen title={t("Swim Pack")} back={() => go("home")} items={packagesForScreen(servicePackages, "swim")} onSelect={selectClass} />}
+          {screen === "hyrox" && <HubScreen title="HYROX" back={() => go("home")} items={packagesForScreen(servicePackages, "hyrox")} onSelect={selectClass} extra={<Schedule title={t("HYROX Class Schedule")} items={scheduleForScreen(classScheduleItems, "hyrox")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "HYROX Class"} · ${time}`, amount: Number(item?.price || 700), back: "hyrox", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "pilates" && <HubScreen title={t("Pilates")} back={() => go("home")} items={packagesForScreen(servicePackages, "pilates")} onSelect={selectClass} extra={<Schedule title={t("Reformer Schedule")} items={scheduleForScreen(classScheduleItems, "pilates")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Pilates Reformer"} · ${time}`, amount: Number(item?.price || 950), back: "pilates", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "airfit" && <HubScreen title="Airfit" back={() => go("home")} items={packagesForScreen(servicePackages, "airfit")} onSelect={selectClass} extra={<Schedule title={t("Airfit Slots")} items={scheduleForScreen(classScheduleItems, "airfit")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Airfit"} · ${time}`, amount: Number(item?.price || 199), back: "airfit", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
 
           {screen === "promotion" && (
             <div className="page">
-              <Top title="Promotion" onBack={() => go("home")} />
-              <div className="promo-card"><span>🎁 MEMBER DEAL</span><strong>{managedSlides[0]?.title || "สมัคร Premium รับ coin x2 และส่วนลดคลาส"}</strong><button onClick={() => go((managedSlides[0]?.targetScreen as Screen) || "plans")}>📦 {managedSlides[0]?.actionLabel || "ดูแพ็กเกจ"}</button></div>
-              <SectionTitle title="ดีลประจำสัปดาห์" />
+              <Top title={t("Promotion")} onBack={() => go("home")} />
+              {managedSlides[0] ? <div className="promo-card"><span>{t("MEMBER DEAL")}</span><strong>{t(managedSlides[0].title)}</strong><button onClick={() => go((managedSlides[0].targetScreen as Screen) || "plans")}>{t(managedSlides[0].actionLabel) || t("ดูแพ็กเกจ")}</button></div> : <Empty text={t("ยังไม่มีโปรโมชั่นประกาศในขณะนี้")} />}
+              <SectionTitle title={t("ดีลประจำสัปดาห์")} />
               <div className="list">
-                {(servicePackages.length ? servicePackages.map(contentToPack) : classPacks).map((item) => <button key={item.key} onClick={() => selectClass(item)}>{item.icon} {item.name}<small>{item.desc} · {money(item.price)} ฿</small></button>)}
+                {servicePackages.map(contentToPack).map((item) => <button key={item.key} onClick={() => selectClass(item)}>{item.icon} {t(item.name)}<small>{t(item.desc)} · {money(item.price)} ฿</small></button>)}
               </div>
             </div>
           )}
 
           {screen === "livetv" && (
             <div className="page">
-              <Top title="Live TV" onBack={() => go("home")} />
-              <div className="tv-stage"><span>LIVE</span><strong>PPA Arena Channel</strong><small>{liveItems[0]?.body || "Basketball Open Run · Court A"}</small></div>
+              <Top title={t("Live TV")} onBack={() => go("home")} />
               <div className="list compact">
-                {(liveItems.length ? liveItems : []).map((item) => <button key={item.id}>{item.icon} {item.title}<small>{item.subtitle || item.body || "-"}</small></button>)}
-                {!liveItems.length ? <><button>🏀 Court A Live<small>กำลังถ่ายทอด</small></button><button>🏸 Badminton Buffet Rank<small>เริ่ม 18:00</small></button><button>🔥 HYROX Training<small>Replay ล่าสุด</small></button></> : null}
+                {liveItems.map((item) => <article className="club-broadcast" key={item.id}><strong>{t(item.title)}</strong><p>{t(item.subtitle) || t(item.body) || "-"}</p></article>)}
+                {!liveItems.length && <Empty text={t("ยังไม่มีตารางถ่ายทอดสดประกาศในขณะนี้")} />}
               </div>
             </div>
           )}
 
           {screen === "wallet" && (
             <div className="page">
-              <Top title="กระเป๋าเงิน" onBack={() => go("profile")} />
-              <BigBalance label="ยอดเงินคงเหลือ" value={`${money(data.wallet.balance)}`} unit="฿" />
+              <Top title={t("กระเป๋าเงิน")} onBack={() => go("profile")} />
+              <BigBalance label={t("ยอดเงินคงเหลือ")} value={`${money(data.wallet.balance)}`} unit="฿" />
               <div className="wallet-actions">
-                <button className="primary green" disabled={busy} onClick={() => topup(500)}>เติมเงิน</button>
+                <button className="primary green" disabled={busy} onClick={() => topup(500)}>{t("เติมเงิน")}</button>
               </div>
-              <div className="reward-label">ประวัติการทำรายการ</div>
-              <div className="tx-list">
-                <TxRow title="เติมเงิน" detail="วันนี้ · PromptPay" amount={`+${money(1000)} ฿`} plus />
-                <TxRow title={pendingBooking?.title || "จองสนามแบดมินตัน"} detail="15 พ.ค. 2569" amount={`-${money(200)} ฿`} />
-                <TxRow title="ซื้อคูปอง 10 ครั้ง" detail="12 พ.ค. 2569" amount={`-${money(2400)} ฿`} />
-                <TxRow title="คืนเงิน - ยกเลิกการจอง" detail="10 พ.ค. 2569" amount={`+${money(400)} ฿`} plus />
-                <TxRow title="เติมเงิน" detail="8 พ.ค. 2569 · บัตรเครดิต" amount={`+${money(3000)} ฿`} plus />
-              </div>
+              <div className="reward-label">{t("ประวัติการทำรายการ")}</div>
+              <Empty text={t("ยังไม่มีข้อมูลประวัติธุรกรรมให้แสดง")} />
             </div>
           )}
 
           {screen === "coupon" && (
             <div className="page">
-              <Top title="คูปอง" onBack={() => go("home")} />
-              <SectionTitle title="คูปองที่ซื้อได้" />
+              <Top title={t("คูปอง")} onBack={() => go("home")} />
+              <SectionTitle title={t("คูปองที่ซื้อได้")} />
               <div className="coupon-list">
                 {couponStore.map((coupon) => (
                   <CouponRow key={coupon.id} coupon={coupon} onClick={() => buyCoupon(coupon)} />
                 ))}
               </div>
-              <SectionTitle title="คูปองของฉัน" />
+              <SectionTitle title={t("คูปองของฉัน")} />
               <div className="prototype-list">
                 {data.coupons.length ? data.coupons.map((coupon) => (
                   <MenuItem
                     key={coupon.id}
                     icon="🎟️"
-                    title={coupon.name}
-                    meta={`เหลือ ${coupon.remainingUses} ครั้ง · เปิด QR`}
+                    title={t(coupon.name)}
+                    meta={t("เหลือ {{value0}} ครั้ง · เปิด QR", { value0: coupon.remainingUses })}
                     onClick={() => { setPendingBooking(null); setAccessQr({ purpose: "coupon", couponId: coupon.id, title: coupon.name }); go("scan"); }}
                   />
-                )) : <Empty text="ยังไม่มีคูปอง" />}
+                )) : <Empty text={t("ยังไม่มีคูปอง")} />}
               </div>
             </div>
           )}
 
           {screen === "reward" && (
             <div className="page">
-              <Top title="แลกรางวัล" icon="🪙" onBack={() => go("home")} />
+              <Top title={t("แลกรางวัล")} icon="🪙" onBack={() => go("home")} />
               <div className="coin-balance-card">
-                <span>Coin สะสมของฉัน</span>
+                <span>{t("Coin สะสมของฉัน")}</span>
                 <strong>🪙 {data.wallet.coinBalance}</strong>
               </div>
-              <div className="reward-label">รางวัลที่แลกได้</div>
+              <div className="reward-label">{t("รางวัลที่แลกได้")}</div>
               <div className="coin-reward-list">
                 {coinRewards.map((reward) => {
                   const disabled = data.wallet.coinBalance < reward.cost;
@@ -1101,65 +1002,63 @@ export function PpaApp() {
                     <button
                       className={disabled ? "disabled" : ""}
                       key={reward.name}
-                      onClick={() => notice(disabled ? `🪙 Coin ไม่พอ - ต้องการอีก ${reward.cost - data.wallet.coinBalance} เหรียญ` : `🎁 รับ QR สำหรับ ${reward.name}`)}
+                      onClick={() => notice(disabled ? t("🪙 Coin ไม่พอ - ต้องการอีก {{value0}} เหรียญ", { value0: reward.cost - data.wallet.coinBalance }) : t("🎁 รับ QR สำหรับ {{value0}}", { value0: t(reward.name) }))}
                     >
                       <div>
-                        <b>{reward.icon} {reward.name}</b>
-                        <small>{reward.detail}</small>
+                        <b>{reward.icon} {t(reward.name)}</b>
+                        <small>{t(reward.detail)}</small>
                       </div>
                       <span>🪙 {reward.cost}</span>
                     </button>
                   );
                 })}
               </div>
-              <p className="reward-hint">แตะรางวัลเพื่อรับ QR/โค้ดยื่นให้เจ้าหน้าที่หน้าคลับ</p>
+              <p className="reward-hint">{t("แตะรางวัลเพื่อรับ QR/โค้ดยื่นให้เจ้าหน้าที่หน้าคลับ")}</p>
             </div>
           )}
 
           {screen === "membership" && (
             <div className="page">
-              <Top title="สมาชิกของฉัน" onBack={() => go("home")} />
+              <Top title={t("สมาชิกของฉัน")} onBack={() => go("home")} />
               <button className="member-card premium-card" onClick={() => go("scan")}>
                 <div>
-                  <span>PREMIUM MEMBER</span>
+                  <span>{t(activeMembership?.planName) || t("PPA MEMBER")}</span>
                   <strong>{data.user.memberCode}</strong>
-                  <small>{data.user.displayName || "PPA Member"} · {activeMembership ? `Active ถึง ${membershipExpiry}` : "ยังไม่มีแพ็กเกจ active"}</small>
+                  <small>{data.user.displayName || t("PPA Member")} · {activeMembership ? t("Active ถึง {{value0}}", { value0: membershipExpiry }) : t("ยังไม่มีแพ็กเกจ active")}</small>
                 </div>
-                <div className="mini-qr">
-                  <div className="qr-mini-grid">{Array.from({ length: 81 }).map((_, i) => <i key={i} className={(i * 7 + qrSeconds) % 5 === 0 ? "w" : ""} />)}</div>
-                </div>
+                <span className="member-qr-link"><QrCode size={28} aria-hidden="true" /><small>{t("เปิด QR")}</small></span>
               </button>
               <div className="prototype-list">
-                <MenuItem icon="📦" title="แพ็กเกจของฉัน" onClick={() => go("plans")} />
-                <MenuItem icon="🧾" title="ประวัติการซื้อ" onClick={() => go("mybooking")} />
-                <MenuItem icon="🚪" title="การเข้าใช้บริการ" onClick={() => go("checkin")} />
-                <MenuItem icon="🎟️" title="คูปองของฉัน" onClick={() => go("coupon")} />
-                <MenuItem icon="⭐" title="คะแนนสะสม" onClick={() => go("reward")} />
+                <MenuItem icon="📦" title={t("แพ็กเกจของฉัน")} onClick={() => go("plans")} />
+                <MenuItem icon="🧾" title={t("ประวัติการซื้อ")} onClick={() => go("mybooking")} />
+                <MenuItem icon="🚪" title={t("การเข้าใช้บริการ")} onClick={() => go("checkin")} />
+                <MenuItem icon="🎟️" title={t("คูปองของฉัน")} onClick={() => go("coupon")} />
+                <MenuItem icon="⭐" title={t("คะแนนสะสม")} onClick={() => go("reward")} />
               </div>
-              <SectionTitle title="สิทธิ์ที่ใช้งานได้" />
+              <SectionTitle title={t("สิทธิ์ที่ใช้งานได้")} />
               <div className="prototype-list">
                 {data.entitlements.length ? data.entitlements.slice(0, 6).map((item) => (
                   <MenuItem
                     key={item.id}
                     icon="🎫"
-                    title={item.title}
-                    meta={`${item.entitlementType}${item.remainingUses ? ` · เหลือ ${item.remainingUses}` : ""}${item.endsAt ? ` · ถึง ${new Date(item.endsAt).toLocaleDateString("th-TH")}` : ""} · เปิด QR`}
+                    title={t(item.title)}
+                    meta={t("{{value0}}{{value1}}{{value2}} · เปิด QR", { value0: item.entitlementType, value1: item.remainingUses ? t(" · เหลือ {{value0}}", { value0: item.remainingUses }) : "", value2: item.endsAt ? t(" · ถึง {{value0}}", { value0: new Date(item.endsAt).toLocaleDateString(localeTag()) }) : "" })}
                     onClick={() => { setPendingBooking(null); setAccessQr({ purpose: "entitlement", entitlementId: item.id, title: item.title }); go("scan"); }}
                   />
-                )) : <Empty text="ยังไม่มีสิทธิ์แพ็กเกจ" />}
+                )) : <Empty text={t("ยังไม่มีสิทธิ์แพ็กเกจ")} />}
               </div>
             </div>
           )}
 
           {screen === "plans" && (
             <div className="page">
-              <Top title="เลือกแพ็กเกจ" onBack={() => go("membership")} />
+              <Top title={t("เลือกแพ็กเกจ")} onBack={() => go("membership")} />
               <div className="fit-list">
                 {(membershipPlans.length ? membershipPlans : []).map((item) => (
-                  <FitItem key={item.slug} title={item.title} text={item.subtitle || item.body || "เข้าใช้บริการตามสิทธิ์สมาชิก"} price={`${money(item.price)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ contentId: item.id, title: item.title, amount: Number(item.price), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
+                  <FitItem key={item.slug} title={t(item.title)} text={t(item.subtitle) || t(item.body) || t("เข้าใช้บริการตามสิทธิ์สมาชิก")} price={`${money(item.price)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ contentId: item.id, title: item.title, amount: Number(item.price), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
                 ))}
                 {!membershipPlans.length ? ([["Monthly", 1900], ["Quarterly", 5100], ["Annual", 18000]] as const).map(([name, amount]) => (
-                  <FitItem key={name} title={`แพ็กเกจ ${name}`} text="เข้าใช้บริการตามสิทธิ์สมาชิก" price={`${money(amount)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ title: `PPA Premium ${name}`, amount: Number(amount), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
+                  <FitItem key={name} title={t("แพ็กเกจ {{value0}}", { value0: name })} text={t("เข้าใช้บริการตามสิทธิ์สมาชิก")} price={`${money(amount)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ title: `PPA Premium ${name}`, amount: Number(amount), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
                 )) : null}
               </div>
             </div>
@@ -1169,23 +1068,23 @@ export function PpaApp() {
             <div className="page trainer-page">
               {!trainerDetail ? (
                 <>
-                  <Top title="เทรนเนอร์" icon="🧑‍🏫" />
-                  <div className="reward-label">เทรนเนอร์ประจำของฉัน</div>
+                  <Top title={t("เทรนเนอร์")} icon="🧑‍🏫" />
+                  <div className="reward-label">{t("เทรนเนอร์ประจำของฉัน")}</div>
                   {myTrainer ? (
                     <button className="my-trainer-card" onClick={() => { setSelectedTrainer(myTrainer); setTrainerDetail(true); }}>
                       <TrainerAvatar trainer={myTrainer} className="my-trainer-ava" />
-                      <span className="my-trainer-info"><b>{myTrainer.name}</b><small>{myTrainer.role} · {myTrainer.nickname}</small></span>
-                      <em>ประจำ</em>
+                      <span className="my-trainer-info"><b>{myTrainer.name}</b><small>{t(myTrainer.role)} · {myTrainer.nickname}</small></span>
+                      <em>{t("ประจำ")}</em>
                       <i onClick={(event) => { event.stopPropagation(); setMyTrainerSlug(""); notice("ยกเลิกเทรนเนอร์ประจำแล้ว"); }}>×</i>
                     </button>
                   ) : (
                     <div className="trainer-empty">
                       <div>🧑‍🏫</div>
-                      <b>ยังไม่มีเทรนเนอร์ประจำ</b>
-                      <small>เลือกเทรนเนอร์ที่ต้องการจากรายชื่อด้านล่าง</small>
+                      <b>{t("ยังไม่มีเทรนเนอร์ประจำ")}</b>
+                      <small>{t("เลือกเทรนเนอร์ที่ต้องการจากรายชื่อด้านล่าง")}</small>
                     </div>
                   )}
-                  <div className="sec-head"><strong>เลือกเทรนเนอร์</strong></div>
+                  <div className="sec-head"><strong>{t("เลือกเทรนเนอร์")}</strong></div>
                   <div className="prototype-list">
                     {data.trainers.map((trainer) => (
                       <button
@@ -1194,34 +1093,34 @@ export function PpaApp() {
                         onClick={() => { setSelectedTrainer(trainer); setTrainerDetail(true); setTrainerContactOpen(false); setTrainerPlanIndex(null); setTrainerDayIndex(0); }}
                       >
                         <TrainerAvatar trainer={trainer} />
-                        <span><b>{trainer.name} ({trainer.nickname})</b><small>{trainer.role} · {trainerSpecialties(trainer).slice(0, 2).join(" · ") || `ประสบการณ์ ${trainer.experience}`} · เริ่มต้น {money(trainer.startPrice)} ฿</small></span>
+                        <span><b>{trainer.name} ({trainer.nickname})</b><small>{t(trainer.role)} · {trainerSpecialties(trainer).slice(0, 2).join(" · ") || t("ประสบการณ์ {{value0}}", { value0: t(trainer.experience) })} {t("· เริ่มต้น")} {money(trainer.startPrice)} ฿</small></span>
                       </button>
                     ))}
                   </div>
                 </>
               ) : selectedTrainer && (
                 <>
-                  <Top title="โปรไฟล์เทรนเนอร์" onBack={() => setTrainerDetail(false)} />
+                  <Top title={t("โปรไฟล์เทรนเนอร์")} onBack={() => setTrainerDetail(false)} />
                   <div className="trainer-hero">
                     <TrainerAvatar trainer={selectedTrainer} className="trainer-ava" />
                     <div>
                       <b>{selectedTrainer.name}</b>
-                      <div>ชื่อเล่น: {selectedTrainer.nickname} · {selectedTrainer.role}</div>
+                      <div>{t("ชื่อเล่น:")} {selectedTrainer.nickname} · {t(selectedTrainer.role)}</div>
                     </div>
                   </div>
                   <div className="trainer-stats">
-                    <div><b>{selectedTrainer.experience}</b><small>ประสบการณ์</small></div>
-                    <div><b>{selectedTrainer.zodiac || "-"}</b><small>ราศี · เกิด {selectedTrainer.birthYear || "-"}</small></div>
-                    <div><b>{selectedTrainer.bloodType || "-"}</b><small>กรุ๊ปเลือด</small></div>
+                    <div><b>{t(selectedTrainer.experience)}</b><small>{t("ประสบการณ์")}</small></div>
+                    <div><b>{selectedTrainer.zodiac || "-"}</b><small>{t("ราศี · เกิด")} {selectedTrainer.birthYear || "-"}</small></div>
+                    <div><b>{selectedTrainer.bloodType || "-"}</b><small>{t("กรุ๊ปเลือด")}</small></div>
                   </div>
-                  {selectedTrainer.bio ? <p className="trainer-bio">{selectedTrainer.bio}</p> : null}
+                  {t(selectedTrainer.bio) ? <p className="trainer-bio">{t(selectedTrainer.bio)}</p> : null}
                   {trainerSpecialties(selectedTrainer).length ? (
                     <div className="trainer-specialties">
                       {trainerSpecialties(selectedTrainer).map((item) => <span key={item}>{item}</span>)}
                     </div>
                   ) : null}
                   <div className="cert-card">
-                    <div className="reward-label">สถาบันที่มีเกียรติบัตร</div>
+                    <div className="reward-label">{t("สถาบันที่มีเกียรติบัตร")}</div>
                     <ul>
                       {trainerCerts(selectedTrainer).map((cert) => <li key={cert}>{cert}</li>)}
                     </ul>
@@ -1231,37 +1130,38 @@ export function PpaApp() {
                     onClick={() => {
                       const isMine = myTrainerSlug === selectedTrainer.slug;
                       setMyTrainerSlug(isMine ? "" : selectedTrainer.slug);
-                      notice(isMine ? `ยกเลิก ${selectedTrainer.name} จากเทรนเนอร์ประจำแล้ว` : `ตั้ง ${selectedTrainer.name} เป็นเทรนเนอร์ประจำแล้ว`);
+                      notice(t(isMine ? "ยกเลิก {{value0}} จากเทรนเนอร์ประจำแล้ว" : "ตั้ง {{value0}} เป็นเทรนเนอร์ประจำแล้ว", { value0: selectedTrainer.name }));
                     }}
                   >
-                    {myTrainerSlug === selectedTrainer.slug ? "✕ ยกเลิกเทรนเนอร์ประจำ" : "ตั้งเป็นเทรนเนอร์ประจำ"}
+                    {myTrainerSlug === selectedTrainer.slug ? t("✕ ยกเลิกเทรนเนอร์ประจำ") : t("ตั้งเป็นเทรนเนอร์ประจำ")}
                   </button>
-                  <button className="primary green" onClick={() => setTrainerContactOpen((open) => !open)}>📞 ติดต่อแอดมิน</button>
+                  <button className="primary green" onClick={() => setTrainerContactOpen((open) => !open)}>{t("📞 ติดต่อแอดมิน")}</button>
                   {trainerContactOpen && (
                     <div className="trainer-contact-card">
-                      <span>เบอร์ติดต่อแอดมิน PPA Power Play</span>
+                      <span>{t("เบอร์ติดต่อแอดมิน PPA Power Play")}</span>
                       <b>{selectedTrainer.contactPhone || "02-123-4567"}</b>
-                      <p>{selectedTrainer.socialLine ? `LINE: ${selectedTrainer.socialLine} · ` : ""}แจ้งชื่อเทรนเนอร์ที่สนใจกับแอดมิน เพื่อสอบถามแพ็กเกจและนัดเวลาเทรน</p>
+                      <p>{selectedTrainer.socialLine ? `LINE: ${selectedTrainer.socialLine} · ` : ""}{t("แจ้งชื่อเทรนเนอร์ที่สนใจกับแอดมิน เพื่อสอบถามแพ็กเกจและนัดเวลาเทรน")}</p>
                     </div>
                   )}
-                  <div className="sec-head"><strong>แพ็กเกจเทรนส่วนตัว</strong></div>
+                  <div className="sec-head"><strong>{t("แพ็กเกจเทรนส่วนตัว")}</strong></div>
                   <div className="fit-list">
                     {trainerPlans(selectedTrainer).map((plan, index) => (
                       <button
                         className={trainerPlanIndex === index ? "fit-item-ui sel-pkg" : "fit-item-ui"}
                         key={plan.title}
-                        onClick={() => { setTrainerPlanIndex(index); notice(`เลือกแพ็กเกจ ${plan.title} แล้ว - เลือกเวลาที่ว่างด้านล่าง`); }}
+                        onClick={() => { setTrainerPlanIndex(index); notice(t("เลือกแพ็กเกจ {{value0}} แล้ว - เลือกเวลาที่ว่างด้านล่าง", { value0: t(plan.title) })); }}
                       >
-                        <div><b>{plan.title}</b><small>{plan.text}</small></div>
+                        <div><b>{t(plan.title)}</b><small>{t(plan.text)}</small></div>
                         <strong>{money(plan.price)} ฿</strong>
                       </button>
                     ))}
                   </div>
-                  <div className="sec-head"><strong>ตารางว่าง</strong></div>
+                  <div className="sec-head"><strong>{t("ตารางว่าง")}</strong></div>
+                  {!selectedTrainerSchedule.length && <Empty text={t("เทรนเนอร์ยังไม่ได้ประกาศตารางว่าง")} />}
                   <div className="trainer-day-strip">
                     {selectedTrainerSchedule.map((item, index) => (
                       <button className={trainerDayIndex === index ? "on" : ""} key={item.day} onClick={() => setTrainerDayIndex(index)}>
-                        <small>{item.day}</small><b>{item.date || "-"}</b>
+                        <small>{t(item.day)}</small><b>{item.date || "-"}</b>
                       </button>
                     ))}
                   </div>
@@ -1284,7 +1184,7 @@ export function PpaApp() {
                             go("payment");
                           }}
                         >
-                          {slot.time}<small>{full ? "ไม่ว่าง" : "ว่าง"}</small>
+                          {slot.time}<small>{full ? t("ไม่ว่าง") : t("ว่าง")}</small>
                         </button>
                       );
                     })}
@@ -1296,40 +1196,37 @@ export function PpaApp() {
 
           {screen === "groups" && (
             <div className="page">
-              <Top title="Find Your Game" onBack={() => go("home")} />
+              <Top title={t("Find Your Game")} onBack={() => go("home")} />
               <div className="field-stack">
-                <label className="field">ชื่อก๊วน<input maxLength={160} value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="เช่น PPA Evening Badminton" /></label>
-                <label className="field">ระดับ<select value={groupLevel} onChange={(event) => setGroupLevel(event.target.value)}>{levelChoices.map((level) => <option key={level}>{level}</option>)}</select></label>
-                <button className="primary" disabled={busy} onClick={createGroup}>👥 สร้างก๊วน</button>
+                <label className="field">{t("ชื่อก๊วน")}<input maxLength={160} value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={t("เช่น PPA Evening Badminton")} /></label>
+                <label className="field">{t("ระดับ")}<select value={groupLevel} onChange={(event) => setGroupLevel(event.target.value)}>{levelChoices.map((level) => <option key={level} value={level}>{t(level)}</option>)}</select></label>
+                <button className="primary" disabled={busy} onClick={createGroup}>{t("👥 สร้างก๊วน")}</button>
               </div>
-              <SectionTitle title="ก๊วนล่าสุด" />
+              <SectionTitle title={t("ก๊วนล่าสุด")} />
               <div className="list">
-                {data.groups.length ? data.groups.map((group) => <button key={group.id}>👥 {group.name}<small>{group.sportName} · {group.levelName}</small></button>) : <Empty text="ยังไม่มีก๊วน" />}
+                {data.groups.length ? data.groups.map((group) => <button key={group.id}>👥 {group.name}<small>{t(group.sportName)} · {t(group.levelName)}</small></button>) : <Empty text={t("ยังไม่มีก๊วน")} />}
               </div>
             </div>
           )}
 
           {screen === "notifications" && (
             <div className="page">
-              <Top title="การแจ้งเตือน" onBack={() => go("home")} />
-              <div className="seg">
-                <button className="on">ทั้งหมด</button><button>ระบบ</button><button>โปรโมชั่น</button>
-              </div>
+              <Top title={t("การแจ้งเตือน")} onBack={() => go("home")} />
               <div className="noti-list">
                 {data.notifications.length ? data.notifications.map((item) => (
-                  <NotiRow key={item.id} icon={item.status === "unread" ? "🔔" : "✓"} title={item.title} body={item.body} unread={item.status === "unread"} />
-                )) : <Empty text="ยังไม่มีแจ้งเตือน" />}
+                  <NotiRow key={item.id} icon={item.status === "unread" ? "🔔" : "✓"} title={t(item.title)} body={item.body} unread={item.status === "unread"} />
+                )) : <Empty text={t("ยังไม่มีแจ้งเตือน")} />}
               </div>
             </div>
           )}
 
           {screen === "noti" && (
             <div className="page">
-              <Top title="การแจ้งเตือน" onBack={() => go("home")} />
+              <Top title={t("การแจ้งเตือน")} onBack={() => go("home")} />
               <div className="noti-list">
                 {data.notifications.length ? data.notifications.map((item) => (
-                  <NotiRow key={item.id} icon={item.status === "unread" ? "🔔" : "✓"} title={item.title} body={item.body} unread={item.status === "unread"} />
-                )) : <Empty text="ยังไม่มีแจ้งเตือน" />}
+                  <NotiRow key={item.id} icon={item.status === "unread" ? "🔔" : "✓"} title={t(item.title)} body={item.body} unread={item.status === "unread"} />
+                )) : <Empty text={t("ยังไม่มีแจ้งเตือน")} />}
               </div>
             </div>
           )}
@@ -1366,8 +1263,8 @@ export function PpaApp() {
 
           {screen === "classschedule" && (
             <div className="page">
-              <Top title="ตารางคลาส" onBack={() => go("home")} />
-              <Schedule title="Class Schedule" items={classScheduleItems} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Class"} · ${time}`, amount: Number(item?.price || 0), back: "classschedule", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />
+              <Top title={t("ตารางคลาส")} onBack={() => go("home")} />
+              <Schedule title={t("Class Schedule")} items={classScheduleItems} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Class"} · ${time}`, amount: Number(item?.price || 0), back: "classschedule", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />
             </div>
           )}
 
@@ -1375,54 +1272,51 @@ export function PpaApp() {
 
           {screen === "profile" && (
             <div className="page">
-              <Top title="โปรไฟล์" />
+              <Top title={t("โปรไฟล์")} />
               <div className="profile-head">
-                <button className="avatar profile-avatar" onClick={() => notice("แตะที่ข้อมูลส่วนตัวเพื่อแก้ไขรูป/ชื่อ")}>
-                  {data.user.avatar || "💪"}<span>📷</span>
-                </button>
-                <button className="profile-name" onClick={() => notice("แก้ไขข้อมูลได้ที่เมนูข้อมูลส่วนตัว")}>{profileName || data.user.displayName} ✏️</button>
-                <small>📞 081-234-5678</small>
-                <em>MEMBER ID · {data.user.memberCode}</em>
+                <div className="avatar profile-avatar" aria-hidden="true">{data.user.avatar || memberInitial(data.user.displayName)}</div>
+                <h2 className="profile-name">{data.user.displayName}</h2>
+                <small>{t(activeMembership?.planName) || t("สมาชิก PPA")}</small>
+                <em>{t("MEMBER ID ·")} {data.user.memberCode}</em>
               </div>
               <div className="prototype-list">
-                <MenuItem icon="👤" title="ข้อมูลส่วนตัว" onClick={() => notice("แก้ไขข้อมูลในช่องชื่อที่แสดงได้เลย")} />
-                <MenuItem icon="👛" title="กระเป๋าเงิน & การชำระเงิน" onClick={() => go("wallet")} />
-                <MenuItem icon="🎖️" title="สมาชิกและแพ็กเกจ" onClick={() => go("membership")} />
-                <MenuItem icon="📅" title="การจองของฉัน" onClick={() => go("mybooking")} />
-                <MenuItem icon="🎓" title="คู่มือการใช้งาน" meta="Buffet Rank · ก๊วน · เหรียญ" onClick={() => setTutorial(1)} />
-                <MenuItem icon="🔔" title="การแจ้งเตือน" onClick={() => go("notifications")} />
-                <MenuItem icon="❓" title="ช่วยเหลือ & ติดต่อเรา" onClick={() => go("help")} />
-                <MenuItem icon="🚪" title="ออกจากระบบ" onClick={() => go("splash")} />
+                <MenuItem icon="👛" title={t("กระเป๋าเงิน & การชำระเงิน")} onClick={() => go("wallet")} />
+                <MenuItem icon="🎖️" title={t("สมาชิกและแพ็กเกจ")} onClick={() => go("membership")} />
+                <MenuItem icon="📅" title={t("การจองของฉัน")} onClick={() => go("mybooking")} />
+                <MenuItem icon="🎓" title={t("คู่มือการใช้งาน")} meta={t("Buffet Rank · ก๊วน · เหรียญ")} onClick={() => setTutorial(1)} />
+                <MenuItem icon="🔔" title={t("การแจ้งเตือน")} onClick={() => go("notifications")} />
+                <MenuItem icon="❓" title={t("ช่วยเหลือ & ติดต่อเรา")} onClick={() => go("help")} />
+                <MenuItem icon="🚪" title={t("ออกจากระบบ")} onClick={logout} />
               </div>
             </div>
           )}
 
           {screen === "help" && (
             <div className="page help-page">
-              <Top title="ช่วยเหลือ & ติดต่อเรา" icon="❓" onBack={() => go("profile")} />
+              <Top title={t("ช่วยเหลือ & ติดต่อเรา")} icon="❓" onBack={() => go("profile")} />
               <div className="prototype-list">
-                <MenuItem icon="📞" title="โทรหาเรา" meta="02-123-4567 · 08:00-21:00" onClick={() => openSupport("tel")} />
-                <MenuItem icon="✉️" title="อีเมล" meta="support@ppapowerplay.com" onClick={() => openSupport("mail")} />
-                <MenuItem icon="🎓" title="คู่มือการใช้งาน" meta="จอง · ก๊วน · เหรียญ" onClick={() => { go("home"); window.setTimeout(() => setTutorial(1), 250); }} />
-                <MenuItem icon="💬" title="LINE Official" meta="@ppapowerplay" onClick={() => openSupport("line")} />
+                <MenuItem icon="📞" title={t("โทรหาเรา")} meta="02-123-4567 · 08:00-21:00" onClick={() => openSupport("tel")} />
+                <MenuItem icon="✉️" title={t("อีเมล")} meta="support@ppapowerplay.com" onClick={() => openSupport("mail")} />
+                <MenuItem icon="🎓" title={t("คู่มือการใช้งาน")} meta={t("จอง · ก๊วน · เหรียญ")} onClick={() => { go("home"); window.setTimeout(() => setTutorial(1), 250); }} />
+                <MenuItem icon="💬" title={t("LINE Official")} meta="@ppapowerplay" onClick={() => openSupport("line")} />
               </div>
               <div className="help-info">
                 <b>PPA Power Play Sport Club</b>
-                <small>เปิดทุกวัน 08:00 - 21:00 น.</small>
+                <small>{t("เปิดทุกวัน 08:00 - 21:00 น.")}</small>
               </div>
               <div className="help-faq">
-                <div className="reward-label">คำถามที่พบบ่อย</div>
+                <div className="reward-label">{t("คำถามที่พบบ่อย")}</div>
                 <details>
-                  <summary>QR เข้าใช้บริการหมดอายุทำอย่างไร?</summary>
-                  <p>เปิดหน้า Scan ใหม่ ระบบจะสร้าง QR อายุ 20 วินาทีเพื่อป้องกันการแชร์ต่อ</p>
+                  <summary>{t("QR เข้าใช้บริการหมดอายุทำอย่างไร?")}</summary>
+                  <p>{t("เปิดหน้า Scan ใหม่ ระบบจะสร้าง QR อายุ 20 วินาทีเพื่อป้องกันการแชร์ต่อ")}</p>
                 </details>
                 <details>
-                  <summary>จองแล้วต้องชำระภายในกี่นาที?</summary>
-                  <p>ระบบกันสนามไว้ 15 นาที หากไม่ชำระเงิน รายการจะหมดอายุอัตโนมัติ</p>
+                  <summary>{t("จองแล้วต้องชำระภายในกี่นาที?")}</summary>
+                  <p>{t("ระบบกันสนามไว้ 15 นาที หากไม่ชำระเงิน รายการจะหมดอายุอัตโนมัติ")}</p>
                 </details>
                 <details>
-                  <summary>ต้องการเปลี่ยนรอบหรือยกเลิกติดต่อที่ไหน?</summary>
-                  <p>ติดต่อ LINE Official หรือโทรหาแอดมิน พร้อมแจ้งเลข booking ในหน้าประวัติ</p>
+                  <summary>{t("ต้องการเปลี่ยนรอบหรือยกเลิกติดต่อที่ไหน?")}</summary>
+                  <p>{t("ติดต่อ LINE Official หรือโทรหาแอดมิน พร้อมแจ้งเลข booking ในหน้าประวัติ")}</p>
                 </details>
               </div>
             </div>
@@ -1430,29 +1324,29 @@ export function PpaApp() {
 
           {screen === "admin" && (
             <div className="page">
-              <Top title="Admin" onBack={() => go("profile")} />
+              <Top title={t("Admin")} onBack={() => go("profile")} />
               <div className="admin-grid">
-                <Stat label="Bookings" value={data.bookings.length} />
-                <Stat label="Coupons" value={data.coupons.length} />
-                <Stat label="Groups" value={data.groups.length} />
-                <Stat label="Unread" value={unreadCount} />
+                <Stat label={t("Bookings")} value={data.bookings.length} />
+                <Stat label={t("Coupons")} value={data.coupons.length} />
+                <Stat label={t("Groups")} value={data.groups.length} />
+                <Stat label={t("Unread")} value={unreadCount} />
               </div>
-              <div className="secure-note"><strong>Read-only operation panel</strong><small>หน้านี้แสดงภาพรวมใน client เท่านั้น งานจัดการจริงควรทำผ่าน backend role-based access control</small></div>
-              <button className="primary" disabled={busy} onClick={() => refresh().then(() => notice("อัปเดตข้อมูลแล้ว"))}>↻ Refresh data</button>
+              <div className="secure-note"><strong>{t("Read-only operation panel")}</strong><small>{t("หน้านี้แสดงภาพรวมใน client เท่านั้น งานจัดการจริงควรทำผ่าน backend role-based access control")}</small></div>
+              <button className="primary" disabled={busy} onClick={() => refresh().then(() => notice("อัปเดตข้อมูลแล้ว"))}>{t("↻ Refresh data")}</button>
             </div>
           )}
         </div>
-        <nav className="tabbar" id="tabbar">
+        <nav className="tabbar" id="tabbar" aria-label={t("เมนูหลัก")}>
           {tabs.map(([id, icon, label]) => (
-            <button className={screen === id ? "on" : ""} key={id} onClick={() => { if (id === "trainer") setTrainerDetail(false); go(id); }}>
+            <button className={screen === id ? "on" : ""} aria-current={screen === id ? "page" : undefined} key={id} onClick={() => { if (id === "trainer") setTrainerDetail(false); go(id); }}>
               <TabBarIcon name={icon} />
-              <span>{label}</span>
+              <span>{t(label)}</span>
             </button>
           ))}
         </nav>
+        {cancelTarget && <AdminDialog onClose={() => { if (!busy) setCancelTarget(null); }}><section className="member-confirm"><h2>{t("ยกเลิกการจองนี้?")}</h2><p>{t(cancelTarget.title)}</p><small>{t("รายการที่ชำระแล้ว กรุณาติดต่อเจ้าหน้าที่เพื่อตรวจสอบเงื่อนไขการคืนเงิน")}</small><div><button className="ghost" disabled={busy} onClick={() => setCancelTarget(null)}>{t("เก็บการจองไว้")}</button><button className="danger-action" disabled={busy} onClick={() => cancelBooking(cancelTarget)}>{busy ? t("กำลังยกเลิก…") : t("ยืนยันยกเลิก")}</button></div></section></AdminDialog>}
         {tutorial > 0 && <Tutorial step={tutorial} onNext={() => setTutorial(tutorial >= 4 ? 0 : tutorial + 1)} onSkip={() => setTutorial(0)} />}
-        {toast && <div className="toast">{toast}</div>}
-        {!tutorial && screen === "home" && <button className="guide-btn" onClick={() => setTutorial(1)}>?</button>}
+        {t(toast) && <div className="toast" role="status" aria-live="polite">{t(toast)}</div>}
       </section>
     </main>
   );
@@ -1462,6 +1356,7 @@ function LineGate({ blocked = false, embedded = false, liffId = "", error = fals
   const openUrl = liffId ? `https://liff.line.me/${liffId}` : "";
   return (
     <main className={embedded ? "phone line-gate embedded" : "line-gate"}>
+      <div className="gate-language"><LanguageSwitcher /></div>
       <div className="gate-grid" />
       <div className="gate-glow one" />
       <div className="gate-glow two" />
@@ -1475,24 +1370,24 @@ function LineGate({ blocked = false, embedded = false, liffId = "", error = fals
           <div className="gate-logo">PPA<span>.</span></div>
         </div>
         <div className="gate-copy">
-          <span className="gate-kicker">{blocked ? "LINE SECURE ACCESS" : "SPORT COMPLEX LOADING"}</span>
-          <h1>{error ? "โหลดข้อมูลไม่สำเร็จ" : blocked ? "เปิดผ่าน LINE เพื่อเข้าสู่ระบบสมาชิก" : "กำลังเตรียมสนามและข้อมูลสมาชิก"}</h1>
+          <span className="gate-kicker">{blocked ? t("LINE SECURE ACCESS") : t("SPORT COMPLEX LOADING")}</span>
+          <h1>{error ? t("โหลดข้อมูลไม่สำเร็จ") : blocked ? t("เปิดผ่าน LINE เพื่อเข้าสู่ระบบสมาชิก") : t("กำลังเตรียมสนามและข้อมูลสมาชิก")}</h1>
           <p>
             {blocked
-              ? "ยืนยันตัวตนด้วย LINE LIFF เพื่อเรียกข้อมูลเดิมของสมาชิกอย่างปลอดภัย แม้เปลี่ยนเครื่องก็ใช้บัญชีเดิมได้"
-              : "เชื่อมต่อโปรไฟล์ Wallet การจอง และสิทธิพิเศษของคุณแบบปลอดภัย"}
+              ? t("ยืนยันตัวตนด้วย LINE LIFF เพื่อเรียกข้อมูลเดิมของสมาชิกอย่างปลอดภัย แม้เปลี่ยนเครื่องก็ใช้บัญชีเดิมได้")
+              : t("เชื่อมต่อโปรไฟล์ Wallet การจอง และสิทธิพิเศษของคุณแบบปลอดภัย")}
           </p>
         </div>
         <div className="gate-status">
-          <div><b>LINE</b><small>{blocked ? "Required" : "Verifying"}</small></div>
-          <div><b>MEMBER</b><small>{blocked ? "Protected" : "Syncing"}</small></div>
-          <div><b>DATA</b><small>{blocked ? "Safe" : "Loading"}</small></div>
+          <div><b>LINE</b><small>{blocked ? t("Required") : t("Verifying")}</small></div>
+          <div><b>{t("MEMBER")}</b><small>{blocked ? t("Protected") : t("Syncing")}</small></div>
+          <div><b>{t("DATA")}</b><small>{blocked ? t("Safe") : t("Loading")}</small></div>
         </div>
         {!error && <div className="gate-progress"><span /></div>}
         <div className="gate-actions">
-          {error ? <button type="button" className="primary" onClick={onRetry}>ลองอีกครั้ง</button> : null}
-          {blocked && openUrl ? <a href={openUrl}>เปิดใน LINE</a> : null}
-          <small>{blocked ? "หากเปิดจาก Rich Menu แล้วยังเห็นหน้านี้ ให้ปิดหน้านี้แล้วเปิดจากแชต LINE OA อีกครั้ง" : "Secure member access in progress"}</small>
+          {error ? <button type="button" className="primary" onClick={onRetry}>{t("ลองอีกครั้ง")}</button> : null}
+          {blocked && openUrl ? <a href={openUrl}>{t("เปิดใน LINE")}</a> : null}
+          <small>{blocked ? t("หากเปิดจาก Rich Menu แล้วยังเห็นหน้านี้ ให้ปิดหน้านี้แล้วเปิดจากแชต LINE OA อีกครั้ง") : t("Secure member access in progress")}</small>
         </div>
       </section>
     </main>
@@ -1500,46 +1395,8 @@ function LineGate({ blocked = false, embedded = false, liffId = "", error = fals
 }
 
 function TabBarIcon({ name }: { name: TabIcon }) {
-  if (name === "home") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M3.5 10.5 12 3l8.5 7.5" />
-        <path d="M5.5 9.5V21h13V9.5" />
-      </svg>
-    );
-  }
-  if (name === "trainer") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 11.5a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2Z" />
-        <path d="M5 21c.8-4.1 3.1-6.2 7-6.2s6.2 2.1 7 6.2" />
-      </svg>
-    );
-  }
-  if (name === "scan") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 4h6v6H4z" />
-        <path d="M14 4h6v6h-6z" />
-        <path d="M4 14h6v6H4z" />
-        <path d="M15 15h2v2h-2z" />
-        <path d="M19 15h1v5h-5v-1" />
-      </svg>
-    );
-  }
-  if (name === "history") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M6.5 4.5h11v16L12 16.8l-5.5 3.7z" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 11.5a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2Z" />
-      <path d="M4.8 21c.8-4.3 3.2-6.4 7.2-6.4s6.4 2.1 7.2 6.4" />
-    </svg>
-  );
+  const Icon = { home: House, trainer: Dumbbell, scan: QrCode, history: CalendarDays, profile: UserRound }[name];
+  return <Icon size={24} strokeWidth={1.8} aria-hidden="true" />;
 }
 
 function iconFor(title: string, options: [string, string][]) {
@@ -1550,10 +1407,10 @@ function Top({ title, onBack, icon }: { title: string; onBack?: () => void; icon
   const marker = icon || iconFor(title, titleIcons);
   return (
     <header className="top">
-      {onBack ? <button className="back-btn" onClick={onBack}>‹</button> : <span />}
+      {onBack ? <button className="back-btn" title={t("ย้อนกลับ")} aria-label={t("ย้อนกลับ")} onClick={onBack}><ChevronLeft size={22} aria-hidden="true" /></button> : <span />}
       <div className="top-title">
-        <i>{marker}</i>
-        <h1>{icon ? `${icon} ${title}` : title}</h1>
+        <i>{t(marker)}</i>
+        <h1>{icon ? `${icon} ${t(title)}` : t(title)}</h1>
       </div>
       <span />
     </header>
@@ -1564,8 +1421,8 @@ function SectionTitle({ title, action, onClick, icon }: { title: string; action?
   const marker = icon || iconFor(title, sectionIcons);
   return (
     <div className="section-title">
-      <h2><span>{marker}</span>{title}</h2>
-      {action && <button onClick={onClick}>{action}</button>}
+      <h2><span>{t(marker)}</span>{t(title)}</h2>
+      {t(action) && <button onClick={onClick}>{t(action)}</button>}
     </div>
   );
 }
@@ -1575,8 +1432,8 @@ function SportRow({ icon, title, text, onClick }: { icon: string; title: string;
     <button className="sport-row-ui" onClick={onClick}>
       <span className="si">{icon}</span>
       <div>
-        <b>{title}</b>
-        {text && <small>{text}</small>}
+        <b>{t(title)}</b>
+        {t(text) && <small>{t(text)}</small>}
       </div>
       <span className="chev">›</span>
     </button>
@@ -1587,8 +1444,8 @@ function MenuItem({ icon, title, meta, onClick }: { icon: string; title: string;
   return (
     <button className="menu-item-ui" onClick={onClick}>
       <span className="mi">{icon}</span>
-      <span className="menu-title">{title}</span>
-      {meta && <small>{meta}</small>}
+      <span className="menu-title">{t(title)}</span>
+      {t(meta) && <small>{t(meta)}</small>}
       <span className="chev">›</span>
     </button>
   );
@@ -1598,8 +1455,8 @@ function FitItem({ title, text, price, onClick }: { title: string; text?: string
   return (
     <button className="fit-item-ui" onClick={onClick}>
       <div>
-        <b>{title}</b>
-        {text && <small>{text}</small>}
+        <b>{t(title)}</b>
+        {t(text) && <small>{t(text)}</small>}
       </div>
       <strong>{price}</strong>
     </button>
@@ -1609,8 +1466,8 @@ function FitItem({ title, text, price, onClick }: { title: string; text?: string
 function BigBalance({ label, value, unit }: { label: string; value: string; unit: string }) {
   return (
     <div className="big-balance-ui">
-      <small>{label}</small>
-      <b>{value} <em>{unit}</em></b>
+      <small>{t(label)}</small>
+      <b>{value} <em>{t(unit)}</em></b>
     </div>
   );
 }
@@ -1619,53 +1476,45 @@ function CouponRow({ coupon, onClick }: { coupon: Coupon; onClick?: () => void }
   const qty = coupon.totalUses || coupon.remainingUses || 1;
   return (
     <button className="coupon-row-ui" onClick={onClick}>
-      <span className="cn">{qty}<small>ใบ</small></span>
+      <span className="cn">{qty}<small>{t("ใบ")}</small></span>
       <span className="ci">
-        <b>{coupon.name}</b>
-        <small>{money(coupon.price)} ฿ · ใช้ได้ {coupon.validityDays || 30} วัน</small>
+        <b>{t(coupon.name)}</b>
+        <small>{money(coupon.price)} {t("฿ · ใช้ได้")} {coupon.validityDays || 30} {t("วัน")}</small>
       </span>
       <span className="add">+</span>
     </button>
   );
 }
 
-function BookingRow({ booking, onCancel, onClick }: { booking: Booking; onCancel?: () => void; onClick?: () => void }) {
+function BookingRow({ booking, onCancel, onClick, now }: { booking: Booking; onCancel?: () => void; onClick?: () => void; now: number }) {
   const start = booking.startsAt || booking.starts_at || "";
-  const day = start ? new Date(start).getDate().toString().padStart(2, "0") : "--";
-  const month = start ? new Date(start).toLocaleDateString("th-TH", { month: "short" }) : "PPA";
-  const time = start ? new Date(start).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) : "";
+  const validStart = Number.isFinite(new Date(start).getTime());
+  const day = validStart ? new Date(start).toLocaleDateString("en-GB", { day: "2-digit", timeZone: "Asia/Bangkok" }) : "--";
+  const month = validStart ? new Date(start).toLocaleDateString(localeTag(), { month: "short", timeZone: "Asia/Bangkok" }) : "PPA";
+  const time = validStart ? new Date(start).toLocaleTimeString(localeTag(), { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }) : "";
   const done = ["done", "completed", "used", "checked_in", "cancelled", "expired"].includes(booking.status);
-  const canCancel = !done && Boolean(onCancel);
+  const canCancel = ["hold", "pending_payment", "paid"].includes(booking.status) && new Date(start).getTime() >= now + 30 * 60000 && Boolean(onCancel);
   return (
-    <button className="booking-row-ui" onClick={onClick}>
+    <article className="booking-row-ui">
+      <button className="booking-open" onClick={onClick} aria-label={t("ดูการจอง {{value0}}", { value0: t(booking.title) })}>
       <span className="date"><b>{day}</b><small>{month}</small></span>
-      <span className="inf"><b>{booking.title}</b><small>{time ? `${time} · ` : ""}{money(booking.amount)} ฿</small></span>
-      <span className={done ? "tag gray" : "tag"}>{done ? "DONE" : "UPCOMING"}</span>
-      {canCancel ? <i className="booking-cancel" onClick={(event) => { event.stopPropagation(); onCancel?.(); }}>ยกเลิก</i> : null}
-    </button>
+      <span className="inf"><b>{t(booking.title)}</b><small>{time ? `${time} · ` : ""}{money(booking.amount)} ฿</small></span>
+      <span className={done ? "tag gray" : "tag"}>{t(bookingStatusLabel(booking.status))}</span>
+      </button>
+      {canCancel && <button className="booking-cancel" onClick={onCancel}>{t("ยกเลิก")}</button>}
+    </article>
   );
 }
 
-function TxRow({ title, detail, amount, plus }: { title: string; detail: string; amount: string; plus?: boolean }) {
-  return (
-    <div className="tx-row">
-      <div className="t1">
-        {title}
-        <small>{detail}</small>
-      </div>
-      <span className={plus ? "amt plus" : "amt minus"}>{amount}</span>
-    </div>
-  );
-}
 
 function NotiRow({ icon, title, body, unread }: { icon: string; title: string; body: string; unread?: boolean }) {
   return (
     <div className={unread ? "noti-row unread" : "noti-row"}>
       <span className="ni">{icon}</span>
       <div>
-        <b>{title}</b>
+        <b>{t(title)}</b>
         <p>{body}</p>
-        <small>{unread ? "ใหม่" : "อ่านแล้ว"}</small>
+        <small>{unread ? t("ใหม่") : t("อ่านแล้ว")}</small>
       </div>
     </div>
   );
@@ -1684,17 +1533,6 @@ function contentForScreen(items: ContentItem[], screen: Screen) {
   });
 }
 
-function contentToSlide(item: ContentItem) {
-  const meta = contentMeta(item);
-  return {
-    tag: typeof meta.tag === "string" ? meta.tag : "PPA",
-    title: `${item.icon} ${item.title}`,
-    text: item.subtitle || item.body || "",
-    action: item.actionLabel || "เปิด",
-    target: (item.targetScreen || "promotion") as Screen,
-    tone: typeof meta.tone === "string" ? meta.tone : "event",
-  };
-}
 
 function contentToPack(item: ContentItem): AppPack {
   return {
@@ -1714,9 +1552,8 @@ function contentTypeForPack(item: AppPack) {
   return "class";
 }
 
-function packagesForScreen(items: ContentItem[], screen: Screen, fallback: AppPack[]) {
-  const matched = items.filter((item) => item.targetScreen === screen || contentMeta(item).category === screen).map(contentToPack);
-  return matched.length ? matched : fallback;
+function packagesForScreen(items: ContentItem[], screen: Screen) {
+  return items.filter((item) => item.targetScreen === screen || contentMeta(item).category === screen).map(contentToPack);
 }
 
 function scheduleForScreen(items: ContentItem[], screen: Screen) {
@@ -1825,11 +1662,7 @@ function trainerSchedule(trainer: Trainer): TrainerScheduleDay[] {
   const configured = parseJsonArray<TrainerScheduleDay>(trainer.weeklySchedule)
     .map((day) => ({ ...day, slots: Array.isArray(day.slots) ? day.slots.filter((slot) => /^\d{2}:\d{2}$/.test(slot.time)) : [] }))
     .filter((day) => day.day && day.slots.length);
-  if (configured.length) return configured;
-  return trainerDays.map((day, dayIndex) => ({
-    ...day,
-    slots: trainerSlots.map((time, slotIndex) => ({ time, status: (dayIndex + slotIndex) % 5 === 2 ? "full" : "available" })),
-  }));
+  return configured;
 }
 
 function parseJsonArray<T>(value: T[] | string | null | undefined): T[] {
@@ -1843,14 +1676,15 @@ function parseJsonArray<T>(value: T[] | string | null | undefined): T[] {
   }
 }
 
-function Summary({ sport, slot, players }: { sport: Sport | null; slot: Slot | null; players: number }) {
+function Summary({ sport, slot, players, date }: { sport: Sport | null; slot: Slot | null; players: number; date?: string }) {
   const rate = slot?.rate ?? sport?.baseRate ?? 0;
   return (
     <div className="summary">
-      <div><span>🏷️ บริการ</span><strong>{sport ? `${sport.icon} ${sport.name}` : "-"}</strong></div>
-      <div><span>🏟️ สนาม/เวลา</span><strong>{slot ? `${slot.courtName} · ${slot.time}` : "ใช้ QR เข้าได้ทันที"}</strong></div>
-      <div><span>👥 ผู้เล่น</span><strong>{players} คน</strong></div>
-      <div><span>💳 ยอดรวม</span><strong>{money(rate)} ฿</strong></div>
+      {date && <div><span>{t("วันที่")}</span><strong>{new Date(`${date}T00:00:00+07:00`).toLocaleDateString(localeTag(), { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok" })}</strong></div>}
+      <div><span>{t("🏷️ บริการ")}</span><strong>{sport ? `${sport.icon} ${t(sport.name)}` : "-"}</strong></div>
+      <div><span>{t("🏟️ สนาม/เวลา")}</span><strong>{slot ? `${courtName(slot.courtName)} · ${slot.time}` : t("ใช้ QR เข้าได้ทันที")}</strong></div>
+      <div><span>{t("👥 ผู้เล่น")}</span><strong>{players} {t("คน")}</strong></div>
+      <div><span>{t("💳 ยอดรวม")}</span><strong>{money(rate)} ฿</strong></div>
     </div>
   );
 }
@@ -1877,12 +1711,12 @@ function PaymentScreen({
       <div className="pay-backdrop" />
       <div className="pay-sheet">
         <div className="sheet-handle" />
-        <span className="eyebrow">CONFIRM PAYMENT</span>
-        <h2>ยืนยันการชำระเงิน</h2>
-        <div className="pay-card"><span>🧾 {title}</span><strong>{money(amount)} ฿</strong><small>{booking ? `Booking: ${bookingNo(booking)}` : "PPA secure checkout"}</small></div>
-        <button className="pay-method primary-pay" onClick={() => onPay("wallet")} disabled={busy || wallet < amount}>👛 จ่ายด้วย Wallet <span>{money(wallet)} ฿</span></button>
-        <button className="pay-method" onClick={() => onPay("promptpay")} disabled={busy}>📱 PromptPay QR <span>ยืนยันหลังชำระ</span></button>
-        <button className="ghost" onClick={onBack} disabled={busy}>‹ ย้อนกลับ</button>
+        <span className="eyebrow">{t("CONFIRM PAYMENT")}</span>
+        <h2>{t("ยืนยันการชำระเงิน")}</h2>
+        <div className="pay-card"><span>🧾 {t(title)}</span><strong>{money(amount)} ฿</strong><small>{booking ? `Booking: ${bookingNo(booking)}` : t("PPA secure checkout")}</small></div>
+        <button className="pay-method primary-pay" onClick={() => onPay("wallet")} disabled={busy || wallet < amount}>{t("👛 จ่ายด้วย Wallet")} <span>{money(wallet)} ฿</span></button>
+        <button className="pay-method" onClick={() => onPay("promptpay")} disabled={busy}>{t("📱 PromptPay QR")} <span>{t("ยืนยันหลังชำระ")}</span></button>
+        <button className="ghost" onClick={onBack} disabled={busy}>{t("‹ ย้อนกลับ")}</button>
       </div>
     </div>
   );
@@ -1937,20 +1771,20 @@ function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; b
 
   return (
     <div className="page centered">
-      <span className="eyebrow">FAST ACCESS</span>
-      <h1 className="scan-title">สแกนเข้าใช้บริการ</h1>
+      <span className="eyebrow">{t("FAST ACCESS")}</span>
+      <h1 className="scan-title">{t("สแกนเข้าใช้บริการ")}</h1>
       <div className="qr-box">
         {currentQr?.svg ? (
-          <Image unoptimized width={220} height={220} alt="QR เข้าใช้บริการ" className="qr-svg" src={`data:image/svg+xml,${encodeURIComponent(currentQr.svg)}`} />
+          <Image unoptimized width={220} height={220} alt={t("QR เข้าใช้บริการ")} className="qr-svg" src={`data:image/svg+xml,${encodeURIComponent(currentQr.svg)}`} />
         ) : (
-          <p role="status">{qrError ? "ไม่สามารถออก QR ได้" : "กำลังโหลด QR..."}</p>
+          <p role="status">{t(qrError) ? t("ไม่สามารถออก QR ได้") : t("กำลังโหลด QR...")}</p>
         )}
       </div>
       <h2>{bookingCode || data.user.memberCode}</h2>
-      <p>{bookingCode ? booking?.title : accessQr?.title || qr?.title || "QR สมาชิกอายุสั้นสำหรับเข้าใช้ sport complex"}</p>
-      {qrError ? <p className="form-error">{qrError}</p> : null}
-      {currentQr ? <div className="scan-meta"><span>หมดอายุใน</span><strong>{remaining}s</strong></div> : null}
-      <button className="primary" onClick={onCheckin}>✅ ไปหน้า Check-in</button>
+      <p>{bookingCode ? t(booking?.title) : t(accessQr?.title) || t(qr?.title) || t("QR สมาชิกอายุสั้นสำหรับเข้าใช้ sport complex")}</p>
+      {t(qrError) ? <p className="form-error">{t(qrError)}</p> : null}
+      {currentQr ? <div className="scan-meta"><span>{t("หมดอายุใน")}</span><strong>{remaining}{t("s")}</strong></div> : null}
+      <button className="primary" onClick={onCheckin}>{t("✅ ไปหน้า Check-in")}</button>
     </div>
   );
 }
@@ -1970,38 +1804,32 @@ function HubScreen({
 }) {
   return (
     <div className="page">
-      <Top title={title} onBack={back} />
+      <Top title={t(title)} onBack={back} />
       <div className="list">
         {items.map((item) => (
-          <button key={item.key} onClick={() => onSelect(item)}>{item.icon} {item.name}<small>💳 {item.desc} · {money(item.price)} ฿</small></button>
+          <button key={item.key} onClick={() => onSelect(item)}>{item.icon} {t(item.name)}<small>💳 {t(item.desc)} · {money(item.price)} ฿</small></button>
         ))}
+        {!items.length && <Empty text={t("ยังไม่มีแพ็กเกจเปิดจำหน่าย")} />}
       </div>
       {extra}
     </div>
   );
 }
 
-function SimplePack({ title, icon, price, back, onBuy }: { title: string; icon: string; price: number; back: () => void; onBuy: (title: string, amount: number) => void }) {
-  return (
-    <div className="page">
-      <Top title={title} onBack={back} />
-      <div className="promo-card"><span>{icon} PACKAGE</span><strong>{title}</strong><small>▣ ใช้บริการ sport complex ได้อย่างรวดเร็วผ่าน QR สมาชิก</small><button onClick={() => onBuy(title, price)}>💳 ซื้อแพ็กเกจ {money(price)} ฿</button></div>
-    </div>
-  );
-}
-
 function Schedule({ title, items = [], onBook }: { title: string; items?: ContentItem[]; onBook: (time: string, item?: ContentItem) => void }) {
-  const managed = items.filter((item) => contentMeta(item).status !== "full");
   return (
     <>
-      <SectionTitle title={title} />
+      <SectionTitle title={t(title)} />
       <div className="chip-grid">
-        {managed.length ? managed.map((item) => {
+        {items.map((item) => {
           const meta = contentMeta(item);
-          const time = typeof meta.time === "string" ? meta.time : item.subtitle || "08:00";
-          return <button key={item.id} onClick={() => onBook(time, item)}>{item.icon} {time}<small>{item.title} · {money(item.price)} ฿</small></button>;
-        }) : timeChoices.slice(2).map((time, index) => <button key={time} className={index === 4 ? "full" : ""} disabled={index === 4} onClick={() => onBook(time)}>⏱️ {time}<small>{index === 4 ? "เต็ม" : "ว่าง"}</small></button>)}
+          const time = typeof meta.time === "string" ? meta.time : item.subtitle || "";
+          const full = meta.status === "full";
+          const closed = !time || ["closed", "off", "cancelled"].includes(String(meta.status));
+          return <button key={item.id} disabled={full || closed} onClick={() => onBook(time, item)}>{item.icon} {time || t(item.title)}<small>{full ? t("เต็ม") : closed ? t("ปิดรับจอง") : t("{{value0}} · {{value1}} ฿", { value0: t(item.title), value1: money(item.price) })}</small></button>;
+        })}
       </div>
+      {!items.length && <Empty text={t("ยังไม่มีตารางคลาสเปิดให้จอง")} />}
     </>
   );
 }
@@ -2010,19 +1838,19 @@ function ManagedFeatureScreen({ items, onBack, onBuy, screen }: { items: Content
   const title = prototypeScreenLabel(screen);
   return (
     <div className="page">
-      <Top title={title} onBack={onBack} />
+      <Top title={t(title)} onBack={onBack} />
       <div className="promo-card">
-        <span>🧩 MANAGED</span>
-        <strong>{title}</strong>
-        <small>ข้อมูลหน้านี้จัดการได้จาก Backoffice · App Content</small>
+        <span>{t("🧩 MANAGED")}</span>
+        <strong>{t(title)}</strong>
+        <small>{t("ข้อมูลหน้านี้จัดการได้จาก Backoffice · App Content")}</small>
       </div>
       <div className="list">
         {items.length ? items.map((item) => (
           <button key={item.id} onClick={() => onBuy(item)}>
-            {item.icon} {item.title}
-            <small>{item.subtitle || item.body || item.slug}{item.price > 0 ? ` · ${money(item.price)} ฿` : ""}</small>
+            {item.icon} {t(item.title)}
+            <small>{t(item.subtitle) || t(item.body) || item.slug}{item.price > 0 ? t(" · {{value0}} ฿", { value0: money(item.price) }) : ""}</small>
           </button>
-        )) : <Empty text="ยังไม่มีข้อมูลในหลังบ้าน" />}
+        )) : <Empty text={t("ยังไม่มีข้อมูลในหลังบ้าน")} />}
       </div>
     </div>
   );
@@ -2031,7 +1859,7 @@ function ManagedFeatureScreen({ items, onBack, onBuy, screen }: { items: Content
 function TrainerStrip({ trainers, onOpen }: { trainers: Trainer[]; onOpen: (trainer: Trainer) => void }) {
   return (
     <div className="trainer-strip">
-      {trainers.map((trainer) => <button key={trainer.slug} onClick={() => onOpen(trainer)}><TrainerAvatar trainer={trainer} /><strong>{trainer.nickname}</strong><small>{trainer.role}</small></button>)}
+      {trainers.map((trainer) => <button key={trainer.slug} onClick={() => onOpen(trainer)}><TrainerAvatar trainer={trainer} /><strong>{trainer.nickname}</strong><small>{t(trainer.role)}</small></button>)}
     </div>
   );
 }
@@ -2053,17 +1881,17 @@ function Tutorial({ step, onNext, onSkip }: { step: number; onNext: () => void; 
   return (
     <div className="tut-overlay">
       <div className="tut-card">
-        <span>{step}/4</span><div className="tut-icon">{current[0]}</div><strong>{current[1]}</strong><p>{current[2]}</p>
-        <div><button className="ghost" onClick={onSkip}>ข้าม</button><button className="primary" onClick={onNext}>{step >= 4 ? "จบ" : "ถัดไป"}</button></div>
+        <span>{step}/4</span><div className="tut-icon">{current[0]}</div><strong>{t(current[1])}</strong><p>{t(current[2])}</p>
+        <div><button className="ghost" onClick={onSkip}>{t("ข้าม")}</button><button className="primary" onClick={onNext}>{step >= 4 ? t("จบ") : t("ถัดไป")}</button></div>
       </div>
     </div>
   );
 }
 
 function Stat({ label, value }: { label: string; value: number }) {
-  return <div className="stat"><span>{statIcons[label] || "•"} {label}</span><strong>{value}</strong></div>;
+  return <div className="stat"><span>{statIcons[label] || "•"} {t(label)}</span><strong>{value}</strong></div>;
 }
 
 function Empty({ text }: { text: string }) {
-  return <div className="empty small">∅ {text}</div>;
+  return <div className="empty small">∅ {t(text)}</div>;
 }

@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
   const range = buildSlotRange(input.date, input.time, input.durationHours);
   if (!range) return NextResponse.json({ message: "ช่วงเวลานี้ไม่เปิดให้จอง" }, { status: 400 });
-  const amount = rateForSlot(Number(sports[0].baseRate), input.time, input.durationHours, court?.hourlyRate);
+  let amount = rateForSlot(Number(sports[0].baseRate), input.time, input.durationHours, court?.hourlyRate);
   const { startsAt, endsAt } = range;
   const title = input.title?.trim() || `${sports[0].name}${court ? ` - ${court.name}` : ""}`;
   const bookingNo = createPublicId("BK");
@@ -66,9 +66,15 @@ export async function POST(req: Request) {
   try {
     await conn.beginTransaction();
     if (input.courtId) {
-      await conn.execute("SELECT id FROM courts WHERE id = ? FOR UPDATE", [input.courtId]);
+      const [lockedCourts] = await conn.execute("SELECT id, capacity, hourly_rate hourlyRate FROM courts WHERE id = ? AND sport_id = ? AND status = 'available' FOR UPDATE", [input.courtId, sports[0].id]);
+      const lockedCourt = (lockedCourts as { id: number; capacity: number; hourlyRate: number | null }[])[0];
+      if (!lockedCourt || input.players > lockedCourt.capacity || isPastSlot(input.date, input.time)) {
+        await conn.rollback();
+        return NextResponse.json({ message: "สนามหรือช่วงเวลานี้ไม่พร้อมให้จอง กรุณาเลือกใหม่" }, { status: 409 });
+      }
+      amount = rateForSlot(Number(sports[0].baseRate), input.time, input.durationHours, lockedCourt.hourlyRate);
       const [rows] = await conn.execute(
-        "SELECT id FROM bookings WHERE court_id = ? AND status IN ('hold','pending_payment','paid','checked_in') AND starts_at < ? AND ends_at > ? FOR UPDATE",
+        "SELECT id FROM bookings WHERE court_id = ? AND (status IN ('paid','checked_in') OR (status IN ('hold','pending_payment') AND (expires_at IS NULL OR expires_at > NOW()))) AND starts_at < ? AND ends_at > ? FOR UPDATE",
         [input.courtId, endsAt, startsAt],
       );
       if ((rows as unknown[]).length) {
@@ -80,9 +86,9 @@ export async function POST(req: Request) {
       "INSERT INTO bookings (booking_no, user_id, sport_id, court_id, title, starts_at, ends_at, players, amount, status, qr_secret, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))",
       [bookingNo, user.id, sports[0].id, input.courtId || null, title, startsAt, endsAt, input.players, amount, qrSecret],
     );
+    const [booking] = await conn.execute("SELECT * FROM bookings WHERE booking_no = ? LIMIT 1", [bookingNo]);
     await conn.commit();
-    const booking = await query("SELECT * FROM bookings WHERE booking_no = ? LIMIT 1", [bookingNo]);
-    return NextResponse.json({ booking: booking[0] }, { status: 201 });
+    return NextResponse.json({ booking: (booking as unknown[])[0] }, { status: 201 });
   } catch (error) {
     await conn.rollback();
     throw error;

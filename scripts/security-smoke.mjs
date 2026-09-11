@@ -27,6 +27,10 @@ const login = await check("/AdminConsole", 200);
 assert.match(login.body, /autoComplete="username"/);
 assert.match(login.body, /autoComplete="current-password"/);
 await check("/api/bootstrap", 401, { headers: { cookie: "ppa_line_user_id=forged-member; ppa_member_session=forged-session" } });
+await check("/api/courts/availability?sport=badminton&month=2026-09", 401);
+const logout = await check("/api/auth/line", 200, { method: "DELETE" });
+assert.match(logout.response.headers.get("set-cookie") || "", /ppa_member_session=;.*Max-Age=0/);
+await check("/api/auth/line", 403, { method: "DELETE", headers: { origin: "https://attacker.example" } });
 
 const connection = await mysql.createConnection({
   host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306), user: process.env.DB_USER,
@@ -51,6 +55,24 @@ try {
     }
     await check("/api/admin/profile", 403, { method: "PUT", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ staffId: admin.id + 1000000, username: "no-change-smoke", displayName: "No change" }) });
   }
+  const [members] = await connection.execute("SELECT line_user_id lineUserId FROM users WHERE status = 'active' AND line_user_id IS NOT NULL LIMIT 1");
+  assert.ok(members.length, "An active member is required for read-only availability checks");
+  const payload = Buffer.from(JSON.stringify({ subject: members[0].lineUserId, expiresAt: Date.now() + 60000 })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(`member:${payload}`).digest("hex");
+  const headers = { cookie: `ppa_member_session=${payload}.${signature}` };
+  const tomorrow = new Date(Date.now() + 31 * 3600000).toISOString().slice(0, 10);
+  const [sports] = await connection.execute("SELECT slug FROM sports WHERE active = TRUE AND requires_booking = TRUE");
+  for (const sport of sports) {
+    const monthResult = await check(`/api/courts/availability?${new URLSearchParams({ sport: sport.slug, month: tomorrow.slice(0, 7) })}`, 200, { headers });
+    const dayResult = await check(`/api/courts/availability?${new URLSearchParams({ sport: sport.slug, date: tomorrow })}`, 200, { headers });
+    const calendarDay = JSON.parse(monthResult.body).days.find((day) => day.date === tomorrow);
+    const slots = JSON.parse(dayResult.body).slots;
+    assert.equal(calendarDay.availableSlots, slots.filter((slot) => slot.available).length, "Calendar and daily availability must agree");
+    assert.ok(slots.every((slot) => slot.available === (slot.status === "available")));
+    assert.match(monthResult.response.headers.get("cache-control") || "", /no-store/);
+    console.log(`Availability ${sport.slug}: ${calendarDay.status}, ${calendarDay.availableSlots} open court/time combinations`);
+  }
+  await check("/api/courts/availability?sport=badminton&date=2026-02-30", 400, { headers });
 } finally {
   await connection.end();
 }

@@ -15,6 +15,15 @@ const trainer = { id: 1, slug: "coach", name: "Trainer responsive test", nicknam
 const bookings = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, bookingNo: `BK-TEST-${i}`, title: "ทดสอบรายการจองที่มีชื่อยาวสำหรับทุกขนาดหน้าจอ", displayName: user.displayName, sportName: "Badminton", courtName: "Court A", startsAt: "2026-12-10T10:00:00+07:00", endsAt: "2026-12-10T11:00:00+07:00", status: "paid", amount: 200, players: 2 }));
 const member = { user, wallet: { balance: 2000, coinBalance: 10, pointBalance: 100 }, sports: [{ id: 1, slug: "badminton", name: "Badminton", icon: "PPA", requiresBooking: true, baseRate: 200 }], bookings, coupons: [], trainers: [trainer], groups: [], notifications: [], contentItems: [], memberships: [], entitlements: [] };
 const admin = { id: 1, username: "test-admin", displayName: "ผู้ดูแลระบบทดสอบ", status: "active", roleId: 1, roleCode: "super_admin", roleNameTh: "ผู้ดูแลระบบ", roleNameEn: "Administrator", permissionCodes: [] };
+member.sports[0].icon = "🏸";
+member.sports[0].description = "สนามแบดมินตัน";
+member.sports.push(...[
+  { slug: "tennis", name: "เทนนิส", icon: "🎾" },
+  { slug: "basketball", name: "บาสเกตบอล", icon: "🏀" },
+  { slug: "pickleball", name: "Pickleball", icon: "🥒" },
+  { slug: "padel", name: "Padel", icon: "🎯" },
+  { slug: "volleyball", name: "วอลเลย์บอล", icon: "🏐" },
+].map((sport, index) => ({ ...sport, id: index + 2, requiresBooking: true, baseRate: 300, description: "สนามกีฬา" })));
 const adminData = { metrics: ["Members", "Bookings", "Payments", "Revenue"].map((label) => ({ label, value: 125, hint: "Test fixture" })), users: [user], bookings, courts: [{ id: 1, name: "Court A", sportId: 1, sportName: "Badminton", capacity: 4, status: "available", hourlyRate: 200 }], coupons: [], trainers: [trainer], payments: [], staff: [admin], roles: [{ id: 1, code: "super_admin", nameTh: "ผู้ดูแลระบบ", nameEn: "Administrator", level: 100, isSystem: true, permissionCodes: [] }], permissions: [], currentAdmin: admin, auditLogs: [], contentItems: [], systemHealth: [], securityItems: [] };
 const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {PpaApp} from './components/ppa-app'; import {AdminConsole} from './components/admin-console'; const tab=new URLSearchParams(location.search).get('tab')||'dashboard'; createRoot(document.getElementById('root')).render(location.pathname.includes('admin') ? <AdminConsole adminKey="" data={${JSON.stringify(adminData)}} initialTab={tab}/> : <PpaApp/>);`;
 const bundle = await build({
@@ -36,6 +45,9 @@ try {
   const context = await browser.newContext({ reducedMotion: "reduce" });
   const page = await context.newPage();
   let failBootstrap = false;
+  let failAvailability = false;
+  let emptyMember = false;
+  const bookingRequests = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/__responsive__/**", async (route) => {
@@ -44,19 +56,74 @@ try {
   });
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/api/bootstrap") return failBootstrap ? route.fulfill({ status: 503, json: { message: "Service unavailable" } }) : route.fulfill({ json: member });
+    if (url.pathname === "/api/bootstrap") return failBootstrap ? route.fulfill({ status: 503, json: { message: "Service unavailable" } }) : route.fulfill({ json: emptyMember ? { ...member, bookings: [], memberships: [] } : member });
+    if (url.pathname === "/api/auth/line" && route.request().method() === "DELETE") return route.fulfill({ json: { ok: true } });
     if (url.pathname === "/api/coupons") return route.fulfill({ json: { coupons: [] } });
-    if (url.pathname === "/api/courts/availability") return route.fulfill({ json: { slots: [] } });
+    if (url.pathname === "/api/courts/availability") {
+      if (failAvailability) return route.fulfill({ status: 503, json: { message: "Unavailable" } });
+      const month = url.searchParams.get("month");
+      if (month) {
+        const start = new Date(`${month}-01T00:00:00Z`);
+        const days = Array.from({ length: 31 }, (_, index) => new Date(start.getTime() + index * 86400000).toISOString().slice(0, 10)).filter((date) => date.startsWith(month));
+        return route.fulfill({ json: { days: days.map((date, index) => ({ date, status: index === days.length - 1 ? "full" : "available", availableSlots: index === days.length - 1 ? 0 : 2 })) } });
+      }
+      return route.fulfill({ json: { slots: [
+        { courtId: 1, courtName: "Court A", time: "08:00", capacity: 4, rate: 200, available: false, status: "past" },
+        { courtId: 1, courtName: "Court A", time: "17:00", capacity: 4, rate: 300, available: false, status: "full" },
+        { courtId: 1, courtName: "Court A", time: "18:00", capacity: 4, rate: 300, available: true, status: "available" },
+      ] } });
+    }
+    if (url.pathname === "/api/bookings" && route.request().method() === "POST") {
+      bookingRequests.push(route.request().postDataJSON());
+      return route.fulfill({ status: 409, json: { message: "ช่วงเวลานี้ถูกจองแล้ว" } });
+    }
     if (url.pathname === "/api/qr") return route.fulfill({ status: 404, json: { message: "No active rights" } });
     return route.fulfill({ status: 405, json: { message: "Read-only UI fixture" } });
   });
   const viewports = [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 844, height: 390 }];
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
-    for (const screen of ["home", "sports", "mybooking", "trainer", "profile", "scan"]) {
-      await page.goto(`${base}/__responsive__/member?screen=${screen}`);
+    for (const screen of ["home", "sports", "courts", "mybooking", "trainer", "profile", "scan"]) {
+      await page.goto(`${base}/__responsive__/member?screen=${screen === "courts" ? "sports" : screen}`);
       await page.locator(".phone > .content").waitFor();
+      if (screen === "courts") await page.locator('.prototype-list button').first().click();
+      if (["mybooking", "profile", "scan"].includes(screen)) await page.locator('.tabbar button').nth({ mybooking: 3, profile: 4, scan: 2 }[screen]).click();
+      if (screen === "home") {
+        await page.getByRole('heading', { name: 'PPA Sport Complex', exact: true }).waitFor();
+        assert.equal(await page.locator('.qr-mini-grid').count(), 0, 'Home must not render fake QR patterns');
+        assert.equal(await page.getByText('Premium Member', { exact: true }).count(), 0, 'Inactive members must not be labeled premium');
+      }
+      if (screen === "mybooking" && viewport.width === 390) {
+        await page.locator('.booking-cancel').first().click();
+        await page.getByRole('dialog', { name: 'ยกเลิกการจองนี้?' }).waitFor();
+        await page.getByRole('button', { name: 'เก็บการจองไว้', exact: true }).click();
+        assert.equal(await page.locator('dialog[open]').count(), 0);
+      }
       await page.evaluate(() => document.fonts.ready);
+      if (screen === "courts") {
+        await page.locator('.booking-calendar [data-status="full"]').waitFor();
+        assert.ok(await page.locator('.booking-calendar [data-status="full"]').isDisabled());
+        await page.locator('.slot-list button:enabled').first().waitFor();
+        assert.ok(await page.locator('.slot-list button').filter({ hasText: "ผ่านเวลาแล้ว" }).isDisabled());
+        await page.locator('.slot-list button:enabled').first().click();
+        await page.locator('.sticky-summary').waitFor();
+        await page.getByRole('button', { name: 'เดือนถัดไป', exact: true }).click();
+        await page.locator('.booking-calendar [data-status="available"]').first().click();
+        assert.equal(await page.locator('.sticky-summary').count(), 0, 'Changing dates must clear the selected court');
+        await page.locator('.slot-list button:enabled').first().waitFor();
+        if ([320, 390, 768, 1440].includes(viewport.width)) await page.screenshot({ path: `${outDir}/calendar-${viewport.width}.png` });
+        if (viewport.width === 390) {
+          const date = await page.locator('.booking-calendar [aria-pressed="true"]').getAttribute('data-date');
+          await page.locator('.slot-list button:enabled').first().click();
+          await page.locator('.sticky-summary .primary').click();
+          await page.getByRole('button', { name: /ไปหน้าสรุป/ }).click();
+          await page.getByRole('button', { name: /ยืนยันและชำระเงิน/ }).click();
+          await page.locator('.booking-calendar').waitFor();
+          assert.equal(bookingRequests.at(-1).date, date);
+          assert.equal(bookingRequests.at(-1).time, '18:00');
+          assert.equal(await page.locator('.sticky-summary').count(), 0, 'Conflict must discard stale selection');
+        }
+      }
       const metrics = await page.evaluate(() => {
         const content = document.querySelector(".content");
         const phone = document.querySelector(".phone").getBoundingClientRect();
@@ -110,6 +177,86 @@ try {
       results.push({ area: "admin", tab, viewport, metrics });
     }
     console.log(`PASS layout ${viewport.width}x${viewport.height}`);
+  }
+  failAvailability = true;
+  await page.goto(`${base}/__responsive__/member?screen=sports`);
+  await page.locator('.prototype-list button').first().click();
+  await page.getByText('โหลดปฏิทินไม่สำเร็จ').waitFor();
+  assert.equal(await page.locator('.booking-calendar-grid button:enabled').count(), 0, 'Network failure must not expose bookable dates');
+  failAvailability = false;
+  await page.locator('.booking-calendar').getByRole('button', { name: 'ลองใหม่' }).click();
+  await page.locator('.booking-calendar [data-status="available"]').first().waitFor();
+  emptyMember = true;
+  await page.goto(`${base}/__responsive__/member?screen=home`);
+  await page.getByText('ยังไม่มีนัดหมายที่กำลังจะมาถึง', { exact: true }).waitFor();
+  await page.locator('.tabbar button').nth(3).click();
+  await page.getByText('ยังไม่มีรายการจองที่กำลังจะมาถึง', { exact: true }).waitFor();
+  assert.equal(await page.locator('.booking-row-ui').count(), 0, 'Empty accounts must not see demo bookings');
+  await page.locator('.tabbar button').nth(4).click();
+  await page.getByRole('button', { name: /ออกจากระบบ/ }).click();
+  await page.locator('.line-gate').waitFor();
+  assert.equal(await page.locator('.status-member-chip').count(), 0, 'Logout must remove member data from screen');
+  emptyMember = false;
+  await page.goto(`${base}/__responsive__/member?screen=classschedule`);
+  await page.getByText('ยังไม่มีตารางคลาสเปิดให้จอง').waitFor();
+  assert.equal(await page.locator('.chip-grid button').count(), 0, 'Missing schedules must not generate fake time slots');
+  member.contentItems = [{ id: 99, contentType: 'class_schedule', title: 'Full class fixture', subtitle: '10:00', icon: '', price: 200, metadata: { status: 'full', time: '10:00' } }];
+  await page.reload();
+  await page.locator('.chip-grid button').waitFor();
+  assert.equal(await page.locator('.chip-grid button').count(), 1);
+  assert.ok(await page.locator('.chip-grid button').isDisabled(), 'A fully booked schedule must not fall back to generated availability');
+  member.contentItems = [];
+  const translatedScreens = ["home", "sports", "courts", "datetime", "summary", "payment", "mybooking", "profile", "membership", "wallet", "coupon", "trainer", "trainer-detail", "help", "notifications", "classhub", "classschedule", "livetv", "promotion", "scan"];
+  for (const viewport of [viewports[0], viewports[2], viewports[4]]) {
+    await page.setViewportSize(viewport);
+    for (const locale of ["th", "en", "zh"]) {
+      await page.goto(`${base}/__responsive__/member?screen=home`);
+      await page.locator('.language-switcher select').selectOption(locale);
+      const htmlLang = locale === "zh" ? "zh-CN" : locale;
+      await page.waitForFunction((value) => document.documentElement.lang === value, htmlLang);
+      for (const screen of translatedScreens) {
+        const entryScreen = ["courts", "datetime", "summary"].includes(screen) ? "sports" : screen === "payment" ? "wallet" : screen === "trainer-detail" ? "trainer" : ["mybooking", "profile", "notifications", "scan"].includes(screen) ? "home" : screen;
+        await page.goto(`${base}/__responsive__/member?screen=${entryScreen}`);
+        await page.locator('.phone > .content').waitFor();
+        await page.waitForFunction((value) => document.documentElement.lang === value, htmlLang);
+        assert.equal(await page.locator('.language-switcher select').inputValue(), locale, "Language must persist after navigation/reload");
+        if (["mybooking", "profile", "scan"].includes(screen)) await page.locator('.tabbar button').nth({ mybooking: 3, profile: 4, scan: 2 }[screen]).click();
+        if (screen === "notifications") await page.locator('.club-icon-button').click();
+        if (screen === "trainer-detail") await page.locator('.trainer-list-card').first().click();
+        if (screen === "payment") await page.locator('.wallet-actions button').click();
+        if (["courts", "datetime", "summary"].includes(screen)) {
+          await page.locator('.prototype-list button').first().click();
+          await page.locator('.booking-calendar [data-status="full"]').waitFor();
+          assert.ok(await page.locator('.booking-calendar [data-status="full"]').isDisabled());
+          if (screen !== "courts") {
+            await page.locator('.slot-list button:enabled').first().click();
+            await page.locator('.sticky-summary .primary').click();
+            if (screen === "summary") await page.locator('.page > .primary').click();
+          }
+        }
+        const contentText = await page.locator('.content').evaluate((root) => {
+          const copy = root.cloneNode(true);
+          copy.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove());
+          return copy.textContent || "";
+        });
+        if (locale !== "th") assert.doesNotMatch(contentText.replaceAll(user.displayName, "").replaceAll(bookings[0].title, "").replaceAll("฿", ""), /[\u0e00-\u0e7f]/, `${locale} ${screen}: untranslated interface text`);
+        const metrics = await page.evaluate(() => ({ documentOverflow: document.documentElement.scrollWidth - innerWidth, contentOverflow: document.querySelector('.content').scrollWidth - document.querySelector('.content').clientWidth }));
+        assert.ok(metrics.documentOverflow <= 1 && metrics.contentOverflow <= 1, `${locale} ${screen} ${viewport.width}: ${JSON.stringify(metrics)}`);
+        if (["home", "courts", "payment", "trainer-detail"].includes(screen)) await page.screenshot({ path: `${outDir}/i18n-${locale}-${screen}-${viewport.width}.png` });
+        results.push({ area: "i18n", screen, locale, viewport, metrics });
+      }
+    }
+  }
+  // Switching language mid-booking must preserve the selected court and date.
+  await page.goto(`${base}/__responsive__/member?screen=sports`);
+  await page.locator('.prototype-list button').first().click();
+  await page.locator('.slot-list button:enabled').first().click();
+  const selectedDay = await page.locator('.booking-calendar [aria-pressed="true"]').getAttribute('data-date');
+  for (const locale of ["en", "zh", "th"]) {
+    await page.locator('.language-switcher select').selectOption(locale);
+    await page.locator('.sticky-summary').waitFor();
+    assert.equal(await page.locator('.booking-calendar [aria-pressed="true"]').getAttribute('data-date'), selectedDay);
+    assert.equal(await page.locator('.slot-list button.on').count(), 1);
   }
   assert.deepEqual(errors, []);
   await page.setViewportSize({ width: 390, height: 360 });

@@ -47,6 +47,74 @@ test("frontend image URLs allow HTTPS and local paths without executable schemes
   for (const unsafe of ["javascript:alert(1)", "data:image/svg+xml,<svg/>", "//tracker.example/photo", "/\\tracker.example/photo", "https://user:password@example.com/photo", "http://example.com/photo", " https://example.com/photo"]) assert.equal(safeImageSource(unsafe), null);
 });
 
+test("member presentation never treats expired, cancelled or past bookings as upcoming", () => {
+  const { upcomingBooking, bookingStatusLabel } = load("lib/booking-presentation.ts");
+  const now = Date.parse("2026-09-10T12:00:00+07:00");
+  for (const status of ["cancelled", "expired", "checked_in", "unknown"]) assert.equal(upcomingBooking({ status, startsAt: "2026-09-11T12:00:00+07:00" }, now), false);
+  assert.equal(upcomingBooking({ status: "paid", startsAt: "2026-09-09T12:00:00+07:00" }, now), false);
+  assert.equal(upcomingBooking({ status: "paid", startsAt: "invalid" }, now), false);
+  assert.equal(upcomingBooking({ status: "paid", starts_at: "2026-09-11T12:00:00+07:00" }, now), true);
+  assert.equal(bookingStatusLabel("pending_payment"), "รอชำระเงิน");
+  assert.equal(bookingStatusLabel("cancelled"), "ยกเลิกแล้ว");
+});
+
+test("i18n catalogs cover all three locales with unique keys and matching placeholders", () => {
+  const { allMessages, resources, locales } = load("lib/i18n/index.ts");
+  assert.equal(new Set(allMessages.map(([key]) => key)).size, allMessages.length, "Duplicate translation key");
+  const placeholders = (value) => [...value.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]).sort();
+  for (const [key] of allMessages) {
+    for (const locale of locales) {
+      const value = resources[locale].translation[key];
+      assert.equal(typeof value, "string");
+      assert.ok(value.trim(), `${locale}: ${key}`);
+      assert.deepEqual(placeholders(value), placeholders(resources.th.translation[key]), `${locale}: ${key}`);
+      if (locale !== "th") assert.doesNotMatch(value.replaceAll("฿", ""), /[\u0e00-\u0e7f]/, `${locale}: untranslated Thai in ${key}`);
+    }
+  }
+});
+
+test("i18n changes labels and dates without changing identities, prices or content routing", async () => {
+  const { t, memberI18n, localizedContent, isLocale, localeTag, courtName } = load("lib/i18n/index.ts");
+  assert.equal(isLocale("en"), true);
+  for (const value of ["fr", "../en", "zh-CN", null, {}]) assert.equal(isLocale(value), false);
+  await memberI18n.changeLanguage("en");
+  assert.equal(t("จองสนาม"), "Book a court");
+  assert.equal(localeTag(), "en-GB");
+  assert.equal(courtName("สนาม 12"), "Court 12");
+  assert.equal(t("BK-12345"), "BK-12345");
+  assert.equal(t("ใช้ได้ถึง {{value0}}", { value0: "10 Dec" }), "Valid until 10 Dec");
+  const content = { id: 5, title: "ชื่อเดิม", price: 500, targetScreen: "plans", metadata: JSON.stringify({ i18n: { en: { title: "Membership", price: 1, id: 9, targetScreen: "admin" }, zh: { title: "会员套餐" } } }) };
+  assert.deepEqual({ ...localizedContent(content), metadata: null }, { ...content, metadata: null, title: "Membership" });
+  await memberI18n.changeLanguage("zh");
+  assert.equal(t("จองสนาม"), "预约场地");
+  assert.equal(localeTag(), "zh-CN");
+  assert.equal(localizedContent(content).title, "会员套餐");
+  assert.equal(localizedContent({ title: "Original", metadata: "not-json" }).title, "Original");
+});
+
+test("member JSX has no untranslated Thai text or hardcoded Thai date locale", () => {
+  for (const file of ["components/ppa-app.tsx", "components/booking-calendar.tsx"]) {
+    const text = readFileSync(file, "utf8");
+    const root = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    function walk(node) {
+      if (ts.isJsxText(node)) assert.doesNotMatch(node.text.replaceAll("฿", ""), /[\u0e00-\u0e7f]/, `${file}: untranslated JSX`);
+      ts.forEachChild(node, walk);
+    }
+    walk(root);
+    assert.doesNotMatch(text, /toLocale(?:DateString|TimeString|String)\("th-TH"/);
+  }
+});
+
+test("member logout expires session cookies and rejects cross-origin requests", async () => {
+  const route = load("app/api/auth/line/route.ts", { "@/lib/auth": {} });
+  const response = await route.DELETE(new Request("http://localhost:3000/api/auth/line", { method: "DELETE" }));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("set-cookie"), /ppa_member_session=;/);
+  assert.match(response.headers.get("set-cookie"), /Max-Age=0/);
+  assert.match(response.headers.get("cache-control"), /no-store/);
+  assert.equal((await route.DELETE(new Request("http://localhost:3000/api/auth/line", { method: "DELETE", headers: { origin: "https://attacker.example" } }))).status, 403);
+});
+
 test("password verification rejects invalid hashes without throwing", async () => {
   const passwords = load("lib/password.ts");
   const hash = await passwords.hashPassword("a-long-test-password");
@@ -156,6 +224,115 @@ test("booking ranges reject impossible dates and do not depend on host timezone"
   assert.equal(rules.buildSlotRange("2026-02-30", "10:00"), null);
   assert.equal(rules.buildSlotRange("2026-09-10", "22:00", 2), null);
   assert.deepEqual(rules.buildSlotRange("2026-09-10", "10:00", 2), { startsAt: "2026-09-10 10:00:00", endsAt: "2026-09-10 12:00:00" });
+});
+
+test("calendar separates elapsed, closed, partial and full dates using Bangkok time", () => {
+  const { bangkokToday, datesInMonth, slotStatus, summarizeDay } = load("lib/court-availability.ts");
+  const now = Date.parse("2026-09-10T15:30:00+07:00");
+  assert.equal(bangkokToday(Date.parse("2026-09-10T18:00:00Z")), "2026-09-11");
+  assert.equal(datesInMonth("2028-02").length, 29);
+  assert.equal(datesInMonth("2026-02").length, 28);
+  assert.deepEqual(datesInMonth("2026-13"), []);
+  const bookings = [{ courtId: 1, startsAt: "2026-09-10 17:00:00", endsAt: "2026-09-10 18:00:00" }];
+  assert.equal(slotStatus("2026-09-10", "14:00", 1, 1, [], now), "past");
+  assert.equal(slotStatus("2026-09-10", "17:00", 1, 1, bookings, now), "full");
+  assert.equal(slotStatus("2026-09-10", "17:00", 1, 2, bookings, now), "available");
+  assert.equal(slotStatus("2026-09-10", "16:00", 2, 1, bookings, now), "full");
+  assert.equal(slotStatus("2026-09-10", "18:00", 1, 1, bookings, now), "available");
+  assert.equal(slotStatus("2026-09-10", "22:00", 2, 1, [], now), "closed");
+  assert.equal(summarizeDay("2026-09-10", ["past", "full", "available"], now).status, "available");
+  assert.equal(summarizeDay("2026-09-10", ["past", "full"], now).status, "full");
+  assert.equal(summarizeDay("2026-09-10", ["past"], now).status, "past");
+  assert.equal(summarizeDay("2026-09-11", [], now).status, "closed");
+});
+
+test("availability API validates dates, reports full months and never writes or returns booking identities", async () => {
+  const statements = [];
+  const route = load("app/api/courts/availability/route.ts", {
+    "@/lib/auth": { assertApiUser: async () => ({ id: 1 }) },
+    "@/lib/security": { checkRateLimit: () => null, clientIp: async () => "test", secureResponse: (response) => response, validationErrorResponse: () => Response.json({}, { status: 400 }) },
+    "@/lib/db": { query: async (sql) => {
+      statements.push(sql);
+      if (sql.includes("FROM sports")) return [{ id: 1, baseRate: 200 }];
+      if (sql.includes("FROM courts")) return [{ id: 1, name: "Court", capacity: 4 }];
+      return [{ courtId: 1, startsAt: "2099-02-01 00:00:00", endsAt: "2099-03-01 00:00:00" }];
+    } },
+  });
+  for (const params of ["date=2099-02-30", "month=2099-13", "date=2099-02-01&month=2099-02", "month=2099-02&durationHours=5"]) {
+    assert.equal((await route.GET(new Request(`http://localhost/api/courts/availability?sport=badminton&${params}`))).status, 400);
+  }
+  assert.equal(statements.length, 0);
+  const response = await route.GET(new Request("http://localhost/api/courts/availability?sport=badminton&month=2099-02"));
+  const body = await response.json();
+  assert.equal(body.days.length, 28);
+  assert.ok(body.days.every((day) => day.status === "full" && day.availableSlots === 0));
+  assert.equal(statements.length, 3);
+  assert.ok(statements.every((sql) => sql.startsWith("SELECT")));
+  assert.match(statements.at(-1), /expires_at > NOW\(\)/);
+  assert.doesNotMatch(JSON.stringify(body), /courtId|startsAt|userId/);
+});
+
+test("booking rechecks locked court and rejects overlapping reservations before insert", async () => {
+  for (const changedCourt of [false, true]) {
+    const statements = [];
+    let rolledBack = false;
+    const conn = {
+      beginTransaction: async () => {}, rollback: async () => { rolledBack = true; }, release: () => {},
+      execute: async (sql) => {
+        statements.push(sql);
+        return [sql.includes("FROM courts") ? changedCourt ? [] : [{ id: 1, capacity: 4, hourlyRate: 200 }] : [{ id: 99 }]];
+      },
+    };
+    const route = load("app/api/bookings/route.ts", {
+      "@/lib/auth": { assertApiUser: async () => ({ id: 1 }) },
+      "@/lib/security": { checkRateLimit: () => null, clientIp: async () => "test", parseJsonBody: async () => ({ sportSlug: "badminton", courtId: 1, date: "2099-02-01", time: "17:00", durationHours: 1, players: 2 }) },
+      "@/lib/db": { createPublicId: () => "BKTEST", pool: { getConnection: async () => conn }, query: async (sql) => sql.includes("FROM sports") ? [{ id: 1, requiresBooking: true, baseRate: 200, name: "Badminton" }] : [{ id: 1, capacity: 4, name: "Court" }] },
+    });
+    assert.equal((await route.POST(new Request("http://localhost/api/bookings", { method: "POST" }))).status, 409);
+    assert.ok(rolledBack);
+    assert.ok(statements.every((sql) => sql.includes("FOR UPDATE")));
+    assert.ok(!statements.some((sql) => sql.includes("INSERT")));
+  }
+});
+
+test("concurrent booking requests serialize on court lock; only one is inserted at server price", async () => {
+  let queue = Promise.resolve();
+  let inserted = false;
+  let insertCount = 0;
+  let id = 0;
+  const route = load("app/api/bookings/route.ts", {
+    "@/lib/auth": { assertApiUser: async () => ({ id: 1 }) },
+    "@/lib/security": { checkRateLimit: () => null, clientIp: async () => "test", parseJsonBody: async () => ({ sportSlug: "badminton", courtId: 1, date: "2099-02-01", time: "17:00", durationHours: 1, players: 2, amount: 1 }) },
+    "@/lib/db": {
+      createPublicId: (prefix) => `${prefix}${++id}`,
+      query: async (sql) => sql.includes("FROM sports") ? [{ id: 1, requiresBooking: true, baseRate: 200, name: "Badminton" }] : [{ id: 1, capacity: 4, name: "Court", hourlyRate: 100 }],
+      pool: { getConnection: async () => {
+        let unlock = () => {};
+        return {
+          beginTransaction: async () => {}, commit: async () => unlock(), rollback: async () => unlock(), release: () => {},
+          execute: async (sql, params) => {
+            if (sql.includes("FROM courts")) {
+              const previous = queue;
+              queue = new Promise((resolve) => { unlock = resolve; });
+              await previous;
+              return [[{ id: 1, capacity: 4, hourlyRate: 300 }]];
+            }
+            if (sql.includes("FOR UPDATE")) return [inserted ? [{ id: 1 }] : []];
+            if (sql.startsWith("INSERT")) {
+              assert.equal(params[8], 450, "Locked court rate, not client price or pre-lock rate");
+              inserted = true;
+              insertCount++;
+              return [{ affectedRows: 1 }];
+            }
+            return [[{ booking_no: "BKTEST", amount: 450, status: "pending_payment" }]];
+          },
+        };
+      } },
+    },
+  });
+  const responses = await Promise.all([1, 2].map(() => route.POST(new Request("http://localhost/api/bookings", { method: "POST" }))));
+  assert.deepEqual(responses.map((response) => response.status).sort(), [201, 409]);
+  assert.equal(insertCount, 1);
 });
 
 test("booking management cannot mark a booking paid", async () => {

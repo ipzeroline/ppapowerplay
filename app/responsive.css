@@ -1,4 +1,116 @@
 /* Viewport ownership: the page shell stays fixed; its content owns scrolling. */
+.language-switcher { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 92px; height: 44px; flex: 0 0 92px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: var(--card); font-size: 12px; font-weight: 600; }
+.language-switcher select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.language-switcher:focus-within { outline: 2px solid var(--green); outline-offset: 3px; }
+.language-switcher:hover { border-color: var(--green); }
+.statusbar { gap: 10px; }
+.statusbar > .status-member-chip { flex: 1 1 0; min-width: 0; max-width: 240px; margin-left: auto; }
+.statusbar > .language-switcher { margin-left: auto; }
+.gate-language { position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); z-index: 5; }
+.line-gate { position: relative; }
+html:lang(zh-CN) { --font-aura: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+.booking-calendar-grid button small { white-space: nowrap; }
+.booking-row-ui .tag { white-space: normal; max-width: 105px; }
+@media (max-width: 380px) {
+  .language-switcher { width: 82px; flex-basis: 82px; gap: 4px; }
+  .statusbar { padding-inline: 12px; gap: 8px; }
+}
+
+.club-home { padding-top: 16px; padding-bottom: 28px; }
+.club-home .trainer-strip { width: 100%; margin-inline: 0; padding-inline: 0; }
+.club-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-block: 12px 24px; }
+.club-eyebrow { color: var(--muted); font-size: 10px; font-weight: 700; }
+.club-heading h1 { margin: 5px 0 8px; font-size: 26px; line-height: 1.25; font-weight: 750; }
+.club-heading p { margin: 0; color: var(--muted); font-size: 13px; }
+.club-icon-button { position: relative; display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+.club-count { position: absolute; top: -5px; right: -5px; border-radius: 50%; padding: 3px; min-width: 20px; background: #b52b3c; color: white; font-size: 10px; }
+.club-primary-actions { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; }
+.club-primary-actions button { min-height: 100px; border-radius: 8px; padding: 18px; text-align: left; }
+.club-book-action { position: relative; background: #a8eccf; color: #103c2d; display: flex; flex-direction: column; justify-content: center; gap: 6px; border: 1px solid #a8eccf; }
+.club-book-action > span:first-child { font-size: 22px; font-weight: 750; padding-right: 22px; }
+.club-book-action small { font-size: 12px; }
+.club-action-arrow { position: absolute; top: 16px; right: 16px; font-size: 22px; }
+.club-qr-action { display: flex; align-items: flex-start; flex-direction: column; justify-content: center; gap: 10px; background: var(--card); border: 1px solid var(--line); color: var(--text); font-weight: 650; font-size: 13px; }
+.club-qr-action svg { width: 26px; height: 26px; }
+.club-section { padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--line); }
+.club-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.club-section-heading h2 { font-size: 17px; line-height: 1.4; margin: 0; font-weight: 700; }
+.club-section-heading button { min-height: 44px; flex-shrink: 0; padding: 8px 0 8px 8px; background: transparent; border: 0; color: var(--muted); font-size: 12px; }
+.club-empty { padding-block: 16px; display: flex; align-items: flex-start; flex-direction: column; gap: 12px; color: var(--muted); }
+.club-empty strong { font-size: 13px; font-weight: 500; }
+.club-empty button { background: transparent; border: 0; padding: 8px 0; min-height: 44px; color: var(--text); font-size: 13px; text-align: left; }
+.club-sports { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+.club-sports button { display: flex; align-items: center; gap: 12px; min-height: 82px; padding: 14px 0; background: transparent; border: 0; border-bottom: 1px solid var(--line); color: var(--text); text-align: left; min-width: 0; }
+.club-sport-icon { width: 40px; height: 40px; flex: 0 0 40px; display: grid; place-items: center; font-size: 25px; overflow: hidden; white-space: nowrap; }
+.club-sports button > span:nth-child(2) { min-width: 0; }
+.club-sports strong { display: block; font-size: 14px; font-weight: 650; }
+.club-sports small { display: block; font-size: 11px; color: var(--muted); margin-top: 5px; }
+.club-row-arrow { margin-left: auto; color: var(--muted); }
+.club-membership { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px 18px; }
+.club-membership strong { font-size: 15px; }
+.club-membership small { display: block; font-size: 12px; color: var(--muted); margin-top: 5px; }
+.club-membership > span { font-size: 11px; color: var(--muted); text-align: right; }
+.club-balances { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block: 1px solid var(--line); }
+.club-balances button { background: transparent; color: var(--text); border: 0; padding: 16px 8px; text-align: left; }
+.club-balances button + button { border-left: 1px solid var(--line); padding-left: 16px; }
+.club-balances small { color: var(--muted); display: block; font-size: 11px; }
+.club-balances strong { display: block; margin-top: 8px; font-size: 20px; }
+.club-balances strong span { font-size: 11px; font-weight: 400; }
+.club-news { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.club-news button { display: flex; flex-direction: column; gap: 10px; background: transparent; border: 0; color: var(--text); padding: 0; text-align: left; }
+.club-news img { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; }
+.club-news strong { font-size: 14px; }
+.club-news small { color: var(--muted); font-size: 12px; }
+.member-qr-link { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
+.member-qr-link small { font-size: 11px; }
+.phone .booking-row-ui { display: flex; flex-wrap: wrap; gap: 8px; }
+.booking-open { display: flex; align-items: center; gap: 12px; background: transparent; border: 0; padding: 4px 0; color: inherit; text-align: left; flex: 1 1 220px; min-width: 0; min-height: 44px; }
+.booking-row-ui .booking-cancel { min-height: 44px; margin-left: auto; }
+.booking-row-ui .inf b { white-space: normal; }
+.member-confirm { width: min(440px, calc(100vw - 32px)); padding: 24px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+.member-confirm h2 { font-size: 20px; margin: 0 0 16px; }
+.member-confirm p { font-size: 14px; }
+.member-confirm small { color: var(--muted); line-height: 1.7; display: block; }
+.member-confirm > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+.member-confirm button { min-height: 44px; margin: 0; padding: 10px; font-size: 13px; border-radius: 6px; }
+.danger-action { background: #a32435; border: 1px solid #a32435; color: white; }
+.club-broadcast { padding-block: 16px; border-bottom: 1px solid var(--line); }
+.club-broadcast p { color: var(--muted); font-size: 13px; }
+.back-btn { display: grid; place-items: center; min-width: 44px; min-height: 44px; }
+.phone .booking-row-ui, .phone .sport-row-ui, .phone .menu-item-ui { border-radius: 8px; }
+@media (max-width: 480px) {
+  .club-heading h1 { font-size: 23px; }
+  .club-sports { grid-template-columns: minmax(0, 1fr); }
+  .club-primary-actions button { padding: 14px; }
+  .club-book-action > span:first-child { font-size: 20px; }
+  .club-news { grid-template-columns: minmax(0, 1fr); }
+}
+
+.booking-calendar { margin-block: 16px; width: 100%; }
+.booking-calendar-heading { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; text-align: center; gap: 8px; margin-bottom: 10px; }
+.booking-calendar-heading button { height: 44px; font-size: 28px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: inherit; }
+.booking-calendar-heading strong { font-size: 17px; }
+.booking-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.booking-calendar-grid .calendar-weekday { text-align: center; padding-block: 6px; font-size: 12px; }
+.booking-calendar-grid button { min-width: 0; height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 3px 0; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+.booking-calendar-grid button strong { font-size: 16px; }
+.booking-calendar-grid button small { font-size: 10px; line-height: 1.4; }
+.booking-calendar-grid button[data-status="available"] { border-color: #359b72; }
+.booking-calendar-grid button[data-status="available"] small { color: #359b72; }
+.booking-calendar-grid button[aria-pressed="true"] { background: #166848; color: white; border-color: #166848; }
+.booking-calendar-grid button[aria-pressed="true"] small { color: white; }
+.booking-calendar-grid button:disabled { opacity: 0.55; cursor: not-allowed; }
+.booking-calendar-grid button[data-status="full"] { color: #d84848; opacity: 1; border-color: #d84848; }
+.calendar-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-block: 12px; }
+.calendar-error button { padding: 8px 14px; border: 1px solid currentColor; border-radius: 6px; }
+.slot-toolbar { flex-wrap: wrap; gap: 8px; }
+.booking-list { grid-template-columns: minmax(0, 1fr); }
+.booking-row-ui { min-width: 0; }
+@media (max-width: 480px) {
+  .booking-row-ui { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 8px; }
+  .booking-row-ui .booking-cancel { grid-column: 3; }
+}
+
 html, body {
   width: 100%;
   height: 100%;
