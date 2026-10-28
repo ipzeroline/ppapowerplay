@@ -553,7 +553,7 @@ function MemberApp() {
       if (pendingItem?.save === "coupon") await loadCoupons();
       setLastPaymentStatus(nextPaymentStatus);
       go("success");
-      if (method === "wallet") notice("ชำระเงินสำเร็จ");
+      if (nextPaymentStatus === "paid") notice("ชำระเงินสำเร็จ");
     } catch (error) {
       notice((error as Error).message);
     } finally {
@@ -1697,7 +1697,7 @@ function PaymentScreen({
 }: {
   busy: boolean;
   booking: Booking | null;
-  item: { title: string; amount: number } | null;
+  item: { title: string; amount: number; save?: string } | null;
   wallet: number;
   onBack: () => void;
   onPay: (method: "wallet" | "promptpay") => void;
@@ -1712,8 +1712,8 @@ function PaymentScreen({
         <span className="eyebrow">{t("CONFIRM PAYMENT")}</span>
         <h2>{t("ยืนยันการชำระเงิน")}</h2>
         <div className="pay-card"><span>🧾 {t(title)}</span><strong>{money(amount)} ฿</strong><small>{booking ? `Booking: ${bookingNo(booking)}` : t("PPA secure checkout")}</small></div>
-        <button className="pay-method primary-pay" onClick={() => onPay("wallet")} disabled={busy || wallet < amount}>{t("👛 จ่ายด้วย Wallet")} <span>{money(wallet)} ฿</span></button>
-        <button className="pay-method" onClick={() => onPay("promptpay")} disabled={busy}>{t("📱 PromptPay QR")} <span>{t("ยืนยันหลังชำระ")}</span></button>
+        {item?.save !== "topup" && <button className="pay-method primary-pay" onClick={() => onPay("wallet")} disabled={busy || wallet < amount}>{t("👛 จ่ายด้วย Wallet")} <span>{money(wallet)} ฿</span></button>}
+        <button className="pay-method" onClick={() => onPay("promptpay")} disabled={busy}>{t("payment.manual.request")} <span>{t("ยืนยันหลังชำระ")}</span></button>
         <button className="ghost" onClick={onBack} disabled={busy}>{t("‹ ย้อนกลับ")}</button>
       </div>
     </div>

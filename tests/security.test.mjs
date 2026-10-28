@@ -417,7 +417,7 @@ test("QR consumption rejects exhausted rights and rolls back token consumption",
     "@/lib/db": { pool: { getConnection: async () => conn } },
   });
   const { NextRequest } = require("next/server");
-  const response = await route.POST(new NextRequest("http://localhost/api/admin/qr/verify", { method: "POST", body: JSON.stringify({ token: "a".repeat(64), consume: true }) }));
+  const response = await route.POST(new NextRequest("http://localhost/api/admin/qr/verify", { method: "POST", body: JSON.stringify({ token: "a".repeat(43), consume: true }) }));
   assert.equal(response.status, 409);
   assert.equal(rolledBack, true);
   assert.equal(committed, false);
@@ -432,4 +432,142 @@ test("staff managers cannot assign super admin or modify their own account", asy
   const request = new NextRequest("http://localhost/api/admin/staff");
   assert.equal((await policy.assertRoleAssignment(request, 1)).status, 403);
   assert.equal((await policy.assertRoleAssignment(request, 2, 7)).status, 403);
+});
+
+test("scanner decodes real issued QR pixels without native BarcodeDetector", async () => {
+  const QRCode = require("qrcode");
+  const jsQR = require("jsqr");
+  const sharp = require("sharp");
+  const token = load("lib/qr.ts").createQrToken();
+  const url = `https://example.invalid/api/qr/verify?token=${token}`;
+  const png = await QRCode.toBuffer(url, { width: 480, margin: 4 });
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  assert.equal(jsQR(new Uint8ClampedArray(data), info.width, info.height).data, url);
+});
+
+test("QR preview validates rights; consumption is atomic and rejects replay", async () => {
+  for (const purpose of ["member", "booking", "coupon", "entitlement"]) {
+    let used = false;
+    let eligible = true;
+    let audit = 0;
+    let mutations = 0;
+    const conn = {
+      beginTransaction: async () => {}, rollback: async () => {}, commit: async () => {}, release: () => {},
+      execute: async (sql) => {
+        if (sql.includes("FROM qr_tokens")) return [[{ id: 1, userId: 2, purpose, refId: "3", usedAt: used ? "used" : null, expired: 0 }]];
+        if (sql.startsWith("SELECT")) return [eligible ? [{ id: 3 }] : []];
+        if (sql.startsWith("UPDATE qr_tokens")) used = true;
+        if (sql.startsWith("UPDATE")) mutations++;
+        if (sql.includes("INSERT INTO admin_audit_logs")) audit++;
+        return [{ affectedRows: 1 }];
+      },
+    };
+    const route = load("app/api/admin/qr/verify/route.ts", {
+      "@/lib/admin-auth": { assertAdminRequest: async () => null, getAdminIdentity: async () => ({ id: 7 }), adminSessionCookieName: () => "session", hasAdminPermission: () => true },
+      "@/lib/db": { pool: { getConnection: async () => conn } },
+    });
+    const { NextRequest } = require("next/server");
+    const call = (consume = false) => route.POST(new NextRequest("http://localhost/api/admin/qr/verify", { method: "POST", body: JSON.stringify({ token: `https://example.invalid/api/qr/verify?token=${"a".repeat(43)}`, consume }) }));
+    eligible = false;
+    assert.equal((await call()).status, 409);
+    eligible = true;
+    assert.equal((await call()).status, 200);
+    assert.equal(mutations, 0);
+    const redeemed = await call(true);
+    assert.equal(redeemed.status, 200);
+    assert.equal((await redeemed.json()).consumed, true);
+    assert.equal(audit, 1);
+    assert.equal((await call(true)).status, 409);
+    assert.equal(audit, 1);
+  }
+});
+
+test("QR scanner reports DB outage and rejects malformed tokens", async () => {
+  let connections = 0;
+  const route = load("app/api/admin/qr/verify/route.ts", {
+    "@/lib/admin-auth": { assertAdminRequest: async () => null, getAdminIdentity: async () => ({ id: 7 }), adminSessionCookieName: () => "session", hasAdminPermission: () => true },
+    "@/lib/db": { pool: { getConnection: async () => { connections++; throw new Error("private details"); } } },
+  });
+  const { NextRequest } = require("next/server");
+  const call = (token) => route.POST(new NextRequest("http://localhost/api/admin/qr/verify", { method: "POST", body: JSON.stringify({ token }) }));
+  assert.equal((await call("!".repeat(43))).status, 400);
+  assert.equal(connections, 0);
+  const response = await call("a".repeat(43));
+  assert.equal(response.status, 503);
+  assert.doesNotMatch(await response.text(), /private details/);
+});
+
+test("scanner menu admits only staff with a relevant redemption permission", () => {
+  const { canAccessSection } = load("lib/admin-permissions.ts");
+  for (const permission of ["bookings.manage", "coupons.manage", "payments.manage"]) {
+    assert.equal(canAccessSection("scanner", (value) => value === permission), true);
+  }
+  assert.equal(canAccessSection("scanner", (value) => value === "members.manage"), false);
+  assert.equal(canAccessSection("unknown", () => true), false);
+});
+
+test("QR redemption rejects expired codes and wrong purpose permissions before mutation", async () => {
+  for (const expired of [0, 1]) {
+    let writes = 0;
+    const route = load("app/api/admin/qr/verify/route.ts", {
+      "@/lib/admin-auth": { assertAdminRequest: async () => null, getAdminIdentity: async () => ({ id: 7 }), adminSessionCookieName: () => "session", hasAdminPermission: () => false },
+      "@/lib/db": { pool: { getConnection: async () => ({
+        beginTransaction: async () => {}, rollback: async () => {}, release: () => {},
+        execute: async (sql) => {
+          if (!sql.startsWith("SELECT")) writes++;
+          return [[{ id: 1, userId: 2, purpose: "coupon", refId: "3", usedAt: null, expired }]];
+        },
+      }) } },
+    });
+    const { NextRequest } = require("next/server");
+    const response = await route.POST(new NextRequest("http://localhost/api/admin/qr/verify", { method: "POST", body: JSON.stringify({ token: "a".repeat(43), consume: true }) }));
+    assert.equal(response.status, expired ? 409 : 403);
+    assert.equal(writes, 0);
+  }
+});
+
+test("payment approval refuses unavailable coupons without granting a substitute entitlement", async () => {
+  let rolledBack = false;
+  let granted = false;
+  const route = load("app/api/admin/payments/route.ts", {
+    "@/lib/admin-auth": { assertAdminRequest: async () => null, getAdminIdentity: async () => ({ id: 7 }), adminSessionCookieName: () => "session" },
+    "@/lib/entitlements": { grantPaidEntitlement: async () => { granted = true; } },
+    "@/lib/db": { pool: { getConnection: async () => ({
+      beginTransaction: async () => {}, rollback: async () => { rolledBack = true; }, release: () => {},
+      execute: async (sql) => {
+        if (sql.includes("FROM payments")) return [[{ id: 1, paymentNo: "PAYTEST", userId: 2, status: "created", amount: 100, metadataText: JSON.stringify({ itemType: "coupon", couponId: 3 }) }]];
+        if (sql.includes("FROM coupons")) return [[]];
+        return [{ affectedRows: 1 }];
+      },
+    }) } },
+  });
+  const { NextRequest } = require("next/server");
+  const response = await route.PUT(new NextRequest("http://localhost/api/admin/payments", { method: "PUT", body: JSON.stringify({ paymentNo: "PAYTEST", status: "paid" }) }));
+  assert.equal(response.status, 409);
+  assert.equal(rolledBack, true);
+  assert.equal(granted, false);
+});
+
+test("payment approval attributes staff and reads response on the same transaction connection", async () => {
+  const statements = [];
+  let committed = false;
+  const route = load("app/api/admin/payments/route.ts", {
+    "@/lib/admin-auth": { assertAdminRequest: async () => null, getAdminIdentity: async () => ({ id: 7 }), adminSessionCookieName: () => "session" },
+    "@/lib/db": { pool: { getConnection: async () => ({
+      beginTransaction: async () => {}, rollback: async () => {}, release: () => {}, commit: async () => { committed = true; },
+      execute: async (sql, params) => {
+        statements.push([sql, params]);
+        assert.equal(committed, false, "No fallible response query after commit");
+        if (sql.includes("FROM payments WHERE")) return [[{ id: 1, paymentNo: "PAYTEST", userId: 2, status: "created", amount: 100, metadataText: JSON.stringify({ kind: "wallet_topup" }) }]];
+        if (sql.startsWith("SELECT")) return [[{ paymentNo: "PAYTEST", status: "paid" }]];
+        return [{ affectedRows: 1 }];
+      },
+    }) } },
+  });
+  const { NextRequest } = require("next/server");
+  const response = await route.PUT(new NextRequest("http://localhost/api/admin/payments", { method: "PUT", body: JSON.stringify({ paymentNo: "PAYTEST", status: "paid" }) }));
+  assert.equal(response.status, 200);
+  assert.equal(committed, true);
+  assert.equal(statements.find(([sql]) => sql.includes("INSERT INTO admin_audit_logs"))[1][0], 7);
+  assert.equal((await response.json()).payments[0].status, "paid");
 });

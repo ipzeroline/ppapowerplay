@@ -1,11 +1,12 @@
 "use client";
 import Image from "next/image";
+import { AdminQrScanner } from "@/components/admin-qr-scanner";
 import { safeImageSource } from "@/lib/media";
 import { AdminDialog } from "@/components/admin-dialog";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { sectionPermissions } from "@/lib/admin-permissions";
+import { canAccessSection } from "@/lib/admin-permissions";
 
 type Lang = "th" | "en";
 type Theme = "dark" | "light";
@@ -174,6 +175,7 @@ const copy = {
     roles: "สิทธิพนักงาน",
     reports: "รายงาน",
     coupons: "ระบบคูปอง",
+    scanner: "สแกน QR",
     bookings: "ระบบจอง",
     trainers: "เทรนเนอร์",
     content: "App Content",
@@ -464,6 +466,7 @@ const copy = {
     roles: "Staff Roles",
     reports: "Reports",
     coupons: "Coupons",
+    scanner: "Scan QR",
     bookings: "Bookings",
     trainers: "Trainers",
     content: "App Content",
@@ -729,6 +732,7 @@ const tabs = [
   ["content", "Content", "content", "🧩"],
   ["coupons", "Coupons", "coupons", "🎟️"],
   ["bookings", "Bookings", "bookings", "📅"],
+  ["scanner", "Scan QR", "scanner", "📷"],
   ["trainers", "Trainers", "trainers", "🏋️"],
   ["audit", "Audit", "audit", "🧾"],
   ["security", "Security", "security", "🔐"],
@@ -743,7 +747,7 @@ type AdminNavGroup = { labelTh: string; labelEn: string; items: AdminTab[] };
 const reportSectionIds = ["overview", "finance", "bookings", "members", "coupons", "trainers", "courts", "engagement", "audit"] as const;
 const adminNavGroups: AdminNavGroup[] = [
   { labelTh: "ภาพรวม", labelEn: "Overview", items: ["dashboard"] },
-  { labelTh: "งานบริการหลัก", labelEn: "Core Operations", items: ["bookings", "members", "trainers", "coupons", "content"] },
+  { labelTh: "งานบริการหลัก", labelEn: "Core Operations", items: ["bookings", "scanner", "members", "trainers", "coupons", "content"] },
   { labelTh: "รายงานและวิเคราะห์", labelEn: "Reports & Analytics", items: ["reports", "analysis"] },
   { labelTh: "ทีมงานและสิทธิ์", labelEn: "Team & Access", items: ["staff", "roles"] },
   { labelTh: "ระบบและความปลอดภัย", labelEn: "System & Security", items: ["audit", "security", "system"] },
@@ -754,6 +758,7 @@ function pageDescription(tab: AdminTab, lang: Lang) {
     th: {
       dashboard: "ศูนย์ควบคุมภาพรวมรายได้ การจอง สนาม และความพร้อมระบบ",
       members: "ค้นหาและตรวจสอบข้อมูลสมาชิก สถานะ และช่องทางติดต่อ",
+      scanner: "ตรวจสอบ QR และยืนยันใช้สิทธิ์หน้างาน",
       bookings: "ติดตามรายการจอง เวลาใช้งาน ยอดชำระ และสถานะสนาม",
       trainers: "จัดการโปรไฟล์ รูปภาพ ราคา และสถานะเทรนเนอร์ของสปอร์ตคอมเพล็กซ์",
       content: "จัดการ banner, promotion, class schedule, live TV, membership และ screen จาก prototype",
@@ -769,6 +774,7 @@ function pageDescription(tab: AdminTab, lang: Lang) {
     en: {
       dashboard: "Control revenue, bookings, courts, and system readiness in one view.",
       members: "Search and review member profiles, status, and contact data.",
+      scanner: "Verify member QR codes and confirm access.",
       bookings: "Track bookings, session times, payments, and court states.",
       trainers: "Manage trainer profiles, photos, prices, and active status.",
       content: "Manage banners, promotions, class schedules, live TV, membership, and prototype screens.",
@@ -908,7 +914,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
       previous?.focus();
     };
   }, [menuOpen]);
-  const canAccessTab = useCallback((id: string) => data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes(sectionPermissions[id])), [data.currentAdmin]);
+  const canAccessTab = useCallback((id: string) => data.currentAdmin?.roleCode === "super_admin" || canAccessSection(id, (permission) => Boolean(data.currentAdmin?.permissionCodes.includes(permission))), [data.currentAdmin]);
   const [tab, setTab] = useState<AdminTab>(isAdminTab(initialTab) ? initialTab : "dashboard");
   const initialReport = isReportSection(initialReportSection || null) ? initialReportSection as ReportSection : "overview";
   const [reportSection, setReportSection] = useState<ReportSection>(initialReport);
@@ -1111,6 +1117,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
         {tab === "reports" && <Reports adminKey={adminKey} data={{ ...data, payments: paymentRows }} lang={lang} onPaymentsChange={setPaymentRows} section={reportSection} t={t} />}
         {tab === "content" && <ContentManager adminKey={adminKey} lang={lang} message={adminMessage} rows={contentRows} setMessage={setAdminMessage} setRows={setContentRows} t={t} />}
         {tab === "coupons" && <CouponManager adminKey={adminKey} lang={lang} message={adminMessage} rows={couponRows} setMessage={setAdminMessage} setRows={setCouponRows} t={t} />}
+        {tab === "scanner" && <AdminQrScanner lang={lang} />}
         {tab === "bookings" && <BookingManager adminKey={adminKey} courts={courtRows} lang={lang} message={adminMessage} rows={bookingRows} setCourts={setCourtRows} setMessage={setAdminMessage} setRows={setBookingRows} t={t} />}
         {tab === "trainers" && (
           <TrainerManager
@@ -1387,7 +1394,7 @@ function Dashboard({ adminKey, data, lang, onPaymentsChange, t }: { adminKey: st
 
       <div className="admin-panels">
         <Panel title={t.recentBookings}><BookingTable rows={data.bookings.slice(0, 6)} lang={lang} t={t} /></Panel>
-        <Panel title={t.recentPayments}><PaymentTable adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={data.payments.slice(0, 6)} lang={lang} t={t} /></Panel>
+        <Panel title={t.recentPayments}><PaymentTable canManage={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("payments.manage"))} adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={data.payments.slice(0, 6)} lang={lang} t={t} /></Panel>
       </div>
     </>
   );
@@ -1565,16 +1572,27 @@ function TrainerTable({ rows, lang, t }: { rows: AdminTrainer[]; lang: Lang; t: 
   return <table><thead><tr><th>{t.imagePreview}</th><th>{t.cols.trainer}</th><th>{t.cols.role}</th><th>{t.experience}</th><th>{t.cols.startPrice}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td><TrainerPhoto row={r} /></td><td>{r.name}<small>{r.nickname} · {r.slug}</small></td><td>{r.role}</td><td>{r.experience}</td><td>{money(r.startPrice, lang)} ฿</td><td><Badge tone={r.active ? "good" : "bad"}>{statusLabel(r.active ? "active" : "off", t)}</Badge></td></tr>)}</tbody></table>;
 }
 
-function PaymentTable({ adminKey, rows, lang, onPaymentsChange, t }: { adminKey?: string; rows: AdminPayment[]; lang: Lang; onPaymentsChange?: (rows: AdminPayment[]) => void; t: typeof copy[Lang] }) {
+function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t }: { adminKey?: string; canManage: boolean; rows: AdminPayment[]; lang: Lang; onPaymentsChange?: (rows: AdminPayment[]) => void; t: typeof copy[Lang] }) {
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
   const updatePayment = async (paymentNo: string, status: "paid" | "failed" | "cancelled") => {
-    if (!adminKey || !onPaymentsChange) return;
+    if (!canManage || !onPaymentsChange || pending.current) return;
+    pending.current = true;
+    setBusy(true);
     setMessage("");
-    const response = await adminFetch(adminKey, "/api/admin/payments", { method: "PUT", body: JSON.stringify({ paymentNo, status }) });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.saveFailed);
-    onPaymentsChange(result.payments);
-    setMessage(t.paymentUpdated);
+    try {
+      const response = await adminFetch(adminKey || "", "/api/admin/payments", { method: "PUT", body: JSON.stringify({ paymentNo, status }) });
+      const result = await response.json();
+      if (!response.ok) return setMessage(result.message || t.saveFailed);
+      onPaymentsChange(result.payments);
+      setMessage(t.paymentUpdated);
+    } catch {
+      setMessage(lang === "th" ? "ไม่ทราบผลการยืนยัน กรุณารีเฟรชตรวจสถานะก่อนลองใหม่" : "Confirmation result is unknown. Refresh and check the status before retrying.");
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
   };
   return (
     <>
@@ -1587,7 +1605,7 @@ function PaymentTable({ adminKey, rows, lang, onPaymentsChange, t }: { adminKey?
             <td>{r.method}</td>
             <td>{money(r.amount, lang)} ฿</td>
             <td><Badge tone={r.status === "paid" ? "good" : r.status === "failed" || r.status === "cancelled" ? "bad" : "warn"}>{statusLabel(r.status, t)}</Badge></td>
-            <td><button type="button" disabled={r.status !== "created" || !adminKey} onClick={() => updatePayment(r.paymentNo, "paid")}>{t.paymentMarkPaid}</button></td>
+            <td><button type="button" disabled={r.status !== "created" || !canManage || !onPaymentsChange || busy} onClick={() => updatePayment(r.paymentNo, "paid")}>{t.paymentMarkPaid}</button></td>
           </tr>
         ))}</tbody>
       </table>
@@ -2484,7 +2502,7 @@ function Reports({ adminKey, data, lang, onPaymentsChange, section, t }: { admin
           <Panel title={t.reportExportAll}><div className="admin-report-export-grid"><ExportButton label={t.reportFinance} filename="ppa-report-payments.csv" rows={data.payments} /><ExportButton label={t.reportBookings} filename="ppa-report-bookings.csv" rows={data.bookings} /><ExportButton label={t.reportMembers} filename="ppa-report-members.csv" rows={data.users} /></div></Panel>
         </div>
       )}
-      {section === "finance" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.paidAt} filename="ppa-payments.csv" lang={lang} renderTable={(rows) => <PaymentTable adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={rows} lang={lang} t={t} />} rows={data.payments} searchText={(row) => `${row.paymentNo} ${row.displayName} ${row.method} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
+      {section === "finance" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.paidAt} filename="ppa-payments.csv" lang={lang} renderTable={(rows) => <PaymentTable canManage={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("payments.manage"))} adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={rows} lang={lang} t={t} />} rows={data.payments} searchText={(row) => `${row.paymentNo} ${row.displayName} ${row.method} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "bookings" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.startsAt} filename="ppa-bookings.csv" lang={lang} renderTable={(rows) => <BookingTable rows={rows} lang={lang} t={t} />} rows={data.bookings} searchText={(row) => `${row.bookingNo} ${row.title} ${row.displayName} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "members" && <ReportDataList dateGetter={(row) => row.createdAt} filename="ppa-members.csv" lang={lang} renderTable={(rows) => <MemberTable rows={rows} lang={lang} t={t} />} rows={data.users} searchText={(row) => `${row.displayName} ${row.memberCode} ${row.phone || ""} ${row.email || ""} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "coupons" && <ReportDataList filename="ppa-coupons.csv" lang={lang} renderTable={(rows) => <CouponTable rows={rows} lang={lang} t={t} />} rows={data.coupons} searchText={(row) => `${row.name} ${row.code} ${row.category}`} statusGetter={(row) => row.active ? "active" : "off"} t={t} title={t.reportDetail} />}

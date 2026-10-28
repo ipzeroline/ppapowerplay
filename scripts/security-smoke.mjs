@@ -20,6 +20,9 @@ for (const resource of ["bookings", "content", "coupons", "courts", "roles", "st
   const { response } = await check(`/api/admin/${resource}`, 401);
   assert.match(response.headers.get("cache-control") || "", /no-store/);
 }
+await check("/api/admin/qr/verify", 401, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: "a".repeat(43), consume: true }) });
+const publicPage = await check("/", 200);
+assert.match(publicPage.response.headers.get("permissions-policy") || "", /camera=\(self\)/);
 await check("/api/admin/session", 403, { method: "POST", headers: { origin: "https://attacker.example", "content-type": "application/json" }, body: "{}" });
 await check("/api/admin/session", 400, { method: "POST", headers: { "content-type": "application/json" }, body: "{" });
 await check("/api/admin/session", 401, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "nonexistent-smoke-user", password: "not-a-valid-password" }) });
@@ -52,6 +55,12 @@ try {
     if (admin.roleCode === "super_admin") {
       const page = await check("/AdminConsole", 200, { headers });
       assert.doesNotMatch(page.body, /scrypt:/);
+    }
+    const scannerAccess = admin.roleCode === "super_admin" || permissions.some((p) => ["bookings.manage", "coupons.manage", "payments.manage"].includes(p.code));
+    if (scannerAccess) {
+      const scannerPage = await check("/AdminConsole/scanner", 200, { headers });
+      assert.match(scannerPage.body, /scan-token/);
+      await check("/api/admin/qr/verify", 400, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ token: "!".repeat(43) }) });
     }
     await check("/api/admin/profile", 403, { method: "PUT", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ staffId: admin.id + 1000000, username: "no-change-smoke", displayName: "No change" }) });
   }

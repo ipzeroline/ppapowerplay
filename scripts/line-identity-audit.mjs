@@ -1,23 +1,7 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import nextEnv from "@next/env";
 import mysql from "mysql2/promise";
 
-async function loadLocalEnv() {
-  const file = path.join(process.cwd(), ".env.local");
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-      const index = trimmed.indexOf("=");
-      process.env[trimmed.slice(0, index)] ??= trimmed.slice(index + 1);
-    }
-  } catch {
-    // Production should provide real environment variables.
-  }
-}
-
-await loadLocalEnv();
+nextEnv.loadEnvConfig(process.cwd(), false);
 
 const env = process.env;
 const connection = await mysql.createConnection({

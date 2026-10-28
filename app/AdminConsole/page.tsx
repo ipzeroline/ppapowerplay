@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { AdminLogin } from "@/components/admin-login";
 import { AdminConsole, type AdminConsoleData } from "@/components/admin-console";
 import { adminSessionCookieName, getAdminIdentity, hasAdminPermission } from "@/lib/admin-auth";
-import { sectionPermissions } from "@/lib/admin-permissions";
+import { canAccessSection } from "@/lib/admin-permissions";
 import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 
@@ -10,7 +10,7 @@ type AdminConsolePageProps = {
   searchParams: Promise<{ key?: string | string[]; report?: string | string[] }>;
 };
 
-export const adminConsoleSections = ["dashboard", "members", "staff", "roles", "reports", "content", "coupons", "bookings", "trainers", "audit", "security", "system", "analysis"] as const;
+export const adminConsoleSections = ["dashboard", "members", "staff", "roles", "reports", "content", "coupons", "bookings", "scanner", "trainers", "audit", "security", "system", "analysis"] as const;
 export type AdminConsoleSection = (typeof adminConsoleSections)[number];
 
 function readSingle(value: string | string[] | undefined) {
@@ -41,8 +41,8 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
   }
 
   const can = (permission: string) => hasAdminPermission(currentAdmin, permission);
-  if (!can(sectionPermissions[initialTab])) {
-    const first = adminConsoleSections.find((section) => can(sectionPermissions[section]));
+  if (!canAccessSection(initialTab, can)) {
+    const first = adminConsoleSections.find((section) => canAccessSection(section, can));
     if (first) redirect(`/AdminConsole/${first}`);
     return <main className="admin admin-locked"><h1>ไม่มีสิทธิ์เข้าถึง</h1><p>กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดสิทธิ์</p><AdminLogin /></main>;
   }

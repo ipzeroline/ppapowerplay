@@ -1,21 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
+import nextEnv from "@next/env";
 
-const envPath = path.join(process.cwd(), ".env.local");
-const fileEnv = {};
-
-if (fs.existsSync(envPath)) {
-  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const index = trimmed.indexOf("=");
-    fileEnv[trimmed.slice(0, index)] = trimmed.slice(index + 1);
-  }
-}
-
-function readEnv(name) {
-  return process.env[name] ?? fileEnv[name] ?? "";
-}
+nextEnv.loadEnvConfig(process.cwd(), false);
+const readEnv = (name) => process.env[name] || "";
 
 const required = [
   "DB_HOST",

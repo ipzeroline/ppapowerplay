@@ -38,8 +38,9 @@ export async function POST(req: NextRequest) {
   const token = extractToken(input.token);
   if (!token) return secureResponse(NextResponse.json({ message: "QR token ไม่ถูกต้อง" }, { status: 400 }));
 
-  const conn = await pool.getConnection();
+  let conn: Awaited<ReturnType<typeof pool.getConnection>> | undefined;
   try {
+    conn = await pool.getConnection();
     await conn.beginTransaction();
     const [rows] = await conn.execute(
       "SELECT qt.id, qt.user_id userId, qt.purpose, qt.ref_id refId, qt.expires_at expiresAt, qt.used_at usedAt, qt.expires_at <= NOW() expired, u.display_name displayName, u.member_code memberCode FROM qr_tokens qt JOIN users u ON u.id = qt.user_id WHERE qt.token_hash = ? AND u.status = 'active' FOR UPDATE",
@@ -61,11 +62,28 @@ export async function POST(req: NextRequest) {
       await conn.rollback();
       return secureResponse(NextResponse.json({ message: "Permission denied" }, { status: 403 }));
     }
+    // Re-check the underlying right on preview as well as redemption.
+    const eligibility: Record<string, string> = {
+      booking: "SELECT id FROM bookings WHERE booking_no = ? AND user_id = ? AND status = 'paid' AND ends_at > NOW() FOR UPDATE",
+      coupon: "SELECT id FROM user_coupons WHERE id = ? AND user_id = ? AND status = 'active' AND remaining_uses > 0 AND expires_at > NOW() FOR UPDATE",
+      entitlement: "SELECT id FROM user_entitlements WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND (remaining_uses IS NULL OR remaining_uses > 0) AND (ends_at IS NULL OR ends_at > NOW()) FOR UPDATE",
+      member: "SELECT id FROM memberships WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() FOR UPDATE",
+      payment: "SELECT id FROM payments WHERE payment_no = ? AND user_id = ? FOR UPDATE",
+    };
+    if (!qr.refId || !eligibility[qr.purpose]) {
+      await conn.rollback();
+      return secureResponse(NextResponse.json({ message: "สิทธิ์นี้ใช้ไม่ได้แล้ว" }, { status: 409 }));
+    }
+    const [rights] = await conn.execute(eligibility[qr.purpose], [qr.refId, qr.userId]);
+    if (!(rights as unknown[]).length || (input.consume && qr.purpose === "payment")) {
+      await conn.rollback();
+      return secureResponse(NextResponse.json({ message: "สิทธิ์นี้ใช้ไม่ได้แล้ว" }, { status: 409 }));
+    }
     if (input.consume) {
       let affectedRows = 0;
       await conn.execute("UPDATE qr_tokens SET used_at = NOW() WHERE id = ?", [qr.id]);
       if (qr.purpose === "booking" && qr.refId) {
-        const [result] = await conn.execute("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE booking_no = ? AND user_id = ? AND status = 'paid'", [qr.refId, qr.userId]);
+        const [result] = await conn.execute("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE booking_no = ? AND user_id = ? AND status = 'paid' AND ends_at > NOW()", [qr.refId, qr.userId]);
         affectedRows = (result as { affectedRows: number }).affectedRows;
       }
       if (qr.purpose === "coupon" && qr.refId) {
@@ -77,7 +95,7 @@ export async function POST(req: NextRequest) {
       }
       if (qr.purpose === "entitlement" && qr.refId) {
         const [result] = await conn.execute(
-          "UPDATE user_entitlements SET status = IF(remaining_uses IS NOT NULL AND remaining_uses <= 1, 'used', status), remaining_uses = IF(remaining_uses IS NULL, NULL, remaining_uses - 1) WHERE id = ? AND user_id = ? AND status = 'active' AND (remaining_uses IS NULL OR remaining_uses > 0) AND (ends_at IS NULL OR ends_at > NOW())",
+          "UPDATE user_entitlements SET status = IF(remaining_uses IS NOT NULL AND remaining_uses <= 1, 'used', status), remaining_uses = IF(remaining_uses IS NULL, NULL, remaining_uses - 1) WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND (remaining_uses IS NULL OR remaining_uses > 0) AND (ends_at IS NULL OR ends_at > NOW())",
           [Number(qr.refId), qr.userId],
         );
         affectedRows = (result as { affectedRows: number }).affectedRows;
@@ -101,19 +119,20 @@ export async function POST(req: NextRequest) {
 
     await conn.commit();
     return secureResponse(NextResponse.json({ valid: true, consumed, qr }));
-  } catch (error) {
-    await conn.rollback();
-    throw error;
+  } catch {
+    await conn?.rollback().catch(() => {});
+    return secureResponse(NextResponse.json({ message: "บริการ QR ไม่พร้อมใช้งาน กรุณาตรวจประวัติก่อนลองใหม่" }, { status: 503 }));
   } finally {
-    conn.release();
+    conn?.release();
   }
 }
 
 function extractToken(value: string) {
   try {
     const url = new URL(value);
-    return url.searchParams.get("token") || "";
+    const token = url.searchParams.get("token") || "";
+    return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : "";
   } catch {
-    return value.trim();
+    return /^[A-Za-z0-9_-]{43}$/.test(value.trim()) ? value.trim() : "";
   }
 }

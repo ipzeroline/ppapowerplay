@@ -69,7 +69,7 @@ async function resolveRef(req: NextRequest, userId: number, purpose: z.infer<typ
   if (purpose === "member") {
     const membership = (
       await query<{ id: number; planName: string }>(
-        "SELECT id, plan_name planName FROM memberships WHERE user_id = ? AND status = 'active' AND ends_at >= NOW() ORDER BY ends_at DESC LIMIT 1",
+        "SELECT id, plan_name planName FROM memberships WHERE user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() ORDER BY ends_at DESC LIMIT 1",
         [userId],
       )
     )[0];
@@ -80,7 +80,7 @@ async function resolveRef(req: NextRequest, userId: number, purpose: z.infer<typ
     const bookingNo = req.nextUrl.searchParams.get("bookingNo") || "";
     const booking = (
       await query<{ bookingNo: string; title: string }>(
-        "SELECT booking_no bookingNo, title FROM bookings WHERE booking_no = ? AND user_id = ? AND status IN ('paid','checked_in') LIMIT 1",
+        "SELECT booking_no bookingNo, title FROM bookings WHERE booking_no = ? AND user_id = ? AND status = 'paid' AND ends_at > NOW() LIMIT 1",
         [bookingNo, userId],
       )
     )[0];
@@ -91,7 +91,7 @@ async function resolveRef(req: NextRequest, userId: number, purpose: z.infer<typ
     const couponId = Number(req.nextUrl.searchParams.get("couponId") || 0);
     const coupon = (
       await query<{ id: number; name: string }>(
-        "SELECT uc.id, c.name FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id WHERE uc.id = ? AND uc.user_id = ? AND uc.status = 'active' AND uc.remaining_uses > 0 AND uc.expires_at >= NOW() LIMIT 1",
+        "SELECT uc.id, c.name FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id WHERE uc.id = ? AND uc.user_id = ? AND uc.status = 'active' AND uc.remaining_uses > 0 AND uc.expires_at > NOW() LIMIT 1",
         [couponId, userId],
       )
     )[0];
@@ -102,7 +102,7 @@ async function resolveRef(req: NextRequest, userId: number, purpose: z.infer<typ
     const entitlementId = Number(req.nextUrl.searchParams.get("entitlementId") || 0);
     const entitlement = (
       await query<{ id: number; title: string }>(
-        "SELECT id, title FROM user_entitlements WHERE id = ? AND user_id = ? AND status = 'active' AND (ends_at IS NULL OR ends_at >= NOW()) AND (remaining_uses IS NULL OR remaining_uses > 0) LIMIT 1",
+        "SELECT id, title FROM user_entitlements WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND (ends_at IS NULL OR ends_at > NOW()) AND (remaining_uses IS NULL OR remaining_uses > 0) LIMIT 1",
         [entitlementId, userId],
       )
     )[0];

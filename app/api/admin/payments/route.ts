@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { assertAdminRequest } from "@/lib/admin-auth";
+import { assertAdminRequest, getAdminIdentity, adminSessionCookieName } from "@/lib/admin-auth";
 import { grantPaidEntitlement } from "@/lib/entitlements";
-import { pool, query } from "@/lib/db";
+import { pool } from "@/lib/db";
 import { parseJsonBody, secureResponse, validationErrorResponse } from "@/lib/security";
 
 const schema = z.object({
@@ -23,6 +23,8 @@ type PaymentRow = {
 export async function PUT(req: NextRequest) {
   const adminError = await assertAdminRequest(req);
   if (adminError) return adminError;
+  const admin = await getAdminIdentity(req.cookies.get(adminSessionCookieName())?.value || "");
+  if (!admin) return secureResponse(NextResponse.json({ message: "Admin access denied" }, { status: 401 }));
 
   let input: z.infer<typeof schema>;
   try {
@@ -31,8 +33,9 @@ export async function PUT(req: NextRequest) {
     return validationErrorResponse(error);
   }
 
-  const conn = await pool.getConnection();
+  let conn: Awaited<ReturnType<typeof pool.getConnection>> | undefined;
   try {
+    conn = await pool.getConnection();
     await conn.beginTransaction();
     const [rows] = await conn.execute(
       "SELECT id, payment_no paymentNo, user_id userId, booking_id bookingId, amount, status, CAST(metadata AS CHAR) metadataText FROM payments WHERE payment_no = ? FOR UPDATE",
@@ -64,17 +67,19 @@ export async function PUT(req: NextRequest) {
         await grantFromPayment(conn, payment);
       }
     }
-    await conn.execute("INSERT INTO admin_audit_logs (staff_id, action, target_type, target_id, metadata) VALUES (NULL, 'payment.status', 'payment', ?, JSON_OBJECT('status', ?))", [
+    await conn.execute("INSERT INTO admin_audit_logs (staff_id, action, target_type, target_id, metadata) VALUES (?, 'payment.status', 'payment', ?, JSON_OBJECT('status', ?))", [
+      admin.id,
       payment.paymentNo,
       input.status,
     ]);
+    const payments = await listPayments(conn);
     await conn.commit();
-    return secureResponse(NextResponse.json({ payments: await listPayments() }));
+    return secureResponse(NextResponse.json({ payments }));
   } catch (error) {
-    await conn.rollback();
-    throw error;
+    await conn?.rollback().catch(() => {});
+    return secureResponse(NextResponse.json({ message: error instanceof PaymentGrantError ? error.message : "ไม่ทราบผลการยืนยัน กรุณาตรวจสถานะรายการก่อนลองใหม่" }, { status: error instanceof PaymentGrantError ? 409 : 503 }));
   } finally {
-    conn.release();
+    conn?.release();
   }
 }
 
@@ -95,9 +100,10 @@ async function grantFromPayment(conn: Awaited<ReturnType<typeof pool.getConnecti
   }
   const itemType = String(metadata.itemType || "");
   const itemName = String(metadata.itemName || "PPA package");
-  if (itemType === "coupon" && metadata.couponId) {
+  if (itemType === "coupon") {
+    if (!Number.isSafeInteger(Number(metadata.couponId)) || Number(metadata.couponId) <= 0) throw new PaymentGrantError("ข้อมูลคูปองไม่ถูกต้อง");
     const [couponRows] = await conn.execute(
-      "SELECT id, total_uses totalUses, validity_days validityDays FROM coupons WHERE id = ? AND active = TRUE LIMIT 1",
+      "SELECT id, total_uses totalUses, validity_days validityDays FROM coupons WHERE id = ? AND active = TRUE LIMIT 1 FOR UPDATE",
       [Number(metadata.couponId)],
     );
     const coupon = (couponRows as { id: number; totalUses: number; validityDays: number }[])[0];
@@ -108,7 +114,9 @@ async function grantFromPayment(conn: Awaited<ReturnType<typeof pool.getConnecti
       );
       return;
     }
+    throw new PaymentGrantError("คูปองนี้ไม่พร้อมใช้งาน กรุณาตรวจรายการก่อนยืนยันชำระ");
   }
+  if (!["membership", "trainer", "class"].includes(itemType) || typeof metadata.itemName !== "string" || !metadata.itemName.trim()) throw new PaymentGrantError("ข้อมูลสิทธิ์การชำระเงินไม่ครบถ้วน");
   await grantPaidEntitlement(conn, {
     amount: Number(payment.amount),
     itemName,
@@ -118,16 +126,20 @@ async function grantFromPayment(conn: Awaited<ReturnType<typeof pool.getConnecti
   });
 }
 
-async function listPayments() {
-  return query(
+class PaymentGrantError extends Error {}
+
+async function listPayments(conn: Awaited<ReturnType<typeof pool.getConnection>>) {
+  const [rows] = await conn.execute(
     "SELECT p.payment_no paymentNo, u.display_name displayName, p.method, p.amount, p.status, p.paid_at paidAt FROM payments p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 80",
   );
+  return rows;
 }
 
 function parseMetadata(value: string | null) {
   if (!value) return {} as Record<string, unknown>;
   try {
-    return JSON.parse(value) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
   } catch {
     return {} as Record<string, unknown>;
   }

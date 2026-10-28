@@ -1,4 +1,5 @@
 export const additionalMessages: [string, string, string, string?][] = [
+  ["payment.manual.request", "Create payment request", "创建付款申请", "สร้างรายการชำระเงิน"],
   ["qr.error.session", "Your session expired. Please reopen this app in LINE.", "登录已过期，请在 LINE 中重新打开应用。", "เซสชันหมดอายุ กรุณาเปิดแอปผ่าน LINE ใหม่"],
   ["qr.error.forbidden", "This account cannot issue an access QR. Please contact staff.", "此账号无法生成入场二维码，请联系工作人员。", "บัญชีนี้ไม่สามารถออก QR เข้าใช้บริการได้ กรุณาติดต่อเจ้าหน้าที่"],
   ["qr.error.membership", "No active membership plan was found. Check your membership, or open a paid booking or coupon to use its QR.", "未找到有效会员套餐。请检查会员状态，或打开已付款预约或优惠券以使用其二维码。", "ไม่พบแพ็กเกจสมาชิกที่ใช้งานได้ กรุณาตรวจสอบสมาชิก หรือเปิดรายการจองที่ชำระแล้วหรือคูปองเพื่อใช้ QR ของรายการนั้น"],

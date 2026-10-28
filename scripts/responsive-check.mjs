@@ -26,7 +26,8 @@ member.sports.push(...[
   { slug: "padel", name: "Padel", icon: "🎯" },
   { slug: "volleyball", name: "วอลเลย์บอล", icon: "🏐" },
 ].map((sport, index) => ({ ...sport, id: index + 2, requiresBooking: true, baseRate: 300, description: "สนามกีฬา" })));
-const adminData = { metrics: ["Members", "Bookings", "Payments", "Revenue"].map((label) => ({ label, value: 125, hint: "Test fixture" })), users: [user], bookings, courts: [{ id: 1, name: "Court A", sportId: 1, sportName: "Badminton", capacity: 4, status: "available", hourlyRate: 200 }], coupons: [], trainers: [trainer], payments: [], staff: [admin], roles: [{ id: 1, code: "super_admin", nameTh: "ผู้ดูแลระบบ", nameEn: "Administrator", level: 100, isSystem: true, permissionCodes: [] }], permissions: [], currentAdmin: admin, auditLogs: [], contentItems: [], systemHealth: [], securityItems: [] };
+const paymentFixture = { paymentNo: "PAY-UI-TEST", displayName: "Payment Test", method: "promptpay", amount: 100, status: "created" };
+const adminData = { metrics: ["Members", "Bookings", "Payments", "Revenue"].map((label) => ({ label, value: 125, hint: "Test fixture" })), users: [user], bookings, courts: [{ id: 1, name: "Court A", sportId: 1, sportName: "Badminton", capacity: 4, status: "available", hourlyRate: 200 }], coupons: [], trainers: [trainer], payments: [paymentFixture], staff: [admin], roles: [{ id: 1, code: "super_admin", nameTh: "ผู้ดูแลระบบ", nameEn: "Administrator", level: 100, isSystem: true, permissionCodes: [] }], permissions: [], currentAdmin: admin, auditLogs: [], contentItems: [], systemHealth: [], securityItems: [] };
 const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {PpaApp} from './components/ppa-app'; import {AdminConsole} from './components/admin-console'; const tab=new URLSearchParams(location.search).get('tab')||'dashboard'; createRoot(document.getElementById('root')).render(location.pathname.includes('admin') ? <AdminConsole adminKey="" data={${JSON.stringify(adminData)}} initialTab={tab}/> : <PpaApp/>);`;
 const bundle = await build({
   stdin: { contents: entry, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife",
@@ -50,6 +51,9 @@ try {
   let failAvailability = false;
   let emptyMember = false;
   let qrMode = "missing";
+  const scanRequests = [];
+  const paymentRequests = [];
+  let failPayment = true;
   const bookingRequests = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -59,6 +63,17 @@ try {
   });
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/admin/payments") {
+      paymentRequests.push(route.request().postDataJSON());
+      if (failPayment) return route.fulfill({ status: 409, json: { message: "Payment fixture conflict" } });
+      return route.fulfill({ json: { payments: [{ ...paymentFixture, status: "paid" }] } });
+    }
+    if (url.pathname === "/api/admin/qr/verify") {
+      const input = route.request().postDataJSON();
+      scanRequests.push(input);
+      if (input.token === "invalid") return route.fulfill({ status: 400, json: { message: "QR token ไม่ถูกต้อง" } });
+      return route.fulfill({ json: { valid: true, consumed: Boolean(input.consume), qr: { displayName: "Scanner Test", memberCode: "PPA-TEST", purpose: "member", refId: "1" } } });
+    }
     if (url.pathname === "/api/bootstrap") return failBootstrap ? route.fulfill({ status: 503, json: { message: "Service unavailable" } }) : route.fulfill({ json: emptyMember ? { ...member, bookings: [], memberships: [] } : member });
     if (url.pathname === "/api/auth/line" && route.request().method() === "DELETE") return route.fulfill({ json: { ok: true } });
     if (url.pathname === "/api/coupons") return route.fulfill({ json: { coupons: [] } });
@@ -151,7 +166,7 @@ try {
       }
       results.push({ area: "member", screen, viewport, metrics });
     }
-    for (const tab of ["dashboard", "members", "bookings", "staff", "roles", "reports", "trainers", "content"]) {
+    for (const tab of ["dashboard", "members", "bookings", "staff", "roles", "reports", "trainers", "content", "coupons", "audit", "security", "system", "analysis", "scanner"]) {
       await page.goto(`${base}/__responsive__/admin?tab=${tab}`);
       await page.locator(".admin-main").waitFor();
       await page.evaluate(() => document.fonts.ready);
@@ -311,6 +326,52 @@ try {
     assert.equal(await page.locator('.booking-calendar [aria-pressed="true"]').getAttribute('data-date'), selectedDay);
     assert.equal(await page.locator('.slot-list button.on').count(), 1);
   }
+  await page.goto(`${base}/__responsive__/admin?tab=scanner`);
+  await page.getByLabel("QR URL หรือรหัสจากเครื่องอ่าน").fill("invalid");
+  await page.getByRole("button", { name: "ตรวจสอบ QR", exact: true }).click();
+  await page.getByText("QR token ไม่ถูกต้อง", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "ยืนยันใช้สิทธิ์ / เช็คอิน", exact: true }).count(), 0);
+  await page.getByLabel("QR URL หรือรหัสจากเครื่องอ่าน").fill("a".repeat(43));
+  await page.getByRole("button", { name: "ตรวจสอบ QR", exact: true }).click();
+  await page.getByText("Scanner Test", { exact: true }).waitFor();
+  assert.equal(scanRequests.at(-1).consume, false);
+  await page.getByRole("button", { name: "ยืนยันใช้สิทธิ์ / เช็คอิน", exact: true }).click();
+  await page.getByText("บันทึกการใช้สิทธิ์เรียบร้อยแล้ว", { exact: true }).waitFor();
+  assert.equal(scanRequests.filter((request) => request.consume).length, 1);
+  assert.equal(await page.getByRole("button", { name: "ยืนยันใช้สิทธิ์ / เช็คอิน", exact: true }).count(), 0);
+  await page.screenshot({ path: `${outDir}/scanner-success.png` });
+  await page.getByRole("button", { name: "เปิดกล้องสแกน", exact: true }).click();
+  await page.getByText(/เปิดกล้องไม่ได้/).waitFor();
+  // Feed generated QR pixels through a video MediaStream and the actual camera loop.
+  await page.evaluate(async (svg) => {
+    const image = new Image();
+    image.src = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = 660; canvas.height = 660;
+    canvas.getContext("2d").drawImage(image, 0, 0, 660, 660);
+    const media = canvas.captureStream(10);
+    window.__scannerTestStream = media;
+    Object.defineProperty(navigator.mediaDevices, "getUserMedia", { configurable: true, value: async () => media });
+  }, await QRCode.toString(`https://example.invalid/api/qr/verify?token=${"b".repeat(43)}`, { type: "svg", margin: 4, width: 660 }));
+  await page.getByRole("button", { name: "เปิดกล้องสแกน", exact: true }).click();
+  await page.getByText("Scanner Test", { exact: true }).waitFor();
+  assert.ok(scanRequests.at(-1).token.endsWith("b".repeat(43)), "Camera must decode the generated QR frame");
+  assert.equal(scanRequests.at(-1).consume, false, "Camera scan only previews the right");
+  assert.equal(await page.evaluate(() => window.__scannerTestStream.getTracks().every((track) => track.readyState === "ended")), true, "Camera stops after detection");
+  await page.goto(`${base}/__responsive__/admin?tab=dashboard`);
+  const approvePayment = page.getByRole("button", { name: "ยืนยันชำระ", exact: true });
+  await approvePayment.waitFor();
+  assert.equal(await approvePayment.isEnabled(), true, "Session-authenticated staff need no legacy admin key");
+  await approvePayment.click();
+  await page.getByText("Payment fixture conflict", { exact: true }).waitFor();
+  assert.equal(await approvePayment.isEnabled(), true, "Failed approval remains retryable");
+  failPayment = false;
+  await approvePayment.click();
+  await page.getByText("อัปเดต payment แล้ว", { exact: true }).waitFor();
+  assert.equal(await approvePayment.isDisabled(), true, "Paid payment cannot be approved again");
+  assert.deepEqual(paymentRequests, [1, 2].map(() => ({ paymentNo: "PAY-UI-TEST", status: "paid" })));
+  await page.screenshot({ path: `${outDir}/payment-confirmation.png` });
   assert.deepEqual(errors, []);
   await page.setViewportSize({ width: 390, height: 360 });
   failBootstrap = true;
