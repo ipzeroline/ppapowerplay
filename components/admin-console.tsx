@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import { AdminMembers } from "@/components/admin-members";
 import { AdminQrScanner } from "@/components/admin-qr-scanner";
 import { safeImageSource } from "@/lib/media";
 import { AdminDialog } from "@/components/admin-dialog";
@@ -959,12 +960,6 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
     return () => window.removeEventListener("popstate", syncFromPath);
   }, [canAccessTab]);
 
-  const filteredUsers = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return data.users;
-    return data.users.filter((user) => `${user.displayName} ${user.memberCode} ${user.phone || ""} ${user.email || ""}`.toLowerCase().includes(needle));
-  }, [data.users, query]);
-
   const activeTab = tabs.find(([id]) => id === tab);
   const currentAdminRaw = staffRows.find((row) => row.id === data.currentAdmin?.id) || data.currentAdmin;
   const currentAdmin = currentAdminRaw?.username === "zeroline" ? { ...currentAdminRaw, displayName: "i'm zΞro" } : currentAdminRaw;
@@ -1087,7 +1082,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
         </header>
 
         {tab === "dashboard" && <Dashboard adminKey={adminKey} data={{ ...data, payments: paymentRows }} lang={lang} onPaymentsChange={setPaymentRows} t={t} />}
-        {tab === "members" && <Panel title={t.members}><MemberTable rows={filteredUsers} lang={lang} t={t} /></Panel>}
+        {tab === "members" && <AdminMembers search={query} lang={lang} />}
         {tab === "staff" && (
           <StaffManager
             adminKey={adminKey}

@@ -27,6 +27,7 @@ html:lang(zh-CN) { --font-aura: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK
 .home-page .home-bubble small { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .home-page .sec-head { gap: 12px; }
 .home-text-action { border: 0; background: transparent; color: var(--muted); min-height: 44px; font-size: 12px; }
+.home-carousel { overflow: hidden; }
 .home-carousel .ad-track { align-items: stretch; }
 .home-carousel .ad-slide { flex: 0 0 100%; min-width: 0; min-height: 96px; justify-content: center; color: #fff; }
 .home-carousel .ad-slide strong, .home-carousel .ad-slide small { max-width: 100%; overflow-wrap: anywhere; }
@@ -298,3 +299,11 @@ dialog.admin-modal-backdrop::backdrop { background: transparent; }
 .qr-scanner form { display: grid; gap: 12px; margin-top: 20px; }
 .qr-scanner input { width: 100%; min-width: 0; padding: 12px; border: 1px solid #718096; border-radius: 8px; }
 .qr-scanner-result { margin-top: 20px; padding: 16px; border: 1px solid #718096; border-radius: 12px; overflow-wrap: anywhere; }
+
+.member-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; flex-wrap: wrap; }
+.member-table-scroll { max-width: 100%; overflow-x: auto; }
+.member-editor { width: min(960px, calc(100vw - 24px)); }
+.member-credit, .member-history { padding: 20px; border-top: 1px solid #71809655; }
+.member-credit > p { margin: 12px 0; }
+.member-history h3 { margin-bottom: 16px; }
+.member-history td { max-width: 260px; overflow-wrap: anywhere; }

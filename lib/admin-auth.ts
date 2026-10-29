@@ -37,7 +37,7 @@ export function hasAdminPermission(admin: AdminIdentity, permission: string) {
 }
 
 const routePermissions: Record<string, string[]> = {
-  bookings: ["bookings.manage"], courts: ["bookings.manage"], content: ["content.manage"],
+  members: ["members.manage"], bookings: ["bookings.manage"], courts: ["bookings.manage"], content: ["content.manage"],
   coupons: ["coupons.manage"], trainers: ["trainers.manage"], uploads: ["trainers.manage", "content.manage"],
   payments: ["payments.manage"], staff: ["staff.manage"], roles: ["roles.manage"],
   qr: ["bookings.manage", "coupons.manage", "payments.manage"], profile: [],

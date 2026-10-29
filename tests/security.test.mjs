@@ -571,3 +571,71 @@ test("payment approval attributes staff and reads response on the same transacti
   assert.equal(statements.find(([sql]) => sql.includes("INSERT INTO admin_audit_logs"))[1][0], 7);
   assert.equal((await response.json()).payments[0].status, "paid");
 });
+
+test("member profile update requires member permission and records an audit entry", async () => {
+  let updated = false;
+  let audited = false;
+  const route = load("app/api/admin/members/route.ts", {
+    "@/lib/admin-auth": { assertAdminRequest: async () => null, getAdminIdentity: async () => ({ id: 9 }), adminSessionCookieName: () => "session" },
+    "@/lib/db": { pool: { getConnection: async () => ({
+      beginTransaction: async () => {}, rollback: async () => {}, commit: async () => {}, release: () => {},
+      execute: async (sql) => {
+        if (sql.includes("FROM users WHERE id")) return [[{ displayName: "Old", phone: null, email: null, status: "active" }]];
+        if (sql.startsWith("UPDATE users")) updated = true;
+        if (sql.includes("member.update")) audited = true;
+        return [{ affectedRows: 1 }];
+      },
+    }) } },
+  });
+  const { NextRequest } = require("next/server");
+  const response = await route.PUT(new NextRequest("http://localhost/api/admin/members", { method: "PUT", body: JSON.stringify({ id: 4, displayName: "New name", phone: "0812345678", email: "member@example.com", status: "active" }) }));
+  assert.equal(response.status, 200);
+  assert.equal(updated, true);
+  assert.equal(audited, true);
+});
+
+test("credit adjustment is idempotent, atomic and rejects negative balances", async () => {
+  let balance = 100;
+  let audits = 0;
+  let ledger = 0;
+  const route = load("app/api/admin/members/credit/route.ts", {
+    "@/lib/admin-auth": { assertAdminRequest: async () => null, getAdminIdentity: async () => ({ id: 9 }), adminSessionCookieName: () => "session" },
+    "@/lib/db": { pool: { getConnection: async () => ({
+      beginTransaction: async () => {}, rollback: async () => {}, commit: async () => {}, release: () => {},
+      execute: async (sql, params) => {
+        if (sql.includes("FROM users")) return [[{ id: 4, status: "active" }]];
+        if (sql.includes("FROM admin_audit_logs") && sql.includes("requestId")) return [[]];
+        if (sql.includes("FROM wallet_accounts")) return [[{ balance }]];
+        if (sql.startsWith("INSERT INTO admin_audit_logs")) { audits++; return [{ insertId: audits }]; }
+        if (sql.startsWith("UPDATE wallet_accounts")) { balance = Number(params[0]); return [{ affectedRows: 1 }]; }
+        if (sql.startsWith("INSERT INTO wallet_ledger")) { ledger++; return [{ affectedRows: 1 }]; }
+        return [{ affectedRows: 1 }];
+      },
+    }) } },
+  });
+  const { NextRequest } = require("next/server");
+  const call = (amount, direction = "add") => route.POST(new NextRequest("http://localhost/api/admin/members/credit", { method: "POST", body: JSON.stringify({ memberId: 4, direction, amount, reason: "Manual correction", requestId: "550e8400-e29b-41d4-a716-446655440000" }) }));
+  assert.equal((await call("25")).status, 200);
+  assert.equal(balance, 125);
+  assert.equal(audits, 1);
+  assert.equal(ledger, 1);
+  // A real duplicate is returned from the audit lookup in the next request.
+  const duplicateRoute = load("app/api/admin/members/credit/route.ts", {
+    "@/lib/admin-auth": { assertAdminRequest: async () => null, getAdminIdentity: async () => ({ id: 9 }), adminSessionCookieName: () => "session" },
+    "@/lib/db": {
+      pool: {
+        getConnection: async () => ({
+          beginTransaction: async () => {}, rollback: async () => {}, commit: async () => {}, release: () => {},
+          execute: async (sql) => sql.includes("FROM users")
+            ? [[{ id: 4, status: "active" }]]
+            : sql.includes("FROM admin_audit_logs")
+              ? [[{ staffId: 9, metadata: JSON.stringify({ deltaCents: 2500, reason: "Manual correction", after: "125.00" }) }]]
+              : [[{ balance: 125 }]],
+        }),
+      },
+    },
+  });
+  assert.equal((await duplicateRoute.POST(new NextRequest("http://localhost/api/admin/members/credit", { method: "POST", body: JSON.stringify({ memberId: 4, direction: "add", amount: "25", reason: "Manual correction", requestId: "550e8400-e29b-41d4-a716-446655440000" }) }))).status, 200);
+  const rejected = await call("200", "deduct");
+  assert.equal(rejected.status, 409);
+});

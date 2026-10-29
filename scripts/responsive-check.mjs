@@ -63,6 +63,12 @@ try {
   });
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/admin/members") {
+      if (route.request().method() === "PUT") return route.fulfill({ json: { ok: true } });
+      if (url.searchParams.has("id")) return route.fulfill({ json: { member: { ...user, balance: 2500 }, history: [{ id: 1, amount: 100, kind: "topup", note: "Fixture credit", createdAt: "2026-10-29T01:00:00Z", staffName: "Test admin", balanceBefore: "2400.00", balanceAfter: "2500.00", refType: "admin_credit" }], nextCursor: null } });
+      return route.fulfill({ json: { members: [{ ...user, balance: 2500 }], hasMore: false } });
+    }
+    if (url.pathname === "/api/admin/members/credit") return route.fulfill({ json: { ok: true, balance: "2510.00" } });
     if (url.pathname === "/api/admin/payments") {
       paymentRequests.push(route.request().postDataJSON());
       if (failPayment) return route.fulfill({ status: 409, json: { message: "Payment fixture conflict" } });
@@ -175,7 +181,20 @@ try {
         return { docWidth: document.documentElement.scrollWidth, docHeight: document.documentElement.scrollHeight, mainOverflow: main.scrollWidth - main.clientWidth };
       });
       assert.ok(metrics.docWidth <= viewport.width + 1 && metrics.docHeight <= viewport.height + 1 && metrics.mainOverflow <= 1, JSON.stringify({ tab, viewport, metrics }));
-        if (tab === "dashboard") {
+        if (tab === "members") {
+        await page.getByRole("button", { name: "ข้อมูล / เครดิต / ประวัติ", exact: true }).first().click();
+        await page.locator("h2").nth(1).waitFor();
+        await page.getByLabel("ชื่อสมาชิก", { exact: true }).fill("สมาชิกแก้ไขแล้ว");
+        await page.getByRole("button", { name: "บันทึกข้อมูลสมาชิก", exact: true }).click();
+        await page.getByText("บันทึกข้อมูลสมาชิกแล้ว", { exact: true }).waitFor();
+        await page.getByLabel("จำนวนเงิน (บาท)", { exact: true }).fill("10");
+        await page.getByLabel("เหตุผลการปรับเครดิต", { exact: true }).fill("ทดสอบปรับเครดิต");
+        await page.getByRole("button", { name: "ยืนยันปรับเครดิต", exact: true }).click();
+        await page.getByText("บันทึกการปรับเครดิตแล้ว", { exact: true }).waitFor();
+        await page.getByText("ประวัติเพิ่ม–ลดเครดิต", { exact: true }).waitFor();
+        await page.getByRole("button", { name: "ปิด", exact: true }).click();
+      }
+      if (tab === "dashboard") {
         if (viewport.width < 1024) {
           await page.getByRole("button", { name: "Open menu", exact: true }).click();
           await page.getByRole("dialog", { name: "Admin navigation" }).waitFor();
