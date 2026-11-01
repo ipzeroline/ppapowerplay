@@ -9,20 +9,25 @@ import { AdminDialog } from "@/components/admin-dialog";
 import { upcomingBooking, bookingStatusLabel } from "@/lib/booking-presentation";
 import { t, localeTag, localizedContent, courtName } from "@/lib/i18n";
 import { LanguageSwitcher, MemberLocaleSync, useMemberLocale } from "@/components/language-switcher";
+import { Empty, money, SectionTitle, Top } from "@/components/member-ui";
+import { CouponPacks, PackagePlansScreen, type PlanTab, type RenewTab } from "@/components/member-packages";
+import { MyCouponList } from "@/components/member-coupons";
+import { FindYourGameRow, GroupsScreen, type NewGroup } from "@/components/member-groups";
+import { GymnosHub, ServiceClassScreen, type GymnosTarget } from "@/components/gymnos-hub";
+import { WalletPanel } from "@/components/member-wallet";
+import { PromptPayScreen } from "@/components/member-promptpay";
+import { RewardsScreen } from "@/components/member-rewards";
+import { VisitsScreen } from "@/components/member-visits";
+import { PrivacyPolicyDialog } from "@/components/member-consent";
+import { needsConsent, privacyPolicy, supportContact, telHref } from "@/lib/site-settings";
+import { keepRequestForRetry } from "@/lib/payment-presentation";
+import { parseMeta } from "@/lib/package-presentation";
+import { richMenuScreens as deepLinkScreens, screenFromSearch } from "@/lib/rich-menu";
+import type { Booking, Bootstrap, ContentItem, Coupon, Group, Screen, Sport, Trainer, TrainerPackage, TrainerScheduleDay } from "@/components/member-types";
 
 import liff from "@line/liff";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-type Sport = {
-  id: number;
-  slug: string;
-  name: string;
-  icon: string;
-  description: string;
-  requiresBooking: number | boolean;
-  baseRate: number;
-};
 
 type Slot = {
   courtId: number;
@@ -34,87 +39,7 @@ type Slot = {
   status: AvailabilityStatus;
 };
 
-type Booking = {
-  booking_no?: string;
-  bookingNo?: string;
-  title: string;
-  startsAt?: string;
-  starts_at?: string;
-  amount: number;
-  status: string;
-  qr_secret?: string;
-};
-
-type Coupon = {
-  id: number;
-  code?: string;
-  name: string;
-  category: string;
-  price?: number;
-  totalUses?: number;
-  validityDays?: number;
-  remainingUses?: number;
-  expiresAt?: string;
-};
-
-type Trainer = {
-  id: number;
-  slug: string;
-  name: string;
-  nickname: string;
-  role: string;
-  avatar: string;
-  imageUrl?: string | null;
-  experience: string;
-  zodiac?: string | null;
-  birthYear?: number | null;
-  bloodType?: string | null;
-  contactPhone?: string | null;
-  bio?: string | null;
-  specialties?: string[] | string | null;
-  packages?: TrainerPackage[] | string | null;
-  weeklySchedule?: TrainerScheduleDay[] | string | null;
-  socialLine?: string | null;
-  startPrice: number;
-  certifications?: string[] | string | null;
-};
-type TrainerPackage = { title: string; text: string; price: number };
-type TrainerScheduleDay = { day: string; date?: string; slots: { time: string; status: "available" | "full" | "off" }[] };
-
-type Group = { id: number; name: string; levelName: string; sportName: string; sportSlug?: string; description?: string };
-type NotificationItem = { id: number; title: string; body: string; status: string; createdAt?: string };
-type ContentItem = {
-  id: number;
-  contentType: string;
-  slug: string;
-  title: string;
-  subtitle?: string | null;
-  body?: string | null;
-  icon: string;
-  imageUrl?: string | null;
-  actionLabel?: string | null;
-  targetScreen?: string | null;
-  price: number;
-  metadata?: string | Record<string, unknown> | null;
-  sortOrder?: number | null;
-};
 type AppPack = { contentId?: number; key: string; icon: string; name: string; price: number; desc: string; screen?: Screen };
-type Membership = { id: number; planName: string; startsAt: string; endsAt: string; status: string };
-type Entitlement = { id: number; entitlementType: string; title: string; remainingUses?: number | null; startsAt: string; endsAt?: string | null; status: string };
-
-type Bootstrap = {
-  user: { displayName: string; memberCode: string; avatar?: string; avatarTier?: string };
-  wallet: { balance: number; coinBalance: number; pointBalance: number };
-  sports: Sport[];
-  bookings: Booking[];
-  coupons: Coupon[];
-  trainers: Trainer[];
-  groups: Group[];
-  notifications: NotificationItem[];
-  contentItems: ContentItem[];
-  memberships: Membership[];
-  entitlements: Entitlement[];
-};
 
 type QrPayload = {
   svg: string;
@@ -127,80 +52,6 @@ type AccessQr =
   | { purpose: "coupon"; couponId: number; title?: string }
   | { purpose: "entitlement"; entitlementId: number; title?: string };
 
-type Screen =
-  | "splash"
-  | "login"
-  | "home"
-  | "sports"
-  | "courts"
-  | "datetime"
-  | "summary"
-  | "payment"
-  | "success"
-  | "orprofile"
-  | "kuanprofile"
-  | "groupcreate"
-  | "groupdetail"
-  | "groupchat"
-  | "groupranking"
-  | "kuanvote"
-  | "kuanresult"
-  | "kuanredeem"
-  | "playerprofile"
-  | "coinshop"
-  | "kuanroster"
-  | "kuanpairs"
-  | "qr"
-  | "scan"
-  | "scanqr"
-  | "checkin"
-  | "mybooking"
-  | "gymnos"
-  | "svcclass"
-  | "svcdetail"
-  | "fitness"
-  | "swim"
-  | "hyrox"
-  | "pilates"
-  | "pilprivate"
-  | "pilgroup"
-  | "promo"
-  | "airfit"
-  | "tennis"
-  | "basketball"
-  | "volleyball"
-  | "promotion"
-  | "memverify"
-  | "classhub"
-  | "classschedule"
-  | "bookings"
-  | "editprofile"
-  | "livetv"
-  | "payscan"
-  | "pool"
-  | "classes"
-  | "wallet"
-  | "walletpay"
-  | "linkwallet"
-  | "linkbank"
-  | "coupon"
-  | "reward"
-  | "membership"
-  | "buyhistory"
-  | "visits"
-  | "mycoupons"
-  | "plans"
-  | "trainer"
-  | "groups"
-  | "notifications"
-  | "noti"
-  | "personal"
-  | "mystatus"
-  | "notisettings"
-  | "help"
-  | "profile"
-  | "admin";
-
 type TabIcon = "home" | "trainer" | "scan" | "history" | "profile";
 
 const tabs: [Screen, TabIcon, string][] = [
@@ -211,22 +62,21 @@ const tabs: [Screen, TabIcon, string][] = [
   ["profile", "profile", "โปรไฟล์"],
 ];
 
-const richMenuScreens: Screen[] = ["sports", "membership", "wallet", "coupon", "trainer", "help", "classhub", "classschedule", "livetv", "promotion"];
+const richMenuScreens: readonly Screen[] = deepLinkScreens;
 const managedPrototypeScreens: Screen[] = [
   "orprofile", "kuanprofile", "groupcreate", "groupdetail", "groupchat", "groupranking", "kuanvote", "kuanresult", "kuanredeem", "playerprofile", "coinshop", "kuanroster", "kuanpairs",
-  "svcclass", "svcdetail", "pilprivate", "pilgroup", "promo", "tennis", "basketball", "volleyball", "memverify", "classhub", "classschedule", "bookings", "editprofile", "payscan", "pool", "classes",
-  "walletpay", "linkwallet", "linkbank", "buyhistory", "visits", "mycoupons", "personal", "mystatus", "notisettings", "qr", "scanqr",
+  "svcdetail", "pilprivate", "pilgroup", "promo", "tennis", "basketball", "volleyball", "memverify", "classhub", "classschedule", "bookings", "editprofile", "payscan", "pool", "classes",
+  "walletpay", "linkwallet", "linkbank", "buyhistory", "visits", "personal", "mystatus", "notisettings", "qr", "scanqr",
 ];
 
 function initialScreenFromUrl(): Screen {
   if (typeof window === "undefined") return "home";
-  const screenParam = new URLSearchParams(window.location.search).get("screen");
-  return richMenuScreens.includes(screenParam as Screen) ? (screenParam as Screen) : "home";
+  return (screenFromSearch(window.location.search, richMenuScreens) as Screen | null) || "home";
 }
 
 
 const serviceShortcuts: { icon: string; title: string; text: string; screen: Screen }[] = [
-  { icon: "🏋️", title: "Gymnos Hub", text: "Fitness, HYROX, Airfit", screen: "gymnos" },
+  { icon: "🏋️", title: "Gymnos Hub", text: "Fitness · Swim · HYROX · Pilates · Airfit · Promotion", screen: "gymnos" },
   { icon: "🏊", title: "Swim Pack", text: "สระและแพ็กเกจ", screen: "swim" },
   { icon: "🤸", title: "Pilates", text: "Private / Group", screen: "pilates" },
   { icon: "🎁", title: "Promotion", text: "ดีลสมาชิก", screen: "promotion" },
@@ -236,54 +86,8 @@ const serviceShortcuts: { icon: string; title: string; text: string; screen: Scr
   { icon: "👥", title: "Find Your Game", text: "ก๊วนและ Open Run", screen: "groups" },
 ];
 
+const gymnosChildren: Screen[] = ["swim", "hyrox", "pilates", "airfit", "svcclass", "promotion"];
 const timeChoices = ["08:00", "09:30", "11:00", "12:30", "14:00", "15:30", "17:00", "18:30", "20:00"];
-const levelChoices = ["มือใหม่", "ฝึกหน้าบ้าน", "พอตัว", "แข่งขัน"];
-const coinRewards = [
-  { name: "น้ำเปล่า PPA", detail: "1 ขวด", icon: "💧", cost: 5 },
-  { name: "ผ้าขนหนูกีฬา", detail: "ลาย PPA สุดพิเศษ", icon: "🧺", cost: 15 },
-  { name: "ลูกแบดมินตัน", detail: "1 หลอด (12 ลูก)", icon: "🏸", cost: 20 },
-  { name: "คูปองเช่าคอร์ทฟรี", detail: "ใช้ได้ 1 ชม. ทุกกีฬา", icon: "🎫", cost: 30 },
-  { name: "เสื้อกีฬา PPA", detail: "เลือกไซส์ได้ที่เคาน์เตอร์", icon: "👕", cost: 50 },
-];
-
-const titleIcons: [string, string][] = [
-  ["เลือกกีฬา", "🏟️"],
-  ["จองสนาม", "📅"],
-  ["วันที่", "⏱️"],
-  ["สรุป", "🧾"],
-  ["Check In", "✅"],
-  ["ประวัติ", "📋"],
-  ["Gymnos", "🏋️"],
-  ["Fitness", "💪"],
-  ["Swim", "🏊"],
-  ["HYROX", "🔥"],
-  ["Pilates", "🤸"],
-  ["Airfit", "🪂"],
-  ["Promotion", "🎁"],
-  ["Live TV", "📺"],
-  ["Wallet", "👛"],
-  ["Coupon", "🎫"],
-  ["Points", "🏆"],
-  ["Membership", "💎"],
-  ["Plans", "📦"],
-  ["Trainer", "🧑‍🏫"],
-  ["Find Your Game", "👥"],
-  ["Notification", "🔔"],
-  ["Profile", "👤"],
-  ["Admin", "⚙️"],
-];
-
-const sectionIcons: [string, string][] = [
-  ["วันนี้", "📍"],
-  ["บริการ", "🧭"],
-  ["คลาส", "🗓️"],
-  ["เวลา", "⏱️"],
-  ["ดีล", "🎁"],
-  ["เติมเงิน", "💳"],
-  ["คูปอง", "🎫"],
-  ["ก๊วน", "👥"],
-  ["Schedule", "📅"],
-];
 
 const statIcons: Record<string, string> = {
   Bookings: "📋",
@@ -292,12 +96,18 @@ const statIcons: Record<string, string> = {
   Unread: "🔔",
 };
 
-function today() {
-  return bangkokToday();
+const entitlementLabels: Record<string, string> = { time_pass: "บัตรผ่าน Time", class: "คลาส", trainer: "เทรนเนอร์", reward: "รางวัล", coupon: "คูปอง", membership: "แพ็กเกจ" };
+
+function entitlementLabel(type: string) {
+  return entitlementLabels[type] || "สิทธิ์";
 }
 
-function money(amount: number | string | undefined) {
-  return Number(amount || 0).toLocaleString(localeTag());
+function newRequestId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function today() {
+  return bangkokToday();
 }
 
 function bookingNo(booking: Booking | null) {
@@ -317,8 +127,9 @@ async function api<T>(url: string, init?: RequestInit) {
     signal: init?.signal || AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
-    const error = new Error((await res.json().catch(() => null))?.message || "เกิดข้อผิดพลาด");
-    (error as Error & { status?: number }).status = res.status;
+    const body = await res.json().catch(() => null);
+    const error = new Error(body?.message || "เกิดข้อผิดพลาด");
+    Object.assign(error, { status: res.status, code: typeof body?.code === "string" ? body.code : undefined });
     throw error;
   }
   return (await res.json()) as T;
@@ -353,14 +164,20 @@ function MemberApp() {
   const [players, setPlayers] = useState(2);
   const [pendingBooking, setPendingBooking] = useState<Booking | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
-  const [pendingItem, setPendingItem] = useState<{ title: string; amount: number; back: Screen; save?: "coupon" | "topup" | "class" | "membership"; couponId?: number; contentId?: number; trainerId?: number; trainerPackage?: string; itemType?: string } | null>(null);
+  const [pendingItem, setPendingItem] = useState<{ title: string; amount: number; back: Screen; save?: "coupon" | "topup" | "class" | "membership" | "pause" | "renewal"; couponId?: number; contentId?: number; trainerId?: number; trainerPackage?: string; itemType?: string; membershipId?: number; pauseStart?: string; pauseDays?: number; userCouponId?: number } | null>(null);
+  const [planTab, setPlanTab] = useState<PlanTab>("monthly");
+  const [plansReturn, setPlansReturn] = useState<Screen>("home");
+  const [renewFocus, setRenewFocus] = useState<{ sub: RenewTab; couponId?: number } | undefined>(undefined);
+  const [couponTab, setCouponTab] = useState<"mine" | "buy" | null>(null);
+  const [hubReturn, setHubReturn] = useState<Screen>("home");
+  const [promptPayNo, setPromptPayNo] = useState("");
+  // One id per checkout: a retried or double-tapped payment replays instead of charging twice.
+  const [checkoutId, setCheckoutId] = useState("");
   const [accessQr, setAccessQr] = useState<AccessQr>({ purpose: "member" });
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastPaymentStatus, setLastPaymentStatus] = useState<"paid" | "created">("paid");
   const qrSeconds = 20;
-  const [groupName, setGroupName] = useState("");
-  const [groupLevel, setGroupLevel] = useState(levelChoices[0]);
   const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
   const [trainerDetail, setTrainerDetail] = useState(false);
   const [myTrainerSlug, setMyTrainerSlug] = useState("");
@@ -368,6 +185,8 @@ function MemberApp() {
   const [trainerPlanIndex, setTrainerPlanIndex] = useState<number | null>(null);
   const [trainerDayIndex, setTrainerDayIndex] = useState(0);
   const [tutorial, setTutorial] = useState(0);
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const rewardAttempt = useRef<{ contentId: number; requestId: string } | null>(null);
   const [bookingTab, setBookingTab] = useState<"up" | "his">("up");
 
   const requireLine = process.env.NEXT_PUBLIC_REQUIRE_LINE === "true" || process.env.NODE_ENV === "production";
@@ -390,6 +209,9 @@ function MemberApp() {
       }
       const idToken = liff.getIDToken();
       if (idToken) await api("/api/auth/line", { method: "POST", body: JSON.stringify({ idToken }) });
+      // liff.init() may rewrite the URL from liff.state; open the rich-menu screen it carries.
+      const deepLink = screenFromSearch(window.location.search, richMenuScreens) as Screen | null;
+      if (deepLink) setScreen(deepLink);
       setLineReady(true);
     }
     bootLine().catch(() => { setLineBlocked(requireLine); setLineReady(true); });
@@ -407,12 +229,25 @@ function MemberApp() {
     });
   }, [lineReady, requireLine]);
 
+  // Keep Find Your Game counts live while the slots are on screen.
+  const hasData = Boolean(data);
+  useEffect(() => {
+    if (!hasData || !["home", "groups"].includes(screen)) return;
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      api<{ groups: Group[] }>("/api/groups").then((res) => setData((current) => (current ? { ...current, groups: res.groups } : current))).catch(() => {});
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [hasData, screen]);
+
   const appContent = (data?.contentItems || []).map(localizedContent);
+  const contact = supportContact(appContent);
+  const policy = privacyPolicy(appContent);
+  const consentDue = Boolean(data) && !["splash", "login"].includes(screen) && needsConsent(policy, data?.consent);
   const managedSlides = contentByType(appContent, "home_slide");
   const servicePackages = contentByType(appContent, "service_package");
   const liveItems = contentByType(appContent, "live_tv");
   const classScheduleItems = contentByType(appContent, "class_schedule");
-  const membershipPlans = contentByType(appContent, "membership_plan");
 
 
   useEffect(() => {
@@ -451,13 +286,32 @@ function MemberApp() {
     window.setTimeout(() => setToast(""), 2800);
   }
 
-  function go(next: Screen) {
+  function go(next: Screen, fromOpenPlans = false) {
+    const returningFromFlow = ["payment", "success", "paypromptpay", "plans"].includes(screen);
+    // Service screens opened from the GYMNOS hub return there; from elsewhere they return home.
+    if (gymnosChildren.includes(next) && next !== screen && !returningFromFlow) setHubReturn(screen === "gymnos" ? "gymnos" : "home");
+    // Plans opened from a banner/slide/managed content start fresh and return to where they were opened.
+    if (next === "plans" && !fromOpenPlans && !returningFromFlow) {
+      setPlanTab("monthly");
+      setRenewFocus(undefined);
+      setPlansReturn(screen);
+    }
+    if (next === "payment" && screen !== "payment") setCheckoutId(newRequestId());
+    if ((next === "notifications" || next === "noti") && data?.notifications.some((item) => item.status === "unread")) {
+      // Opening the list marks everything read; the bell count updates immediately.
+      void api("/api/notifications/read", { method: "POST" }).then(() => setData((current) => (current ? { ...current, notifications: current.notifications.map((item) => ({ ...item, status: "read" })) } : current))).catch(() => {});
+    }
     setScreen(next);
     document.querySelector(".phone > .content")?.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }
 
   async function refresh() {
-    const next = await api<Bootstrap>("/api/bootstrap");
+    const loaded = await api<Partial<Bootstrap> & Pick<Bootstrap, "user" | "wallet">>("/api/bootstrap");
+    // Lists added after the first release default to empty so an older API response still renders.
+    const next: Bootstrap = {
+      sports: [], bookings: [], coupons: [], expiredCoupons: [], trainers: [], groups: [], notifications: [], contentItems: [], memberships: [], membershipPauses: [], entitlements: [], pendingPayments: [], walletLedger: [], visits: [],
+      ...loaded,
+    };
     setData(next);
     setSelectedTrainer((current) => current || next.trainers[0] || null);
     setSelectedSport((current) => current || next.sports.find((s) => s.requiresBooking) || next.sports[0] || null);
@@ -519,41 +373,104 @@ function MemberApp() {
     setBusy(true);
     try {
       let nextPaymentStatus: "paid" | "created" = method === "wallet" ? "paid" : "created";
+      let createdPaymentNo = "";
       if (pendingBooking) {
-        const payment = await api<{ status?: string }>("/api/payments", {
+        const payment = await api<{ status?: string; paymentNo?: string }>("/api/payments", {
           method: "POST",
           body: JSON.stringify({
             bookingNo: bookingNo(pendingBooking),
             method,
+            requestId: checkoutId,
             itemName: pendingBooking.title,
           }),
         });
         nextPaymentStatus = payment.status === "created" ? "created" : "paid";
+        createdPaymentNo = payment.paymentNo || "";
         if (nextPaymentStatus === "created") notice("สร้างรายการชำระเงินแล้ว กรุณารอการยืนยันจากระบบ");
       } else if (pendingItem?.save === "coupon" && pendingItem.couponId) {
-        const couponPayment = await api<{ status?: string }>("/api/coupons/buy", {
+        const couponPayment = await api<{ status?: string; paymentNo?: string }>("/api/coupons/buy", {
           method: "POST",
-          body: JSON.stringify({ couponId: pendingItem.couponId, method }),
+          body: JSON.stringify({ couponId: pendingItem.couponId, method, requestId: checkoutId }),
         });
         nextPaymentStatus = couponPayment.status === "created" ? "created" : "paid";
+        createdPaymentNo = couponPayment.paymentNo || "";
         if (nextPaymentStatus === "created") notice("สร้างรายการชำระเงินคูปองแล้ว กรุณารอการยืนยันจากระบบ");
+      } else if (pendingItem?.save === "pause" && pendingItem.membershipId && pendingItem.pauseStart && pendingItem.pauseDays) {
+        const pause = await api<{ status?: string; paymentNo?: string }>("/api/memberships/pause", {
+          method: "POST",
+          body: JSON.stringify({ membershipId: pendingItem.membershipId, startDate: pendingItem.pauseStart, days: pendingItem.pauseDays, method, requestId: checkoutId }),
+        });
+        nextPaymentStatus = pause.status === "created" ? "created" : "paid";
+        createdPaymentNo = pause.paymentNo || "";
+        if (nextPaymentStatus === "created") notice("สร้างคำขอพักการใช้งานแล้ว กรุณารอการยืนยันจากระบบ");
+      } else if (pendingItem?.save === "renewal" && pendingItem.userCouponId) {
+        const renewal = await api<{ status?: string; paymentNo?: string }>("/api/coupons/renew", { method: "POST", body: JSON.stringify({ userCouponId: pendingItem.userCouponId, method, requestId: checkoutId }) });
+        nextPaymentStatus = renewal.status === "created" ? "created" : "paid";
+        createdPaymentNo = renewal.paymentNo || "";
+        if (nextPaymentStatus === "created") notice("สร้างคำขอต่ออายุคูปองแล้ว กรุณารอการยืนยันจากระบบ");
       } else if (pendingItem?.save === "topup") {
-        const topupPayment = await api<{ status?: string }>("/api/wallet/topup", { method: "POST", body: JSON.stringify({ amount: pendingItem.amount }) });
+        const topupPayment = await api<{ status?: string; paymentNo?: string }>("/api/wallet/topup", { method: "POST", body: JSON.stringify({ amount: pendingItem.amount, requestId: checkoutId }) });
         nextPaymentStatus = topupPayment.status === "created" ? "created" : "paid";
+        createdPaymentNo = topupPayment.paymentNo || "";
         if (nextPaymentStatus === "created") notice("สร้างรายการเติมเงินแล้ว กรุณารอการยืนยันจากระบบ");
       } else if (pendingItem) {
-        const payment = await api<{ status?: string }>("/api/payments", {
+        const payment = await api<{ status?: string; paymentNo?: string }>("/api/payments", {
           method: "POST",
-          body: JSON.stringify({ contentId: pendingItem.contentId, trainerId: pendingItem.trainerId, trainerPackage: pendingItem.trainerPackage, method }),
+          body: JSON.stringify({ contentId: pendingItem.contentId, trainerId: pendingItem.trainerId, trainerPackage: pendingItem.trainerPackage, method, requestId: checkoutId }),
         });
         nextPaymentStatus = payment.status === "created" ? "created" : "paid";
+        createdPaymentNo = payment.paymentNo || "";
         if (nextPaymentStatus === "created") notice("สร้างรายการชำระเงินแล้ว กรุณารอการยืนยันจากระบบ");
       }
       await refresh();
       if (pendingItem?.save === "coupon") await loadCoupons();
       setLastPaymentStatus(nextPaymentStatus);
+      if (nextPaymentStatus === "created" && createdPaymentNo) {
+        // PromptPay: show the QR with the exact amount and let the member attach the slip.
+        setPromptPayNo(createdPaymentNo);
+        go("paypromptpay");
+        return;
+      }
       go("success");
       if (nextPaymentStatus === "paid") notice("ชำระเงินสำเร็จ");
+    } catch (error) {
+      notice((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function redeemReward(reward: ContentItem, cost: number) {
+    if (busy || !window.confirm(t("ใช้ {{value0}} Coin แลก {{value1}}?", { value0: cost, value1: t(reward.title) }))) return;
+    setBusy(true);
+    // A retry of the same reward after an unknown outcome reuses the request id, so it cannot redeem twice.
+    const requestId = rewardAttempt.current?.contentId === reward.id ? rewardAttempt.current.requestId : newRequestId();
+    rewardAttempt.current = { contentId: reward.id, requestId };
+    try {
+      const result = await api<{ entitlementId: number; title: string }>("/api/rewards/redeem", { method: "POST", body: JSON.stringify({ contentId: reward.id, requestId }) });
+      rewardAttempt.current = null;
+      // Redeemed: open its QR even if reloading the member data fails now (an error here would
+      // hide the QR and invite a second redemption with a new request id).
+      await refresh().catch(() => {});
+      notice("แลกรางวัลสำเร็จ");
+      setPendingBooking(null);
+      setAccessQr({ purpose: "entitlement", entitlementId: result.entitlementId, title: result.title });
+      go("scan");
+    } catch (error) {
+      if (!keepRequestForRetry(error)) rewardAttempt.current = null;
+      notice((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelPending(paymentNo: string) {
+    if (busy || !window.confirm(t("ยกเลิกรายการรอชำระนี้?"))) return;
+    setBusy(true);
+    try {
+      await api("/api/payments/cancel", { method: "POST", body: JSON.stringify({ paymentNo }) });
+      await refresh();
+      notice("ยกเลิกรายการแล้ว");
     } catch (error) {
       notice((error as Error).message);
     } finally {
@@ -568,55 +485,93 @@ function MemberApp() {
     go("payment");
   }
 
-  function buyCoupon(coupon: Coupon) {
+  function buyCoupon(coupon: Coupon, back: Screen = "coupon") {
     setPendingBooking(null);
-    setPendingItem({ title: coupon.name, amount: Number(coupon.price || 0), back: "coupon", save: "coupon", couponId: coupon.id });
+    setPendingItem({ title: coupon.name, amount: Number(coupon.price || 0), back, save: "coupon", couponId: coupon.id });
     go("payment");
   }
 
-  async function createGroup() {
-    if (!selectedSport || groupName.trim().length < 2) {
-      notice("กรุณาตั้งชื่อก๊วนอย่างน้อย 2 ตัวอักษร");
+  function openPlans(tab: PlanTab = "monthly", from: Screen = screen) {
+    if (tab !== "renew") setRenewFocus(undefined);
+    setPlanTab(tab);
+    setPlansReturn(from === "plans" || from === "payment" || from === "success" ? "home" : from);
+    go("plans", true);
+  }
+
+  function openFromGymnos(target: GymnosTarget) {
+    if (target === "fitness") {
+      openPlans("monthly", "gymnos");
       return;
     }
+    go(target);
+  }
+
+  function openRenewCoupon(coupon: Coupon, from: Screen = screen) {
+    setRenewFocus({ sub: "coupon", couponId: coupon.id });
+    openPlans("renew", from);
+  }
+
+  function openCouponQr(coupon: Coupon) {
+    setPendingBooking(null);
+    setAccessQr({ purpose: "coupon", couponId: coupon.id, title: coupon.name });
+    go("scan");
+  }
+
+  // Monthly / Time packages: the server resolves price and grant terms from the catalog id.
+  function selectPackage(item: ContentItem) {
+    const membership = item.contentType === "membership_plan";
+    setPendingBooking(null);
+    setPendingItem({ contentId: item.id, title: item.title, amount: Number(item.price), back: "plans", save: membership ? "membership" : "class", itemType: membership ? "membership" : item.contentType });
+    go("payment");
+  }
+
+  function requestPause(input: { membershipId: number; startDate: string; days: number; option: ContentItem }) {
+    setPendingBooking(null);
+    setPendingItem({ title: t("{{value0}} {{value1}} วัน", { value0: t(input.option.title), value1: input.days }), amount: Number(input.option.price), back: "plans", save: "pause", membershipId: input.membershipId, pauseStart: input.startDate, pauseDays: input.days });
+    go("payment");
+  }
+
+  function renewCoupon(input: { userCouponId: number; option: ContentItem; title: string }) {
+    setPendingBooking(null);
+    // Same amount the server charges: price per month × renewal months (app/api/coupons/renew).
+    const months = Number(parseMeta(input.option.metadata).months) || 1;
+    setPendingItem({ title: `${t(input.option.title)} · ${t(input.title)}`, amount: Number(input.option.price) * months, back: "plans", save: "renewal", userCouponId: input.userCouponId });
+    go("payment");
+  }
+
+  async function refreshGroups() {
+    const res = await api<{ groups: Group[] }>("/api/groups");
+    setData((current) => (current ? { ...current, groups: res.groups } : current));
+  }
+
+  async function groupAction(request: () => Promise<unknown>, success: string) {
+    if (busy) return false;
     setBusy(true);
     try {
-      await api("/api/groups", {
-        method: "POST",
-        body: JSON.stringify({
-          sportSlug: selectedSport.slug,
-          name: groupName.trim().slice(0, 160),
-          levelName: groupLevel,
-          description: `สร้างจาก PPA App สำหรับ ${selectedSport.name}`,
-        }),
-      });
-      setGroupName("");
-      await refresh();
-      notice("สร้างก๊วนสำเร็จ");
+      await request();
+      await refreshGroups();
+      notice(success);
+      return true;
     } catch (error) {
       notice((error as Error).message);
+      if ((error as Error & { status?: number }).status === 409) await refreshGroups().catch(() => {});
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  async function checkIn(booking: Booking) {
-    const no = bookingNo(booking);
-    if (!no || !booking.qr_secret) {
-      notice("รายการนี้ไม่มี QR สำหรับ check-in");
-      return;
-    }
-    setBusy(true);
-    try {
-      await api("/api/checkin", { method: "POST", body: JSON.stringify({ bookingNo: no, qrSecret: booking.qr_secret }) });
-      await refresh();
-      notice("Check-in สำเร็จ");
-    } catch (error) {
-      notice((error as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  function createGroup(input: NewGroup) {
+    const sport = data?.sports.find((item) => item.slug === input.sportSlug);
+    return groupAction(() => api("/api/groups", {
+      method: "POST",
+      body: JSON.stringify({ ...input, name: input.name.slice(0, 160), description: sport ? `สร้างจาก PPA App สำหรับ ${sport.name}` : undefined }),
+    }), "สร้างก๊วนสำเร็จ");
   }
+
+  const joinGroup = (group: Group) => groupAction(() => api("/api/groups/join", { method: "POST", body: JSON.stringify({ groupId: group.id }) }), "เข้าร่วมก๊วนแล้ว");
+  const leaveGroup = (group: Group) => groupAction(() => api("/api/groups/join", { method: "DELETE", body: JSON.stringify({ groupId: group.id }) }), "ออกจากก๊วนแล้ว");
+  const closeGroup = (group: Group) => groupAction(() => api(`/api/groups?id=${group.id}`, { method: "DELETE" }), "ปิดก๊วนแล้ว");
 
   async function cancelBooking(booking: Booking) {
     const no = bookingNo(booking);
@@ -654,17 +609,33 @@ function MemberApp() {
 
   function openSupport(kind: "tel" | "mail" | "line") {
     if (kind === "tel") {
-      window.location.href = "tel:021234567";
-      notice("📞 กำลังโทร 02-123-4567");
+      window.location.href = telHref(contact.phone);
+      notice(t("📞 กำลังโทร {{value0}}", { value0: contact.phone }));
       return;
     }
     if (kind === "mail") {
-      window.location.href = "mailto:support@ppapowerplay.com?subject=PPA%20Support";
-      notice("✉️ เปิดอีเมลถึง support@ppapowerplay.com");
+      window.location.href = `mailto:${contact.email}?subject=PPA%20Support`;
+      notice(t("✉️ เปิดอีเมลถึง {{value0}}", { value0: contact.email }));
       return;
     }
-    window.location.href = "https://line.me/R/ti/p/@ppapowerplay";
-    notice("💬 เปิด LINE @ppapowerplay");
+    window.location.href = contact.lineUrl;
+    notice(t("💬 เปิด LINE {{value0}}", { value0: contact.line }));
+  }
+
+  async function acceptPolicy() {
+    if (!policy || busy) return;
+    setBusy(true);
+    try {
+      const consent = await api<{ acceptedAt: string; version: string }>("/api/consent", { method: "POST", body: JSON.stringify({ version: policy.version }) });
+      setData((current) => (current ? { ...current, consent } : current));
+      notice("ขอบคุณที่ยอมรับนโยบายความเป็นส่วนตัว");
+    } catch (error) {
+      notice((error as Error).message);
+      // The policy may have been updated while it was open: reload to show the current version.
+      await refresh().catch(() => {});
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (lineBlocked || (requireLine && !lineReady)) {
@@ -687,6 +658,8 @@ function MemberApp() {
   const myTrainer = data.trainers.find((trainer) => trainer.slug === myTrainerSlug);
   const activeMembership = data.memberships.find((membership) => membership.status === "active" && new Date(membership.startsAt).getTime() <= now && new Date(membership.endsAt).getTime() > now) || null;
   const membershipExpiry = activeMembership ? new Date(activeMembership.endsAt).toLocaleDateString(localeTag(), { day: "numeric", month: "short", year: "numeric" }) : "ยังไม่มีแพ็กเกจ";
+  const activeCouponTab = couponTab ?? (data.coupons.length || data.expiredCoupons.length ? "mine" : "buy");
+  const otherCoupons = couponStore.filter((coupon) => parseMeta(coupon.metadata).tab !== "coupon");
   const selectedTrainerSchedule = selectedTrainer ? trainerSchedule(selectedTrainer) : [];
   const activeTrainerDay = selectedTrainerSchedule[Math.min(trainerDayIndex, Math.max(selectedTrainerSchedule.length - 1, 0))];
 
@@ -741,11 +714,7 @@ function MemberApp() {
                 <small>{t("แมตช์สดในคลับ")}</small>
               </button>
 
-              <div className="sec-head"><strong>{t("Find Your Game")}</strong></div>
-              <div className="fyg-row">
-                {data.groups.slice(0, 3).map((group) => <button key={group.id} onClick={() => go("groups")}><strong>{group.name}</strong><small>{t(group.sportName)} · {t(group.levelName)}</small></button>)}
-                {!data.groups.length && <button onClick={() => go("groups")}><strong>{t("Find Your Game")}</strong><small>{t("ยังไม่มีก๊วน")}</small></button>}
-              </div>
+              <FindYourGameRow groups={data.groups} now={now} onOpen={() => go("groups")} onCreate={() => go("groups")} />
 
               <div className="sec-head"><strong>{t("Quick Booking")}</strong></div>
               <div className="quick-booking-row">
@@ -753,8 +722,8 @@ function MemberApp() {
               </div>
               {!data.sports.length && <Empty text={t("ยังไม่มีบริการเปิดให้จอง")} />}
 
-              <div className="sec-head"><strong>{t("กีฬาและบริการ")}</strong></div>
-              <button className="gymnos-banner" onClick={() => go("gymnos")}><div><strong>GYMNOS</strong><small>{t("Fitness, HYROX, Airfit")}</small></div><span aria-hidden="true">›</span></button>
+              <div className="sec-head"><strong>{t("กีฬา & บริการ")}</strong></div>
+              <button className="gymnos-banner" onClick={() => go("gymnos")}><div><strong>GYMNOS</strong><small>{t("Fitness · Swim · HYROX · Pilates · Airfit · Promotion")}</small></div><span aria-hidden="true">›</span></button>
               <div className="svc-grid">
                 {data.sports.slice(0, 8).map((sport) => <button key={sport.slug} onClick={() => pickSport(sport)}><span aria-hidden="true">{sport.icon}</span><div><strong>{t(sport.name)}</strong><small>{t(sport.description)}</small></div></button>)}
               </div>
@@ -876,6 +845,8 @@ function MemberApp() {
             />
           )}
 
+          {screen === "paypromptpay" && promptPayNo && <PromptPayScreen key={promptPayNo} paymentNo={promptPayNo} onBack={() => go("wallet")} onDone={() => { void refresh().catch(() => {}); go("wallet"); }} />}
+
           {screen === "success" && (
             <div className="page centered">
               <div className="check">{lastPaymentStatus === "paid" ? "✓" : "!"}</div>
@@ -889,19 +860,7 @@ function MemberApp() {
           {screen === "scan" && <ScanScreen data={data} booking={pendingBooking} accessQr={accessQr} qrSeconds={qrSeconds} onCheckin={() => go("checkin")} />}
 
           {screen === "checkin" && (
-            <div className="page">
-              <Top title={t("Check In")} onBack={() => go("scan")} />
-              <div className="scan-ring"><div className="icn">▣</div></div>
-              <p className="center-text">{t("เลือก booking ที่ชำระแล้วเพื่อ check-in อย่างปลอดภัย")}</p>
-              <div className="list">
-                {data.bookings.filter((booking) => booking.status === "paid").map((booking) => (
-                  <button key={bookingNo(booking)} disabled={busy} onClick={() => checkIn(booking)}>
-                    {t(booking.title)}<small>{bookingNo(booking)} {t("· แตะเพื่อ check-in")}</small>
-                  </button>
-                ))}
-                {!data.bookings.some((booking) => booking.status === "paid") && <Empty text={t("ยังไม่มี booking ที่พร้อม check-in")} />}
-              </div>
-            </div>
+            <VisitsScreen visits={data.visits} onBack={() => go("membership")} onShowQr={() => { setPendingBooking(null); setAccessQr({ purpose: "member" }); go("scan"); }} />
           )}
 
           {screen === "mybooking" && (
@@ -920,16 +879,17 @@ function MemberApp() {
             </div>
           )}
 
-          {screen === "gymnos" && <HubScreen title={t("Gymnos Hub")} back={() => go("home")} items={servicePackages.map(contentToPack)} onSelect={selectClass} extra={<button className="primary" onClick={() => go("fitness")}>{t("💪 ดู Fitness Pack")}</button>} />}
+          {screen === "gymnos" && <GymnosHub onBack={() => go("home")} onOpen={openFromGymnos} />}
+          {screen === "svcclass" && <ServiceClassScreen items={appContent} hasActiveMembership={Boolean(activeMembership)} onBack={() => go(hubReturn)} onSchedule={() => go("classschedule")} />}
           {screen === "fitness" && <HubScreen title={t("Fitness Pack")} back={() => go("gymnos")} items={servicePackages.map(contentToPack).filter((item) => item.screen === "fitness" || item.key.includes("fitness"))} onSelect={selectClass} extra={<TrainerStrip trainers={data.trainers} onOpen={(trainer) => { setSelectedTrainer(trainer); setTrainerDetail(true); go("trainer"); }} />} />}
-          {screen === "swim" && <HubScreen title={t("Swim Pack")} back={() => go("home")} items={packagesForScreen(servicePackages, "swim")} onSelect={selectClass} />}
-          {screen === "hyrox" && <HubScreen title="HYROX" back={() => go("home")} items={packagesForScreen(servicePackages, "hyrox")} onSelect={selectClass} extra={<Schedule title={t("HYROX Class Schedule")} items={scheduleForScreen(classScheduleItems, "hyrox")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "HYROX Class"} · ${time}`, amount: Number(item?.price || 700), back: "hyrox", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
-          {screen === "pilates" && <HubScreen title={t("Pilates")} back={() => go("home")} items={packagesForScreen(servicePackages, "pilates")} onSelect={selectClass} extra={<Schedule title={t("Reformer Schedule")} items={scheduleForScreen(classScheduleItems, "pilates")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Pilates Reformer"} · ${time}`, amount: Number(item?.price || 950), back: "pilates", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
-          {screen === "airfit" && <HubScreen title="Airfit" back={() => go("home")} items={packagesForScreen(servicePackages, "airfit")} onSelect={selectClass} extra={<Schedule title={t("Airfit Slots")} items={scheduleForScreen(classScheduleItems, "airfit")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Airfit"} · ${time}`, amount: Number(item?.price || 199), back: "airfit", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "swim" && <HubScreen title={t("Swim Pack")} back={() => go(hubReturn)} items={packagesForScreen(servicePackages, "swim")} onSelect={selectClass} extra={<button className="primary swim-plans" onClick={() => openPlans("monthly", "swim")}>{t("🏊 ดูแพ็กเกจ Fitness + Swim")}</button>} />}
+          {screen === "hyrox" && <HubScreen title="HYROX" back={() => go(hubReturn)} items={packagesForScreen(servicePackages, "hyrox")} onSelect={selectClass} extra={<Schedule title={t("HYROX Class Schedule")} items={scheduleForScreen(classScheduleItems, "hyrox")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "HYROX Class"} · ${time}`, amount: Number(item?.price || 700), back: "hyrox", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "pilates" && <HubScreen title={t("Pilates")} back={() => go(hubReturn)} items={packagesForScreen(servicePackages, "pilates")} onSelect={selectClass} extra={<Schedule title={t("Reformer Schedule")} items={scheduleForScreen(classScheduleItems, "pilates")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Pilates Reformer"} · ${time}`, amount: Number(item?.price || 950), back: "pilates", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
+          {screen === "airfit" && <HubScreen title="Airfit" back={() => go(hubReturn)} items={packagesForScreen(servicePackages, "airfit")} onSelect={selectClass} extra={<Schedule title={t("Airfit Slots")} items={scheduleForScreen(classScheduleItems, "airfit")} onBook={(time, item) => { setPendingItem({ contentId: item?.id, title: `${item?.title || "Airfit"} · ${time}`, amount: Number(item?.price || 199), back: "airfit", save: "class", itemType: "class" }); setPendingBooking(null); go("payment"); }} />} />}
 
           {screen === "promotion" && (
             <div className="page">
-              <Top title={t("Promotion")} onBack={() => go("home")} />
+              <Top title={t("Promotion")} onBack={() => go(hubReturn)} />
               {managedSlides[0] ? <div className="promo-card"><span>{t("MEMBER DEAL")}</span><strong>{t(managedSlides[0].title)}</strong><button onClick={() => go((managedSlides[0].targetScreen as Screen) || "plans")}>{t(managedSlides[0].actionLabel) || t("ดูแพ็กเกจ")}</button></div> : <Empty text={t("ยังไม่มีโปรโมชั่นประกาศในขณะนี้")} />}
               <SectionTitle title={t("ดีลประจำสัปดาห์")} />
               <div className="list">
@@ -953,66 +913,54 @@ function MemberApp() {
             <div className="page">
               <Top title={t("กระเป๋าเงิน")} onBack={() => go("profile")} />
               <BigBalance label={t("ยอดเงินคงเหลือ")} value={`${money(data.wallet.balance)}`} unit="฿" />
-              <div className="wallet-actions">
-                <button className="primary green" disabled={busy} onClick={() => topup(500)}>{t("เติมเงิน")}</button>
-              </div>
-              <div className="reward-label">{t("ประวัติการทำรายการ")}</div>
-              <Empty text={t("ยังไม่มีข้อมูลประวัติธุรกรรมให้แสดง")} />
+              <WalletPanel coinBalance={data.wallet.coinBalance} pointBalance={data.wallet.pointBalance} ledger={data.walletLedger} pending={data.pendingPayments} promptPayEnabled={data.promptPayEnabled ?? true} busy={busy} onTopup={topup} onPayPending={(paymentNo) => { setPromptPayNo(paymentNo); go("paypromptpay"); }} onCancelPending={cancelPending} />
             </div>
           )}
 
           {screen === "coupon" && (
             <div className="page">
               <Top title={t("คูปอง")} onBack={() => go("home")} />
-              <SectionTitle title={t("คูปองที่ซื้อได้")} />
-              <div className="coupon-list">
-                {couponStore.map((coupon) => (
-                  <CouponRow key={coupon.id} coupon={coupon} onClick={() => buyCoupon(coupon)} />
-                ))}
+              <div className="plan-tabs" role="tablist" aria-label={t("คูปอง")}>
+                <button type="button" role="tab" aria-selected={activeCouponTab === "mine"} className={activeCouponTab === "mine" ? "on" : ""} onClick={() => setCouponTab("mine")}>{t("คูปองของฉัน")}</button>
+                <button type="button" role="tab" aria-selected={activeCouponTab === "buy"} className={activeCouponTab === "buy" ? "on" : ""} onClick={() => setCouponTab("buy")}>{t("ซื้อคูปอง")}</button>
               </div>
-              <SectionTitle title={t("คูปองของฉัน")} />
-              <div className="prototype-list">
-                {data.coupons.length ? data.coupons.map((coupon) => (
-                  <MenuItem
-                    key={coupon.id}
-                    icon="🎟️"
-                    title={t(coupon.name)}
-                    meta={t("เหลือ {{value0}} ครั้ง · เปิด QR", { value0: coupon.remainingUses })}
-                    onClick={() => { setPendingBooking(null); setAccessQr({ purpose: "coupon", couponId: coupon.id, title: coupon.name }); go("scan"); }}
-                  />
-                )) : <Empty text={t("ยังไม่มีคูปอง")} />}
-              </div>
+              {activeCouponTab === "mine" ? (
+                <MyCouponList coupons={data.coupons} expiredCoupons={data.expiredCoupons} now={now} onOpenQr={openCouponQr} onRenew={(coupon) => openRenewCoupon(coupon)} onBuy={() => setCouponTab("buy")} />
+              ) : (
+                <>
+                  <h2 className="plans-subtitle">{t("คูปอง (Fitness)")}</h2>
+                  <div className="share-note">{t("🤝 คูปอง 1 ใบ สามารถแชร์ให้เพื่อนได้ 1 คน")}</div>
+                  <CouponPacks coupons={couponStore} onBuy={(coupon) => buyCoupon(coupon, "coupon")} />
+                  {otherCoupons.length ? (
+                    <>
+                      <SectionTitle title={t("คูปองอื่น ๆ")} />
+                      <div className="coupon-list">
+                        {otherCoupons.map((coupon) => <CouponRow key={coupon.id} coupon={coupon} onClick={() => buyCoupon(coupon, "coupon")} />)}
+                      </div>
+                    </>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
+
+          {screen === "mycoupons" && (
+            <div className="page mycoupons-page">
+              <Top title={t("คูปองของฉัน")} icon="🎟️" onBack={() => go("membership")} />
+              <MyCouponList coupons={data.coupons} expiredCoupons={data.expiredCoupons} now={now} onOpenQr={openCouponQr} onRenew={(coupon) => openRenewCoupon(coupon, "mycoupons")} onBuy={() => openPlans("coupon", "mycoupons")} />
             </div>
           )}
 
           {screen === "reward" && (
-            <div className="page">
-              <Top title={t("แลกรางวัล")} icon="🪙" onBack={() => go("home")} />
-              <div className="coin-balance-card">
-                <span>{t("Coin สะสมของฉัน")}</span>
-                <strong>🪙 {data.wallet.coinBalance}</strong>
-              </div>
-              <div className="reward-label">{t("รางวัลที่แลกได้")}</div>
-              <div className="coin-reward-list">
-                {coinRewards.map((reward) => {
-                  const disabled = data.wallet.coinBalance < reward.cost;
-                  return (
-                    <button
-                      className={disabled ? "disabled" : ""}
-                      key={reward.name}
-                      onClick={() => notice(disabled ? t("🪙 Coin ไม่พอ - ต้องการอีก {{value0}} เหรียญ", { value0: reward.cost - data.wallet.coinBalance }) : t("🎁 รับ QR สำหรับ {{value0}}", { value0: t(reward.name) }))}
-                    >
-                      <div>
-                        <b>{reward.icon} {t(reward.name)}</b>
-                        <small>{t(reward.detail)}</small>
-                      </div>
-                      <span>🪙 {reward.cost}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="reward-hint">{t("แตะรางวัลเพื่อรับ QR/โค้ดยื่นให้เจ้าหน้าที่หน้าคลับ")}</p>
-            </div>
+            <RewardsScreen
+              coinBalance={data.wallet.coinBalance}
+              rewards={contentByType(appContent, "reward")}
+              myRewards={data.entitlements.filter((item) => item.entitlementType === "reward")}
+              busy={busy}
+              onBack={() => go("home")}
+              onRedeem={redeemReward}
+              onOpenQr={(right) => { setPendingBooking(null); setAccessQr({ purpose: "entitlement", entitlementId: right.id, title: right.title }); go("scan"); }}
+            />
           )}
 
           {screen === "membership" && (
@@ -1027,10 +975,10 @@ function MemberApp() {
                 <span className="member-qr-link"><QrCode size={28} aria-hidden="true" /><small>{t("เปิด QR")}</small></span>
               </button>
               <div className="prototype-list">
-                <MenuItem icon="📦" title={t("แพ็กเกจของฉัน")} onClick={() => go("plans")} />
+                <MenuItem icon="📦" title={t("แพ็กเกจของฉัน")} onClick={() => openPlans("monthly", "membership")} />
                 <MenuItem icon="🧾" title={t("ประวัติการซื้อ")} onClick={() => go("mybooking")} />
                 <MenuItem icon="🚪" title={t("การเข้าใช้บริการ")} onClick={() => go("checkin")} />
-                <MenuItem icon="🎟️" title={t("คูปองของฉัน")} onClick={() => go("coupon")} />
+                <MenuItem icon="🎟️" title={t("คูปองของฉัน")} onClick={() => go("mycoupons")} />
                 <MenuItem icon="⭐" title={t("คะแนนสะสม")} onClick={() => go("reward")} />
               </div>
               <SectionTitle title={t("สิทธิ์ที่ใช้งานได้")} />
@@ -1040,7 +988,7 @@ function MemberApp() {
                     key={item.id}
                     icon="🎫"
                     title={t(item.title)}
-                    meta={t("{{value0}}{{value1}}{{value2}} · เปิด QR", { value0: item.entitlementType, value1: item.remainingUses ? t(" · เหลือ {{value0}}", { value0: item.remainingUses }) : "", value2: item.endsAt ? t(" · ถึง {{value0}}", { value0: new Date(item.endsAt).toLocaleDateString(localeTag()) }) : "" })}
+                    meta={t("{{value0}}{{value1}}{{value2}} · เปิด QR", { value0: t(entitlementLabel(item.entitlementType)), value1: item.remainingUses ? t(" · เหลือ {{value0}}", { value0: item.remainingUses }) : "", value2: item.endsAt ? t(" · ถึง {{value0}}", { value0: new Date(item.endsAt).toLocaleDateString(localeTag()) }) : "" })}
                     onClick={() => { setPendingBooking(null); setAccessQr({ purpose: "entitlement", entitlementId: item.id, title: item.title }); go("scan"); }}
                   />
                 )) : <Empty text={t("ยังไม่มีสิทธิ์แพ็กเกจ")} />}
@@ -1049,17 +997,21 @@ function MemberApp() {
           )}
 
           {screen === "plans" && (
-            <div className="page">
-              <Top title={t("เลือกแพ็กเกจ")} onBack={() => go("membership")} />
-              <div className="fit-list">
-                {(membershipPlans.length ? membershipPlans : []).map((item) => (
-                  <FitItem key={item.slug} title={t(item.title)} text={t(item.subtitle) || t(item.body) || t("เข้าใช้บริการตามสิทธิ์สมาชิก")} price={`${money(item.price)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ contentId: item.id, title: item.title, amount: Number(item.price), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
-                ))}
-                {!membershipPlans.length ? ([["Monthly", 1900], ["Quarterly", 5100], ["Annual", 18000]] as const).map(([name, amount]) => (
-                  <FitItem key={name} title={t("แพ็กเกจ {{value0}}", { value0: name })} text={t("เข้าใช้บริการตามสิทธิ์สมาชิก")} price={`${money(amount)} ฿`} onClick={() => { setPendingBooking(null); setPendingItem({ title: `PPA Premium ${name}`, amount: Number(amount), back: "plans", save: "membership", itemType: "membership" }); go("payment"); }} />
-                )) : null}
-              </div>
-            </div>
+            <PackagePlansScreen
+              tab={planTab}
+              onTab={setPlanTab}
+              contentItems={appContent}
+              couponStore={couponStore}
+              data={data}
+              now={now}
+              busy={busy}
+              onBack={() => go(plansReturn)}
+              onSelectContent={selectPackage}
+              onBuyCoupon={(coupon) => buyCoupon(coupon, "plans")}
+              onRequestPause={requestPause}
+              onRenewCoupon={renewCoupon}
+              renewFocus={renewFocus}
+            />
           )}
 
           {screen === "trainer" && (
@@ -1193,18 +1145,7 @@ function MemberApp() {
           )}
 
           {screen === "groups" && (
-            <div className="page">
-              <Top title={t("Find Your Game")} onBack={() => go("home")} />
-              <div className="field-stack">
-                <label className="field">{t("ชื่อก๊วน")}<input maxLength={160} value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder={t("เช่น PPA Evening Badminton")} /></label>
-                <label className="field">{t("ระดับ")}<select value={groupLevel} onChange={(event) => setGroupLevel(event.target.value)}>{levelChoices.map((level) => <option key={level} value={level}>{t(level)}</option>)}</select></label>
-                <button className="primary" disabled={busy} onClick={createGroup}>{t("👥 สร้างก๊วน")}</button>
-              </div>
-              <SectionTitle title={t("ก๊วนล่าสุด")} />
-              <div className="list">
-                {data.groups.length ? data.groups.map((group) => <button key={group.id}>👥 {group.name}<small>{t(group.sportName)} · {t(group.levelName)}</small></button>) : <Empty text={t("ยังไม่มีก๊วน")} />}
-              </div>
-            </div>
+            <GroupsScreen groups={data.groups} sports={data.sports} now={now} busy={busy} onBack={() => go("home")} onCreate={createGroup} onJoin={joinGroup} onLeave={leaveGroup} onClose={closeGroup} />
           )}
 
           {screen === "notifications" && (
@@ -1293,14 +1234,15 @@ function MemberApp() {
             <div className="page help-page">
               <Top title={t("ช่วยเหลือ & ติดต่อเรา")} icon="❓" onBack={() => go("profile")} />
               <div className="prototype-list">
-                <MenuItem icon="📞" title={t("โทรหาเรา")} meta="02-123-4567 · 08:00-21:00" onClick={() => openSupport("tel")} />
-                <MenuItem icon="✉️" title={t("อีเมล")} meta="support@ppapowerplay.com" onClick={() => openSupport("mail")} />
+                <MenuItem icon="📞" title={t("โทรหาเรา")} meta={`${contact.phone} · ${contact.hours}`} onClick={() => openSupport("tel")} />
+                <MenuItem icon="✉️" title={t("อีเมล")} meta={contact.email} onClick={() => openSupport("mail")} />
                 <MenuItem icon="🎓" title={t("คู่มือการใช้งาน")} meta={t("จอง · ก๊วน · เหรียญ")} onClick={() => { go("home"); window.setTimeout(() => setTutorial(1), 250); }} />
-                <MenuItem icon="💬" title={t("LINE Official")} meta="@ppapowerplay" onClick={() => openSupport("line")} />
+                <MenuItem icon="💬" title={t("LINE Official")} meta={contact.line} onClick={() => openSupport("line")} />
+                {policy ? <MenuItem icon="🔒" title={t("นโยบายความเป็นส่วนตัว")} meta={data.consent?.version === policy.version ? t("ยอมรับแล้ว · ฉบับ {{value0}}", { value0: policy.version }) : t("ฉบับ {{value0}}", { value0: policy.version })} onClick={() => setPolicyOpen(true)} /> : null}
               </div>
               <div className="help-info">
                 <b>PPA Power Play Sport Club</b>
-                <small>{t("เปิดทุกวัน 08:00 - 21:00 น.")}</small>
+                <small>{t("เวลาทำการ {{value0}}", { value0: contact.hours })}</small>
               </div>
               <div className="help-faq">
                 <div className="reward-label">{t("คำถามที่พบบ่อย")}</div>
@@ -1344,6 +1286,7 @@ function MemberApp() {
         </nav>
         {cancelTarget && <AdminDialog onClose={() => { if (!busy) setCancelTarget(null); }}><section className="member-confirm"><h2>{t("ยกเลิกการจองนี้?")}</h2><p>{t(cancelTarget.title)}</p><small>{t("รายการที่ชำระแล้ว กรุณาติดต่อเจ้าหน้าที่เพื่อตรวจสอบเงื่อนไขการคืนเงิน")}</small><div><button className="ghost" disabled={busy} onClick={() => setCancelTarget(null)}>{t("เก็บการจองไว้")}</button><button className="danger-action" disabled={busy} onClick={() => cancelBooking(cancelTarget)}>{busy ? t("กำลังยกเลิก…") : t("ยืนยันยกเลิก")}</button></div></section></AdminDialog>}
         {tutorial > 0 && <Tutorial step={tutorial} onNext={() => setTutorial(tutorial >= 4 ? 0 : tutorial + 1)} onSkip={() => setTutorial(0)} />}
+        {policy && (consentDue || policyOpen) ? <PrivacyPolicyDialog policy={policy} contact={contact} busy={busy} onAccept={consentDue ? acceptPolicy : undefined} onClose={consentDue ? undefined : () => setPolicyOpen(false)} /> : null}
         {t(toast) && <div className="toast" role="status" aria-live="polite">{t(toast)}</div>}
       </section>
     </main>
@@ -1397,34 +1340,6 @@ function TabBarIcon({ name }: { name: TabIcon }) {
   return <Icon size={24} strokeWidth={1.8} aria-hidden="true" />;
 }
 
-function iconFor(title: string, options: [string, string][]) {
-  return options.find(([key]) => title.includes(key))?.[1] || "•";
-}
-
-function Top({ title, onBack, icon }: { title: string; onBack?: () => void; icon?: string }) {
-  const marker = icon || iconFor(title, titleIcons);
-  return (
-    <header className="top">
-      {onBack ? <button className="back-btn" title={t("ย้อนกลับ")} aria-label={t("ย้อนกลับ")} onClick={onBack}><ChevronLeft size={22} aria-hidden="true" /></button> : <span />}
-      <div className="top-title">
-        <i>{t(marker)}</i>
-        <h1>{icon ? `${icon} ${t(title)}` : t(title)}</h1>
-      </div>
-      <span />
-    </header>
-  );
-}
-
-function SectionTitle({ title, action, onClick, icon }: { title: string; action?: string; onClick?: () => void; icon?: string }) {
-  const marker = icon || iconFor(title, sectionIcons);
-  return (
-    <div className="section-title">
-      <h2><span>{t(marker)}</span>{t(title)}</h2>
-      {t(action) && <button onClick={onClick}>{t(action)}</button>}
-    </div>
-  );
-}
-
 function SportRow({ icon, title, text, onClick }: { icon: string; title: string; text?: string; onClick?: () => void }) {
   return (
     <button className="sport-row-ui" onClick={onClick}>
@@ -1445,18 +1360,6 @@ function MenuItem({ icon, title, meta, onClick }: { icon: string; title: string;
       <span className="menu-title">{t(title)}</span>
       {t(meta) && <small>{t(meta)}</small>}
       <span className="chev">›</span>
-    </button>
-  );
-}
-
-function FitItem({ title, text, price, onClick }: { title: string; text?: string; price: string; onClick?: () => void }) {
-  return (
-    <button className="fit-item-ui" onClick={onClick}>
-      <div>
-        <b>{t(title)}</b>
-        {t(text) && <small>{t(text)}</small>}
-      </div>
-      <strong>{price}</strong>
     </button>
   );
 }
@@ -1755,7 +1658,7 @@ function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; b
       } catch (error) {
         if (!alive) return;
         setQr(null);
-        setQrError(qrErrorKey((error as Error & { status?: number }).status, purpose));
+        setQrError(qrErrorKey((error as Error & { status?: number }).status, purpose, (error as Error & { code?: string }).code));
       } finally {
         pending = false;
       }
@@ -1785,7 +1688,7 @@ function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; b
       <h2>{bookingCode || data.user.memberCode}</h2>
       <p>{bookingCode ? t(booking?.title) : t(accessQr?.title) || t(qr?.title) || t("QR สมาชิกอายุสั้นสำหรับเข้าใช้ sport complex")}</p>
       {currentQr ? <div className="scan-meta"><span>{t("หมดอายุใน")}</span><strong>{remaining}{t("s")}</strong></div> : null}
-      <button className="primary" onClick={onCheckin}>{t("✅ ไปหน้า Check-in")}</button>
+      <button className="primary" onClick={onCheckin}>{t("🚪 ประวัติการเข้าใช้บริการ")}</button>
     </div>
   );
 }
@@ -1840,18 +1743,13 @@ function ManagedFeatureScreen({ items, onBack, onBuy, screen }: { items: Content
   return (
     <div className="page">
       <Top title={t(title)} onBack={onBack} />
-      <div className="promo-card">
-        <span>{t("🧩 MANAGED")}</span>
-        <strong>{t(title)}</strong>
-        <small>{t("ข้อมูลหน้านี้จัดการได้จาก Backoffice · App Content")}</small>
-      </div>
       <div className="list">
         {items.length ? items.map((item) => (
           <button key={item.id} onClick={() => onBuy(item)}>
             {item.icon} {t(item.title)}
             <small>{t(item.subtitle) || t(item.body) || item.slug}{item.price > 0 ? t(" · {{value0}} ฿", { value0: money(item.price) }) : ""}</small>
           </button>
-        )) : <Empty text={t("ยังไม่มีข้อมูลในหลังบ้าน")} />}
+        )) : <Empty text={t("ยังไม่มีข้อมูลในขณะนี้")} />}
       </div>
     </div>
   );
@@ -1954,8 +1852,4 @@ function Tutorial({ step, onNext, onSkip }: { step: number; onNext: () => void; 
 
 function Stat({ label, value }: { label: string; value: number }) {
   return <div className="stat"><span>{statIcons[label] || "•"} {t(label)}</span><strong>{value}</strong></div>;
-}
-
-function Empty({ text }: { text: string }) {
-  return <div className="empty small">∅ {t(text)}</div>;
 }

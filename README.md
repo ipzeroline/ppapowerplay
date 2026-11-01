@@ -84,9 +84,169 @@ No production deployment has been performed by the review.
 6. Run runtime acceptance against a staging database first. Verify manual payment
    confirmation and the resulting wallet, membership, booking or coupon state.
 7. Keep the previous release and its lockfile for rollback; verify database backup
-   restoration separately. This change does not require schema migration.
+   restoration separately. Releases that change `database/schema.sql` need the
+   migration below.
 
-PromptPay currently creates a pending payment for staff confirmation; it does not
-provide a bank payment QR or automatic bank settlement. Merchant/payment-provider
-configuration is still required for that integration. The UI now calls this a
-payment request and does not claim to display a PromptPay QR.
+## Release 2026-10-31: package page, coupons, Find Your Game, GYMNOS, rich menu
+
+Covers revisions 1–5 from the LINE OA feedback. The plan and decisions are in
+`docs/superpowers/plans/2026-10-31-ppa-app-revisions-part-1-5.md`.
+
+**1. Database migration (required before the new build)**
+
+1. Back up the database.
+2. Run `npm run db:init` against staging first, then production. It applies:
+   - the `membership_pauses` and `group_members` tables;
+   - new columns on `coupons`, `user_coupons` and `groups_clubs`.
+3. It seeds the package catalog: Monthly 12/1/6 months, Time passes, Fitness coupon
+   packs, plus package-pause and coupon-renewal prices.
+4. Re-running it keeps operator data:
+   - All seeds (sports, courts, coupons, trainers, app content, package catalog) are
+     insert-only, so names, prices, schedules and active flags edited in AdminConsole
+     are kept. Earlier releases overwrote some of them on every run.
+   - Only the built-in role and permission names are refreshed.
+   - The old Monthly/Quarterly/Annual placeholder plans are retired only if they still
+     have their original seeded values.
+   - Existing staff passwords are no longer reset.
+   - New: `payments.request_id` with a unique key, so retried checkouts never charge twice.
+   - New: `payments.slip_path` / `slip_uploaded_at` for PromptPay slips.
+   - `INSERT IGNORE` turns errors into warnings, so run `SHOW WARNINGS` after the first
+     staging run and check the seed counts before production.
+5. `scripts/db-init.mjs` no longer contains fallback database credentials; it reads
+   `.env.local` or the host environment.
+
+**2. LINE rich menu (6 buttons)**
+
+Run these to upload the new rich menu:
+
+```sh
+npm run line:rich-menu:image     # renders the SVG with Google Chrome
+npm run line:rich-menu:dry-run   # check the six URIs
+npm run line:rich-menu:create    # uploads and sets it as the default menu for all users
+```
+
+- The buttons are: Home, Packages, Coupons, Book a court, Wallet, Help.
+- `create` changes the live LINE OA for all users, so run it only when the release is live.
+
+**3. Where to manage the catalog**
+
+All of these prices and settings can be edited in AdminConsole:
+
+| What | Where | Content type / field |
+| --- | --- | --- |
+| Monthly and Time packages | App Content | `membership_plan` / `time_pass` |
+| Package-pause and coupon-renewal prices | App Content | `renewal_option` |
+| Coupon packs | Coupons | coupon `metadata` |
+
+Grant terms (`months`, `days`, `uses`, `pausesAllowed`) are copied into each payment.
+Editing a package later never changes rights that were already paid.
+
+**4. Staff workflow**
+
+- PromptPay requests for packages, pauses and coupon renewals appear under Reports →
+  finance with the item name.
+- "ยืนยันชำระ" grants the item: 12-month plans get 12 months, a pause extends the
+  package end date, a coupon renewal adds one month.
+- Member QR access is refused during a paused period.
+
+**5. Security follow-up**
+
+- The database password that used to be hard-coded in `scripts/db-init.mjs` remains in
+  git history. Rotate the database password and update `.env.local` and the host
+  secrets.
+- The bootstrap super-admin password hash is also in `database/schema.sql` and its
+  history. After the first login, change that account's password in AdminConsole.
+  `db:init` no longer resets it.
+
+## Release 2026-11-01: launch readiness
+
+Adds what the club needs to open: PromptPay QR with slip upload, counter sales, member
+rights for staff, in-app notifications, Coin rewards, editable contact details, PDPA
+consent and visit history. The plan and decisions are in
+`docs/superpowers/plans/2026-10-31-ppa-launch-readiness.md`.
+
+**1. Environment** (see `.env.production.example`)
+
+| Variable | Purpose |
+| --- | --- |
+| `PROMPTPAY_ID` | Receiving PromptPay ID: mobile (10 digits), tax ID (13) or e-wallet (15). Empty = no QR, payments stay staff-confirmed requests. `npm run production:check` rejects a mistyped value. |
+| `PROMPTPAY_NAME` | Account name shown under the QR. |
+| `SLIP_STORAGE_DIR` | Where transfer slips are stored (default `storage/payment-slips`). Use a persistent, backed-up volume outside `public/`. Slips are served only to staff with payment permission. |
+| `DB_CONNECTION_LIMIT` / `DB_QUEUE_LIMIT` | Database pool size (default 10) and how many requests may wait for a connection (default 1000). Each member app open runs about 16 queries, so a burst of opens waits briefly instead of failing. |
+| `LINE_PUSH_ENABLED` | `true` also sends payment notices as LINE OA push messages (uses the OA message quota and needs `LINE_CHANNEL_ACCESS_TOKEN`). The LINE Login (LIFF) channel and the Messaging API channel must belong to the same LINE provider, otherwise user IDs differ and pushes silently reach no one. Default off; in-app notifications always work. |
+
+**2. Database migration (run before deploying this build)**
+
+The new build reads the new columns and tables, so deploying it before the migration breaks
+the member app and QR check-in. Back up, run `npm run db:init` on staging, check
+`SHOW WARNINGS`, then run it on production, then deploy the build.
+It adds `users.pdpa_accepted_at` / `pdpa_version`, the `member_visits` table and the
+`sales.manage` permission (granted to manager, front desk and finance). It also seeds
+5 Coin rewards and 2 site settings. All seeds are insert-only.
+
+**3. Before opening**
+
+1. App Content → `site_setting` → `support-contact`: set the real phone, email, LINE ID,
+   LINE link (`line.me` / `lin.ee`) and opening hours shown on the Help page.
+2. App Content → `site_setting` → `privacy-policy`: the seeded text is a **draft and is
+   off**. Have the owner (and legal adviser) approve the wording, keep or change
+   `metadata.version`, then activate it. Members must accept it once. Publishing a new
+   version asks everyone again. Staff can see each member's consent in Members.
+3. App Content → `reward`: check the reward list and Coin prices (`metadata.cost`).
+4. Set `PROMPTPAY_ID`, then make one small real transfer end to end: member pays the QR,
+   attaches the slip, staff open "ดูสลิป" and confirm, the right appears for the member.
+
+**4. Staff workflow**
+
+- **PromptPay:** the member scans the QR (exact amount) and attaches the slip. Payments
+  awaiting confirmation are listed first (Dashboard shows "รอยืนยัน n"). In Reports →
+  finance, check the slip with "ดูสลิป", then "ยืนยันชำระ" or "ยกเลิกรายการ". The member
+  gets an in-app notification either way.
+- **Court bookings paid by PromptPay:** a booking is held for 15 minutes and the QR screen
+  shows the deadline. A slip sent in time keeps the court reserved until staff confirm or
+  cancel (at most until the session ends). A late slip re-reserves the court only if the
+  slot is still free; otherwise the member is told to contact staff with the slip.
+  Cancelling the payment releases the court immediately.
+- **Counter sale:** Members → member → counter sale sells a package or coupon at the
+  catalog price. It needs `sales.manage` and is recorded with the staff member's name.
+- **Member rights:** Members → member shows active packages, pauses, coupons, rights
+  and payments waiting for confirmation.
+- **Coin rewards:** members redeem Coins in the app and get a one-use QR (valid 30
+  days). Staff scan it in Scanner to hand over the reward.
+- **Visits:** every QR that staff consume is recorded. Members see it under
+  "การเข้าใช้บริการ".
+
+**5. Back-office dashboard**
+
+The dashboard shows each staff member only what their role can act on, and refreshes
+every minute while it is open:
+
+- **ต้องทำตอนนี้:** slips to check (with how long the oldest slip has waited), payments
+  without a slip, refunds due, packages ending in 7 days, courts in maintenance, system
+  items. The queue table below it confirms or cancels payments in place: slips to check
+  come first (oldest slip first), then refunds due, then requests without a slip (newest
+  first, so a member paying at the counter finds theirs on top).
+- **วันนี้:** visits (staff-scanned QR codes), the day's bookings and check-ins, courts
+  playing now and coming up next (finished games drop off; "ดูการจองทั้งหมด" lists the
+  whole day), today's sales and new members.
+- **เดือนนี้:** sales compared with last month up to the same point in time, orders,
+  cash in, wallet top-ups, a 30-day sales chart (arrow keys move between days, "ดูเป็นตาราง"
+  shows the numbers) and sales by type / cash in by channel.
+- **สมาชิก:** totals and the packages ending within 7 days, with phone numbers for renewal calls.
+
+Definitions: **ยอดขาย** counts paid payments except wallet top-ups (the purchase made from
+the wallet is the sale); **เงินเข้า** counts paid payments not funded from a wallet (money
+actually received, including top-ups).
+
+**6. Payment corrections**
+
+- Cancelling a payment asks for a reason, which the member sees. If the member already
+  sent a slip, the payment shows "รอคืนเงิน": transfer the money back, then press
+  "บันทึกคืนเงินแล้ว" (status becomes refunded and the member is notified).
+- When a member replaces a slip, the earlier one is kept and listed as "สลิปเดิม n".
+- Counter sales record the price the staff member confirmed; if the catalog price changed
+  in the meantime the sale is refused and the new price is shown. Finance staff
+  (sales.manage) can open Members to sell, without edit rights.
+
+PromptPay QR is a standard Thai QR with the exact amount. Payment is confirmed by staff
+from the slip; there is no automatic bank reconciliation.

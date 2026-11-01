@@ -23,12 +23,17 @@ const env = process.env;
 const sqlPath = path.join(process.cwd(), "database", "schema.sql");
 const sql = await fs.readFile(sqlPath, "utf8");
 
+// Credentials come only from the environment (.env.local or the host secret store).
+for (const name of ["DB_HOST", "DB_USER", "DB_NAME"]) {
+  if (!env[name]) throw new Error(`Missing ${name}. Configure .env.local or the deployment environment.`);
+}
+
 const connection = await mysql.createConnection({
-  host: env.DB_HOST || "139.59.96.78",
+  host: env.DB_HOST,
   port: Number(env.DB_PORT || 3306),
-  user: env.DB_USER || "ppaapp_db",
-  password: env.DB_PASSWORD || "r-BXY-VTkhBz0E=SlLh+",
-  database: env.DB_NAME || "ppaapp_db",
+  user: env.DB_USER,
+  password: env.DB_PASSWORD,
+  database: env.DB_NAME,
   multipleStatements: true,
   timezone: "+07:00",
   charset: "utf8mb4",

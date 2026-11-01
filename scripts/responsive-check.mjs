@@ -7,6 +7,7 @@ import QRCode from "qrcode";
 const base = "http://localhost:3000";
 const outDir = "/private/tmp/ppa-responsive";
 const fixtureQrSvg = await QRCode.toString("https://example.invalid/qr-test-only", { type: "svg", margin: 1, width: 220 });
+const fixtureQrPng = await QRCode.toDataURL("promptpay-fixture-only", { margin: 2, width: 240 });
 await mkdir(outDir, { recursive: true });
 const pageHtml = await (await fetch(base)).text();
 const styles = [...pageHtml.matchAll(/<link[^>]+rel="stylesheet"[^>]*>/g)].map((match) => match[0]).join("");
@@ -15,7 +16,50 @@ const fontClass = pageHtml.match(/<html[^>]+class="([^"]+)"/)?.[1] || "";
 const user = { id: 1, displayName: "สมาชิกทดสอบหน้าจอ Responsive Layout", memberCode: "PPA-TEST", phone: "0000000000", email: "test@example.invalid", status: "active" };
 const trainer = { id: 1, slug: "coach", name: "Trainer responsive test", nickname: "Coach", role: "Personal Trainer", avatar: "PPA", experience: "5 years", startPrice: 1000, active: true, sortOrder: 1, certifications: [], specialties: [], packages: [], weeklySchedule: [] };
 const bookings = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, bookingNo: `BK-TEST-${i}`, title: "ทดสอบรายการจองที่มีชื่อยาวสำหรับทุกขนาดหน้าจอ", displayName: user.displayName, sportName: "Badminton", courtName: "Court A", startsAt: "2026-12-10T10:00:00+07:00", endsAt: "2026-12-10T11:00:00+07:00", status: "paid", amount: 200, players: 2 }));
-const member = { user, wallet: { balance: 2000, coinBalance: 10, pointBalance: 100 }, sports: [{ id: 1, slug: "badminton", name: "Badminton", icon: "PPA", requiresBooking: true, baseRate: 200 }], bookings, coupons: [], trainers: [trainer], groups: [], notifications: [], contentItems: [], memberships: [], entitlements: [] };
+const isoIn = (days) => new Date(Date.now() + days * 86400000).toISOString();
+const catalogItem = (id, contentType, title, price, sortOrder, metadata, extra = {}) => ({ id, contentType, slug: `fixture-${id}`, title, price, sortOrder, icon: "", targetScreen: "plans", metadata: JSON.stringify(metadata), ...extra });
+const packageCatalog = [
+  catalogItem(201, "membership_plan", "Fitness (12 เดือน)", 19200, 110, { tab: "monthly", group: "12m", variant: "base", label: "Fitness (12 เดือน)", featured: true, badge: "คุ้มสุด", perks: ["เข้าใช้ไม่จำกัดตลอด 12 เดือน", "เข้าใช้ฟิตเนสไม่จำกัด", "จองผ่านแอปได้ทันที"], months: 12, pausesAllowed: 2 }, { actionLabel: "เลือกแพ็กเกจนี้" }),
+  catalogItem(202, "membership_plan", "Fitness + Swim 12 เดือน", 19700, 111, { tab: "monthly", group: "12m", variant: "swim", label: "Fitness + Swim", months: 12 }),
+  catalogItem(203, "membership_plan", "Fitness 1 เดือน", 2000, 120, { tab: "monthly", group: "1m", variant: "base", label: "1 เดือน", months: 1 }, { subtitle: "เข้าใช้ไม่จำกัด" }),
+  catalogItem(204, "membership_plan", "Fitness + Hyrox 1 เดือน", 2700, 121, { tab: "monthly", group: "1m", variant: "hyrox", label: "Fitness + Hyrox", months: 1 }),
+  catalogItem(205, "membership_plan", "Fitness 6 เดือน", 10885, 130, { tab: "monthly", group: "6m", variant: "base", label: "6 เดือน", months: 6, pausesAllowed: 1 }),
+  catalogItem(206, "time_pass", "Fitness 1 ครั้ง", 200, 10, { tab: "time", group: "1d", variant: "base", label: "1 ครั้ง", days: 1, uses: 1 }, { subtitle: "ใช้ได้ 1 วัน" }),
+  catalogItem(207, "time_pass", "Fitness + Swim 1 ครั้ง", 300, 11, { tab: "time", group: "1d", variant: "swim", label: "Fitness + Swim", days: 1, uses: 1 }),
+  catalogItem(208, "time_pass", "Fitness 1 สัปดาห์", 1000, 20, { tab: "time", group: "1w", variant: "base", label: "1 สัปดาห์", days: 7 }),
+  catalogItem(209, "renewal_option", "พักการใช้งานแพ็กเกจ", 500, 10, { kind: "membership_pause", maxDays: 60 }, { subtitle: "หยุดนับอายุแพ็กเกจชั่วคราว สูงสุดไม่เกิน 2 เดือนต่อครั้ง เมื่อกลับมาใช้ วันที่เหลือจะต่อจากเดิม" }),
+  catalogItem(210, "renewal_option", "ต่ออายุคูปอง", 500, 20, { kind: "coupon_renewal", months: 1 }, { subtitle: "ขยายวันหมดอายุคูปองออกไปอีก 1 เดือน โดยจำนวนครั้งคงเหลือเท่าเดิม (ใช้ได้เฉพาะคูปองเท่านั้น ไม่รวมแพ็กเกจ)" }),
+];
+const couponStore = [[10, 1600, 2400, 60, ""], [120, 12000, 18000, 365, "BEST SELLER"]].flatMap(([uses, price, extra, days, badge], index) => [
+  { id: 300 + index * 2, code: `FIT-COUPON-${uses}`, name: `คูปอง Fitness ${uses} ใบ`, category: "fitness", price, totalUses: uses, validityDays: days, sortOrder: index * 10, metadata: JSON.stringify({ tab: "coupon", group: `c${uses}`, variant: "base", ...(badge ? { badge } : {}) }) },
+  { id: 301 + index * 2, code: `FIT-SWIM-COUPON-${uses}`, name: `คูปอง Fitness + Swim ${uses} ใบ`, category: "fitness-swim", price: extra, totalUses: uses, validityDays: days, sortOrder: index * 10 + 1, metadata: JSON.stringify({ tab: "coupon", group: `c${uses}`, variant: "swim", label: "Fitness + Swim" }) },
+]).concat([{ id: 399, code: "PILATES-GROUP-10", name: "Pilates Group 10 ครั้ง", category: "pilates", price: 8500, totalUses: 10, validityDays: 60, sortOrder: 0, metadata: null }]);
+const ledgerNote = "ซื้อคูปอง คูปอง Fitness 10 ใบ";
+// Coin rewards and club settings (support contact, PDPA policy) edited in AdminConsole.
+const launchContent = [
+  catalogItem(501, "reward", "น้ำเปล่า PPA", 0, 10, { cost: 5 }, { subtitle: "1 ขวด", icon: "💧", targetScreen: "reward" }),
+  catalogItem(502, "reward", "เสื้อกีฬา PPA", 0, 50, { cost: 50 }, { subtitle: "เลือกไซส์ได้ที่เคาน์เตอร์", icon: "👕", targetScreen: "reward" }),
+  catalogItem(601, "site_setting", "ช่วยเหลือ & ติดต่อเรา", 0, 10, { phone: "081-111-2222", email: "desk@ppa.example", line: "@ppadesk", lineUrl: "https://lin.ee/ppadesk", hours: "06:00-23:00" }, { slug: "support-contact", targetScreen: "help" }),
+  catalogItem(602, "site_setting", "นโยบายความเป็นส่วนตัว", 0, 20, { version: "2026-11-01" }, { slug: "privacy-policy", targetScreen: null, subtitle: "สรุปการเก็บและใช้ข้อมูลส่วนบุคคลของสมาชิก", body: Array.from({ length: 12 }, (_, index) => `${index + 1}. ข้อความนโยบายความเป็นส่วนตัวสำหรับทดสอบการเลื่อนอ่านบนหน้าจอขนาดเล็ก`).join("\n") }),
+];
+const member = {
+  user, wallet: { balance: 2000, coinBalance: 10, pointBalance: 100 }, sports: [{ id: 1, slug: "badminton", name: "Badminton", icon: "PPA", requiresBooking: true, baseRate: 200 }], bookings,
+  coupons: [{ id: 401, code: "FIT-COUPON-10", name: "คูปอง Fitness 10 ใบ", category: "fitness", remainingUses: 7, totalUses: 10, purchasedAt: isoIn(-10), expiresAt: isoIn(50) }],
+  expiredCoupons: [{ id: 402, code: "FIT-COUPON-30", name: "คูปอง Fitness 30 ใบ", category: "fitness", remainingUses: 4, totalUses: 30, purchasedAt: isoIn(-130), expiresAt: isoIn(-3) }],
+  trainers: [trainer],
+  groups: [
+    { id: 1, name: "Open Run responsive fixture with a long group name", levelName: "พอตัว", sportName: "บาสเกตบอล", sportSlug: "basketball", sportIcon: "🏀", maxPlayers: 10, memberCount: 8, playAt: isoIn(1), joined: 0, isOwner: 0 },
+    { id: 2, name: "Badminton Doubles", levelName: "มือใหม่", sportName: "แบดมินตัน", sportSlug: "badminton", sportIcon: "🏸", maxPlayers: 4, memberCount: 3, playAt: isoIn(2), joined: 1, isOwner: 0 },
+    { id: 3, name: "Pickleball", levelName: "มือใหม่", sportName: "พิคเคิลบอล", sportSlug: "pickleball", sportIcon: "🥒", maxPlayers: 4, memberCount: 2, playAt: null, joined: 0, isOwner: 1 },
+    { id: 4, name: "Tennis full", levelName: "แข่งขัน", sportName: "เทนนิส", sportSlug: "tennis", sportIcon: "🎾", maxPlayers: 4, memberCount: 4, playAt: isoIn(3), joined: 0, isOwner: 0 },
+    { id: 5, name: "Weekend", levelName: "พอตัว", sportName: "แบดมินตัน", sportSlug: "badminton", sportIcon: "🏸", maxPlayers: 6, memberCount: 1, playAt: isoIn(4), joined: 0, isOwner: 0 },
+  ],
+  notifications: [], contentItems: [...packageCatalog, ...launchContent], memberships: [], membershipPauses: [], pendingPayments: [],
+  entitlements: [{ id: 701, entitlementType: "reward", title: "น้ำเปล่า PPA", remainingUses: 1, startsAt: isoIn(-1), endsAt: isoIn(29), status: "active" }],
+  visits: [{ id: 1, purpose: "member", title: "Fitness (12 เดือน)", createdAt: isoIn(-1) }, { id: 2, purpose: "coupon", title: "คูปอง Fitness 10 ใบ", createdAt: isoIn(-3) }],
+  consent: { acceptedAt: isoIn(-1), version: "2026-11-01" },
+  walletLedger: [{ id: 1, kind: "payment", amount: -1600, coinDelta: 1, pointDelta: 1600, note: ledgerNote, createdAt: isoIn(-10) }, { id: 2, kind: "topup", amount: 2000, coinDelta: 0, pointDelta: 2000, note: null, createdAt: isoIn(-11) }],
+};
 const admin = { id: 1, username: "test-admin", displayName: "ผู้ดูแลระบบทดสอบ", status: "active", roleId: 1, roleCode: "super_admin", roleNameTh: "ผู้ดูแลระบบ", roleNameEn: "Administrator", permissionCodes: [] };
 member.sports[0].icon = "🏸";
 member.sports[0].description = "สนามแบดมินตัน";
@@ -27,8 +71,37 @@ member.sports.push(...[
   { slug: "volleyball", name: "วอลเลย์บอล", icon: "🏐" },
 ].map((sport, index) => ({ ...sport, id: index + 2, requiresBooking: true, baseRate: 300, description: "สนามกีฬา" })));
 const paymentFixture = { paymentNo: "PAY-UI-TEST", displayName: "Payment Test", method: "promptpay", amount: 100, status: "created" };
-const adminData = { metrics: ["Members", "Bookings", "Payments", "Revenue"].map((label) => ({ label, value: 125, hint: "Test fixture" })), users: [user], bookings, courts: [{ id: 1, name: "Court A", sportId: 1, sportName: "Badminton", capacity: 4, status: "available", hourlyRate: 200 }], coupons: [], trainers: [trainer], payments: [paymentFixture], staff: [admin], roles: [{ id: 1, code: "super_admin", nameTh: "ผู้ดูแลระบบ", nameEn: "Administrator", level: 100, isSystem: true, permissionCodes: [] }], permissions: [], currentAdmin: admin, auditLogs: [], contentItems: [], systemHealth: [], securityItems: [] };
-const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {PpaApp} from './components/ppa-app'; import {AdminConsole} from './components/admin-console'; const tab=new URLSearchParams(location.search).get('tab')||'dashboard'; createRoot(document.getElementById('root')).render(location.pathname.includes('admin') ? <AdminConsole adminKey="" data={${JSON.stringify(adminData)}} initialTab={tab}/> : <PpaApp/>);`;
+// Dashboard snapshot (lib/admin-dashboard.ts shape): Bangkok dates, 30 days of sales, a waiting payment.
+const bangkokDay = (offsetDays) => new Date(Date.now() + 7 * 3600 * 1000 + offsetDays * 86400000).toISOString().slice(0, 10);
+const dashDays = Array.from({ length: 30 }, (_, index) => {
+  const total = index % 6 === 0 ? 0 : 1200 + ((index * 937) % 5200);
+  return { day: bangkokDay(index - 29), total, count: total ? 1 + (index % 4) : 0 };
+});
+const slotAt = (time, minutes = 60) => {
+  const start = new Date(`${bangkokDay(0)}T${time}:00+07:00`);
+  return { startsAt: start.toISOString(), endsAt: new Date(start.getTime() + minutes * 60000).toISOString() };
+};
+const dashboardFixture = {
+  generatedAt: new Date().toISOString(), today: bangkokDay(0), visitsToday: 18,
+  queue: { awaiting: 1, withSlip: 0, oldestSlipMinutes: null, refundsDue: 0, rows: [{ ...paymentFixture, createdAt: isoIn(0) }] },
+  sales: {
+    today: dashDays.at(-1).total, month: 48200, monthCount: 31, previousToDate: 40000, change: 20.5, cashInMonth: 52000, topupsMonth: 6000, daily: dashDays,
+    byCategory: [{ key: "membership", total: 30000, count: 3 }, { key: "coupon", total: 12000, count: 7 }, { key: "booking", total: 6200, count: 21 }],
+    byChannel: [{ key: "promptpay", total: 40000, count: 20 }, { key: "cash", total: 12000, count: 6 }],
+  },
+  schedule: [["07:00", "checked_in", "Court 1"], ["10:00", "paid", "Court 2"], ["13:00", "paid", "Court A ความยาวชื่อสนามทดสอบ"], ["17:00", "pending_payment", "Court 3"], ["19:00", "paid", null], ["21:00", "paid", "Court 4"]]
+    .map(([time, status, courtName], index) => ({ bookingNo: `BK-DASH-${index}`, displayName: index === 2 ? "สมาชิกทดสอบที่มีชื่อยาวมากสำหรับตาราง" : `สมาชิก ${index + 1}`, sportName: "แบดมินตัน", courtName, status, ...slotAt(time) })),
+  // The day's count comes from its own aggregate: more bookings than the schedule rows listed.
+  bookingsToday: { total: 9, checkedIn: 1 },
+  courts: { total: 12, available: 11, maintenance: 1 },
+  members: { active: 420, newToday: 2, newMonth: 15, withMembership: 180, expiring: [
+    { id: 9, displayName: "สมาชิกทดสอบที่ชื่อยาวสำหรับหน้าจอแคบ", memberCode: "PPA-0009", phone: "0811111111", planName: "Fitness 1 เดือน", endsAt: isoIn(2) },
+    { id: 10, displayName: "สมาชิกหมดวันนี้", memberCode: "PPA-0010", phone: null, planName: "Fitness 1 เดือน", endsAt: `${bangkokDay(0)}T23:59:00+07:00` },
+  ] },
+};
+const adminData = { dashboard: dashboardFixture, metrics: ["Members", "Bookings", "Payments", "Revenue"].map((label) => ({ label, value: 125, hint: "Test fixture" })), users: [user], bookings, courts: [{ id: 1, name: "Court A", sportId: 1, sportName: "Badminton", capacity: 4, status: "available", hourlyRate: 200 }], coupons: [], trainers: [trainer], payments: [paymentFixture], staff: [admin], roles: [{ id: 1, code: "super_admin", nameTh: "ผู้ดูแลระบบ", nameEn: "Administrator", level: 100, isSystem: true, permissionCodes: [] }], permissions: [], currentAdmin: admin, auditLogs: [], contentItems: [], systemHealth: [], securityItems: [] };
+// ?nodash renders the console as if the server could not load the first dashboard snapshot.
+const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {PpaApp} from './components/ppa-app'; import {AdminConsole} from './components/admin-console'; const params=new URLSearchParams(location.search); const tab=params.get('tab')||'dashboard'; const data=${JSON.stringify(adminData)}; if (params.has('nodash')) delete data.dashboard; createRoot(document.getElementById('root')).render(location.pathname.includes('admin') ? <AdminConsole adminKey="" data={data} initialTab={tab}/> : <PpaApp/>);`;
 const bundle = await build({
   stdin: { contents: entry, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife",
   define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_REQUIRE_LINE": '"false"', "process.env.NEXT_PUBLIC_LINE_LIFF_ID": '""' },
@@ -50,10 +123,15 @@ try {
   let failBootstrap = false;
   let failAvailability = false;
   let emptyMember = false;
+  let consentDue = false;
+  const consentRequests = [];
+  let promptPayMode = "held";
   let qrMode = "missing";
   const scanRequests = [];
   const paymentRequests = [];
   let failPayment = true;
+  let failDashboard = false;
+  const rewardRequests = [];
   const bookingRequests = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -72,7 +150,13 @@ try {
     if (url.pathname === "/api/admin/payments") {
       paymentRequests.push(route.request().postDataJSON());
       if (failPayment) return route.fulfill({ status: 409, json: { message: "Payment fixture conflict" } });
+      dashboardFixture.queue = { ...dashboardFixture.queue, awaiting: 0, rows: [] };
       return route.fulfill({ json: { payments: [{ ...paymentFixture, status: "paid" }] } });
+    }
+    if (url.pathname === "/api/admin/dashboard") return failDashboard ? route.fulfill({ status: 503, json: { message: "Service unavailable" } }) : route.fulfill({ json: dashboardFixture });
+    if (url.pathname === "/api/rewards/redeem" && route.request().method() === "POST") {
+      rewardRequests.push(route.request().postDataJSON());
+      return route.fulfill({ status: 201, json: { entitlementId: 702, title: "น้ำเปล่า PPA" } });
     }
     if (url.pathname === "/api/admin/qr/verify") {
       const input = route.request().postDataJSON();
@@ -80,9 +164,20 @@ try {
       if (input.token === "invalid") return route.fulfill({ status: 400, json: { message: "QR token ไม่ถูกต้อง" } });
       return route.fulfill({ json: { valid: true, consumed: Boolean(input.consume), qr: { displayName: "Scanner Test", memberCode: "PPA-TEST", purpose: "member", refId: "1" } } });
     }
-    if (url.pathname === "/api/bootstrap") return failBootstrap ? route.fulfill({ status: 503, json: { message: "Service unavailable" } }) : route.fulfill({ json: emptyMember ? { ...member, bookings: [], memberships: [] } : member });
+    if (url.pathname === "/api/bootstrap") return failBootstrap ? route.fulfill({ status: 503, json: { message: "Service unavailable" } }) : route.fulfill({ json: { ...(emptyMember ? { ...member, bookings: [], memberships: [] } : member), ...(consentDue ? { consent: { acceptedAt: null, version: null } } : {}) } });
+    if (url.pathname === "/api/payments/promptpay") {
+      if (promptPayMode === "expired") return route.fulfill({ status: 409, json: { code: "BOOKING_EXPIRED", message: "หมดเวลาชำระของการจองนี้แล้ว" } });
+      return route.fulfill({ json: { paymentNo: url.searchParams.get("paymentNo"), amount: 300, itemName: "Badminton - Court A", qr: fixtureQrPng, payee: { name: "PPA Power Play", account: "••••••5678" }, slipUploadedAt: null, holdSeconds: 600 } });
+    }
+    if (url.pathname === "/api/payments/slip" && route.request().method() === "POST") return route.fulfill({ json: { ok: true, bookingHeld: true } });
+    if (url.pathname === "/api/consent" && route.request().method() === "POST") {
+      const input = route.request().postDataJSON();
+      consentRequests.push(input);
+      return route.fulfill({ json: { acceptedAt: new Date().toISOString(), version: input.version } });
+    }
     if (url.pathname === "/api/auth/line" && route.request().method() === "DELETE") return route.fulfill({ json: { ok: true } });
-    if (url.pathname === "/api/coupons") return route.fulfill({ json: { coupons: [] } });
+    if (url.pathname === "/api/coupons") return route.fulfill({ json: { coupons: couponStore } });
+    if (url.pathname === "/api/groups" && route.request().method() === "GET") return route.fulfill({ json: { groups: member.groups } });
     if (url.pathname === "/api/courts/availability") {
       if (failAvailability) return route.fulfill({ status: 503, json: { message: "Unavailable" } });
       const month = url.searchParams.get("month");
@@ -110,10 +205,24 @@ try {
   const viewports = [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 844, height: 390 }];
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
-    for (const screen of ["home", "sports", "courts", "mybooking", "trainer", "profile", "scan"]) {
-      await page.goto(`${base}/__responsive__/member?screen=${screen === "courts" ? "sports" : screen}`);
+    for (const screen of ["home", "sports", "courts", "mybooking", "trainer", "profile", "scan", "plans", "mycoupons", "coupon", "groups", "gymnos", "wallet", "reward", "help", "visits"]) {
+      const entryScreen = { courts: "sports", reward: "home", visits: "membership" }[screen] || screen;
+      await page.goto(`${base}/__responsive__/member?screen=${entryScreen}`);
       await page.locator(".phone > .content").waitFor();
       if (screen === "courts") await page.locator('.prototype-list button').first().click();
+      if (screen === "reward") {
+        await page.locator(".home-bubble.reward").click();
+        assert.equal(await page.locator(".coin-reward-list button").count(), 3, "My reward right + 2 catalog rewards");
+        assert.equal(await page.locator(".coin-reward-list button.disabled").count(), 1, "Rewards above the coin balance are marked");
+      }
+      if (screen === "help") {
+        assert.match(await page.locator(".menu-item-ui").first().innerText(), /081-111-2222 · 06:00-23:00/, "Help uses the support-contact setting");
+        assert.match(await page.locator(".menu-item-ui").filter({ hasText: "นโยบายความเป็นส่วนตัว" }).innerText(), /ยอมรับแล้ว · ฉบับ 2026-11-01/);
+      }
+      if (screen === "visits") {
+        await page.getByRole("button", { name: /การเข้าใช้บริการ/ }).click();
+        assert.equal(await page.locator(".visit-row").count(), 2, "Visit history rows");
+      }
       if (["mybooking", "profile", "scan"].includes(screen)) await page.locator('.tabbar button').nth({ mybooking: 3, profile: 4, scan: 2 }[screen]).click();
       if (screen === "home") {
         await page.getByRole('heading', { name: 'PPA Sport Complex', exact: true }).waitFor();
@@ -121,6 +230,35 @@ try {
         assert.equal(await page.locator('.qr-mini-grid').count(), 0, 'Home must not render fake QR patterns');
         assert.equal(await page.getByText('Premium Member', { exact: true }).count(), 0, 'Inactive members must not be labeled premium');
       }
+      if (screen === "plans") {
+        // Every package tab, with Extra panels open, must fit the viewport.
+        for (const tab of ["Time", "Coupon", "ต่ออายุ", "Monthly"]) {
+          await page.getByRole("tab", { name: tab, exact: true }).click();
+          for (const toggle of await page.locator(".extra-toggle").all()) await toggle.click();
+          if (tab === "ต่ออายุ") {
+            await page.locator(".renew-card").waitFor();
+            const contentOverflow = await page.locator(".content").evaluate((node) => node.scrollWidth - node.clientWidth);
+            assert.ok(contentOverflow <= 1, `plans renew/package ${viewport.width}: ${contentOverflow}`);
+            await page.getByRole("tab", { name: "คูปอง", exact: true }).click();
+            await page.locator(".renew-card.coupon").waitFor();
+          }
+          const contentOverflow = await page.locator(".content").evaluate((node) => node.scrollWidth - node.clientWidth);
+          assert.ok(contentOverflow <= 1, `plans ${tab} ${viewport.width}: ${contentOverflow}`);
+          if (viewport.width === 390) await page.screenshot({ path: `${outDir}/plans-${tab === "ต่ออายุ" ? "renew" : tab.toLowerCase()}-390.png`, fullPage: true });
+        }
+        assert.equal(await page.locator(".plan-card").count(), 1, "One featured 12-month plan");
+        assert.equal(await page.locator(".plan-card .plan-badge").innerText(), "คุ้มสุด");
+      }
+      if (screen === "home") {
+        assert.ok(await page.locator(".fyg-live-pill").count(), "LIVE badge shows while slots are open");
+        assert.equal(await page.locator(".fyg-row .fyg-slot:not(.create)").count(), 4, "Find Your Game shows up to 4 open slots and hides full groups");
+        assert.match(await page.locator(".fyg-slot .fyg-need").first().innerText(), /ขาดอีก \d+ คน/);
+      }
+      if (screen === "mycoupons") {
+        assert.deepEqual(await page.locator(".cp-card").first().locator(".cp-stats b").allInnerTexts(), ["10", "3", "7"], "Total / used / left");
+        assert.match(await page.locator(".cp-card").first().locator(".cp-meta").innerText(), /ซื้อเมื่อ/);
+      }
+      if (screen === "gymnos") assert.equal(await page.locator(".gx").count() + await page.locator(".promo-hero").count(), 7, "GYMNOS opens 7 blocks");
       if (screen === "mybooking" && viewport.width === 390) {
         await page.locator('.booking-cancel').first().click();
         await page.getByRole('dialog', { name: 'ยกเลิกการจองนี้?' }).waitFor();
@@ -195,6 +333,25 @@ try {
         await page.getByRole("button", { name: "ปิด", exact: true }).click();
       }
       if (tab === "dashboard") {
+        assert.equal(await page.locator(".dash-action").filter({ hasText: "รอชำระ ยังไม่ส่งสลิป" }).locator("strong").innerText(), "1", "action list counts the waiting payment");
+        assert.equal(await page.locator(".dash-chart-bars button").count(), 30, "30 days of sales");
+        assert.equal(await page.locator(".dash-slot").count(), 6, "today's court schedule");
+        const bookingsFigure = await page.locator(".dash-figures div").filter({ hasText: "การจองวันนี้" }).locator("dd").innerText();
+        assert.match(bookingsFigure, /^9\s*เข้าใช้แล้ว 1$/, `the day's bookings come from the day's count, not the listed rows: ${bookingsFigure}`);
+        assert.equal(await page.locator(".dash-chart-tooltip").getAttribute("aria-live"), null, "the focused bar's label is announced once, not again by a live tooltip");
+        assert.equal(await page.locator(".dash-chart-tooltip").getAttribute("aria-hidden"), "true");
+        assert.match(await page.locator(".dash-people li").filter({ hasText: "สมาชิกหมดวันนี้" }).innerText(), /วันนี้/, "a package ending later today says today, not in 1 day");
+        assert.match(await page.locator(".dash-people li").filter({ hasText: "PPA-0009" }).innerText(), /อีก 2 วัน/);
+        assert.match(await page.locator(".dash-figures dd").filter({ hasText: "48,200" }).innerText(), /\+20\.5%/, "month sales carry the comparison");
+        if (viewport.width === 1440) {
+          const lastBar = page.locator(".dash-chart-bars button").last();
+          await lastBar.focus();
+          await page.keyboard.press("ArrowLeft");
+          assert.equal(await page.locator(".dash-chart-bars button").nth(28).evaluate((node) => node === document.activeElement), true, "arrow keys move between days");
+          await page.getByRole("button", { name: "ดูเป็นตาราง", exact: true }).click();
+          assert.equal(await page.locator(".dash-chart-table tbody tr").count(), 30, "table view of the chart");
+          await page.getByRole("button", { name: "ดูเป็นกราฟ", exact: true }).click();
+        }
         if (viewport.width < 1024) {
           await page.getByRole("button", { name: "Open menu", exact: true }).click();
           await page.getByRole("dialog", { name: "Admin navigation" }).waitFor();
@@ -202,6 +359,7 @@ try {
           assert.equal(await page.locator(".admin-console").getAttribute("data-menu-open"), "false");
         }
         if ([390, 768, 1440].includes(viewport.width)) await page.screenshot({ path: `${outDir}/admin-${viewport.width}.png` });
+        if ([390, 1440].includes(viewport.width)) await page.locator(".dash-panel").filter({ has: page.locator("#dash-today") }).screenshot({ path: `${outDir}/admin-today-${viewport.width}.png` });
         await page.locator(".admin-profile-actions button").first().click();
         const dialog = page.locator("dialog[open]");
         await dialog.waitFor();
@@ -260,7 +418,7 @@ try {
   assert.equal(await page.locator('.ad-dots button[aria-current="true"]').getAttribute('aria-label'), 'ดูสไลด์ 1');
   await page.getByRole('button', { name: 'ดูสไลด์ 3', exact: true }).click();
   await page.locator('.ad-slide[aria-hidden="false"]').click();
-  await page.locator('.coupon-list').first().waitFor({ state: 'attached' });
+  await page.getByRole('tab', { name: 'ซื้อคูปอง', exact: true }).waitFor();
   assert.equal(await page.locator('.home-carousel').count(), 0, 'Coupon slide navigates away from home');
   member.contentItems = [{ id: 101, contentType: 'home_slide', slug: 'managed-slide', title: 'Managed slide fixture', subtitle: 'Managed content', icon: '', price: 0, targetScreen: 'wallet', metadata: { tone: 'shop' } }];
   await page.goto(`${base}/__responsive__/member?screen=home`);
@@ -293,7 +451,68 @@ try {
   assert.equal(await page.locator('.qr-error-state').count(), 0);
   await page.screenshot({ path: `${outDir}/qr-retry-success.png` });
   qrMode = "missing";
-  const translatedScreens = ["home", "sports", "courts", "datetime", "summary", "payment", "mybooking", "profile", "membership", "wallet", "coupon", "trainer", "trainer-detail", "help", "notifications", "classhub", "classschedule", "livetv", "promotion", "scan"];
+  // PDPA consent appears only while the published policy version is not accepted, and fits small screens.
+  // (Earlier checks replaced the content fixture; the settings stay for the translated-screen pass.)
+  member.contentItems = [...launchContent];
+  for (const viewport of [viewports[0], viewports[1], viewports[6]]) {
+    await page.setViewportSize(viewport);
+    consentDue = true;
+    await page.goto(`${base}/__responsive__/member?screen=home`);
+    await page.getByRole("dialog", { name: /นโยบายความเป็นส่วนตัว/ }).waitFor();
+    assert.equal(await page.locator("dialog.consent-dialog").evaluate((node) => node.matches(":modal")), true, "consent is a modal dialog (focus trapped, app inert)");
+    // Chrome closes a dialog on a repeated Esc even when cancel is prevented: required consent must come back as a modal.
+    for (let press = 0; press < 3; press++) await page.keyboard.press("Escape");
+    await page.waitForFunction(() => document.querySelector("dialog.consent-dialog")?.matches(":modal"), null, { timeout: 3000 });
+    assert.equal(await page.locator("dialog.consent-dialog").evaluate((node) => node.open), true, "Esc does not dismiss required consent");
+    assert.ok(await page.locator(".consent-contact a").count() >= 2, "club contact reachable from the dialog");
+    const card = await page.locator(".consent-card").boundingBox();
+    const accept = await page.getByRole("button", { name: "ยอมรับและใช้งานต่อ", exact: true }).boundingBox();
+    assert.ok(card.y >= 0 && card.y + card.height <= viewport.height + 1 && card.x >= 0 && card.x + card.width <= viewport.width + 1, `consent card fits ${viewport.width}x${viewport.height}: ${JSON.stringify(card)}`);
+    assert.ok(accept.y + accept.height <= card.y + card.height + 1, `accept button reachable ${viewport.width}x${viewport.height}`);
+    if (viewport.width === 390) await page.screenshot({ path: `${outDir}/consent-390.png` });
+    await page.getByRole("button", { name: "ยอมรับและใช้งานต่อ", exact: true }).click();
+    await page.locator(".consent-card").waitFor({ state: "detached" });
+    assert.equal(consentRequests.at(-1).version, "2026-11-01");
+    consentDue = false;
+  }
+  // A redeemed reward opens its QR even when reloading the member data fails right after
+  // (an error there used to hide the QR and invite a second redemption).
+  await page.setViewportSize(viewports[1]);
+  await page.goto(`${base}/__responsive__/member?screen=home`);
+  await page.locator(".home-bubble.reward").click();
+  failBootstrap = true;
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.locator(".coin-reward-list").last().locator("button").first().click();
+  await page.locator(".scan-title").waitFor({ timeout: 5000 });
+  failBootstrap = false;
+  assert.deepEqual(rewardRequests.map((input) => input.contentId), [501], "one redemption for the reward tapped");
+  // Court booking paid by PromptPay: the deadline is shown while the court is held; once it lapses
+  // there is no QR, only the late-slip option. A sent slip says the court is reserved.
+  member.pendingPayments = [{ paymentNo: "PAYBOOKUI01", amount: 300, createdAt: isoIn(0), slipUploadedAt: null, itemType: "booking", itemName: "Badminton - Court A", refId: null }];
+  for (const viewport of [viewports[0], viewports[1]]) {
+    await page.setViewportSize(viewport);
+    for (const mode of ["held", "expired"]) {
+      promptPayMode = mode;
+      await page.goto(`${base}/__responsive__/member?screen=wallet`);
+      await page.getByRole("button", { name: "ชำระ / แนบสลิป", exact: true }).click();
+      if (mode === "held") {
+        await page.locator(".pay-qr-image").waitFor();
+        assert.match(await page.locator(".pay-deadline").innerText(), /ชำระและแนบสลิปภายใน \d{2}:\d{2} น\./);
+        if (viewport.width === 390) await page.screenshot({ path: `${outDir}/promptpay-booking-390.png`, fullPage: true });
+      } else {
+        await page.getByText("หมดเวลาชำระของการจองนี้แล้ว", { exact: true }).waitFor();
+        assert.equal(await page.locator(".pay-qr-image").count(), 0, "No QR once the hold has lapsed");
+      }
+      await page.locator(".slip-upload input").setInputFiles({ name: "slip.png", mimeType: "image/png", buffer: Buffer.from(fixtureQrPng.split(",")[1], "base64") });
+      await page.getByText("ส่งสลิปแล้ว สนามถูกกันไว้ให้จนกว่าเจ้าหน้าที่จะยืนยัน", { exact: true }).waitFor();
+      assert.equal(await page.locator(".pay-deadline").count(), 0, "Deadline hidden after the slip is sent");
+      const overflow = await page.locator(".content").evaluate((node) => node.scrollWidth - node.clientWidth);
+      assert.ok(overflow <= 1, `promptpay ${mode} ${viewport.width}: ${overflow}`);
+    }
+  }
+  member.pendingPayments = [];
+  promptPayMode = "held";
+  const translatedScreens = ["home", "sports", "courts", "datetime", "summary", "payment", "mybooking", "profile", "membership", "wallet", "coupon", "trainer", "trainer-detail", "help", "notifications", "classhub", "classschedule", "livetv", "promotion", "scan", "plans", "mycoupons", "groups", "gymnos"];
   for (const viewport of [viewports[0], viewports[2], viewports[4]]) {
     await page.setViewportSize(viewport);
     for (const locale of ["th", "en", "zh"]) {
@@ -326,7 +545,8 @@ try {
           copy.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove());
           return copy.textContent || "";
         });
-        if (locale !== "th") assert.doesNotMatch(contentText.replaceAll(user.displayName, "").replaceAll(bookings[0].title, "").replaceAll("฿", ""), /[\u0e00-\u0e7f]/, `${locale} ${screen}: untranslated interface text`);
+        // Member-entered names, booking titles and ledger notes are stored text, not interface copy.
+        if (locale !== "th") assert.doesNotMatch(contentText.replaceAll(user.displayName, "").replaceAll(bookings[0].title, "").replaceAll(ledgerNote, "").replaceAll("฿", ""), /[\u0e00-\u0e7f]/, `${locale} ${screen}: untranslated interface text`);
         const metrics = await page.evaluate(() => ({ documentOverflow: document.documentElement.scrollWidth - innerWidth, contentOverflow: document.querySelector('.content').scrollWidth - document.querySelector('.content').clientWidth }));
         assert.ok(metrics.documentOverflow <= 1 && metrics.contentOverflow <= 1, `${locale} ${screen} ${viewport.width}: ${JSON.stringify(metrics)}`);
         if (["home", "courts", "payment", "trainer-detail"].includes(screen)) await page.screenshot({ path: `${outDir}/i18n-${locale}-${screen}-${viewport.width}.png` });
@@ -381,6 +601,16 @@ try {
   await page.goto(`${base}/__responsive__/admin?tab=dashboard`);
   const approvePayment = page.getByRole("button", { name: "ยืนยันชำระ", exact: true });
   await approvePayment.waitFor();
+  assert.equal(await page.getByRole("button", { name: "ยกเลิกรายการ", exact: true }).count(), 1, "Staff can cancel an unpaid request");
+  await page.getByRole("button", { name: "ยกเลิกรายการ", exact: true }).click();
+  await page.getByLabel("เหตุผลที่ยกเลิก (แจ้งสมาชิก)").waitFor();
+  assert.equal(await page.getByRole("button", { name: "ยืนยันยกเลิกรายการ", exact: true }).count(), 1, "Cancelling asks for a reason first");
+  // "อื่นๆ" needs a written reason: spaces alone are not sent to the member as the reason.
+  await page.getByLabel("เหตุผลที่ยกเลิก (แจ้งสมาชิก)").selectOption("อื่นๆ");
+  await page.getByLabel("ระบุเหตุผล", { exact: true }).fill("   ");
+  await page.getByRole("button", { name: "ยืนยันยกเลิกรายการ", exact: true }).click();
+  assert.equal(paymentRequests.length, 0, "a blank written reason is not submitted");
+  await page.getByRole("button", { name: "กลับ", exact: true }).click();
   assert.equal(await approvePayment.isEnabled(), true, "Session-authenticated staff need no legacy admin key");
   await approvePayment.click();
   await page.getByText("Payment fixture conflict", { exact: true }).waitFor();
@@ -388,9 +618,18 @@ try {
   failPayment = false;
   await approvePayment.click();
   await page.getByText("อัปเดต payment แล้ว", { exact: true }).waitFor();
-  assert.equal(await approvePayment.isDisabled(), true, "Paid payment cannot be approved again");
+  assert.equal(await approvePayment.count(), 0, "A confirmed payment leaves the queue and cannot be approved again");
+  await page.locator(".dash-action").filter({ hasText: "รอชำระ ยังไม่ส่งสลิป" }).locator("strong").filter({ hasText: /^0$/ }).waitFor();
   assert.deepEqual(paymentRequests, [1, 2].map(() => ({ paymentNo: "PAY-UI-TEST", status: "paid" })));
   await page.screenshot({ path: `${outDir}/payment-confirmation.png` });
+  // No first snapshot (the server could not load it): the dashboard loads at once and offers a retry,
+  // instead of claiming to show "the latest figures" with nothing on screen.
+  failDashboard = true;
+  await page.goto(`${base}/__responsive__/admin?tab=dashboard&nodash=1`);
+  await page.getByText("โหลดภาพรวมไม่สำเร็จ", { exact: true }).waitFor({ timeout: 5000 });
+  failDashboard = false;
+  await page.getByRole("button", { name: "ลองใหม่", exact: true }).click();
+  await page.locator(".dash-chart-bars button").first().waitFor({ timeout: 5000 });
   assert.deepEqual(errors, []);
   await page.setViewportSize({ width: 390, height: 360 });
   failBootstrap = true;

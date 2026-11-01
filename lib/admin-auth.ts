@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { checkRateLimit, secureResponse, assertSameOrigin } from "@/lib/security";
 import { readSession, signSession } from "@/lib/session";
+import { requiredPermissions } from "@/lib/admin-permissions";
 
 const sessionCookieName = "ppa_admin_session";
 export type AdminIdentity = {
@@ -36,13 +37,6 @@ export function hasAdminPermission(admin: AdminIdentity, permission: string) {
   return admin.roleCode === "super_admin" || admin.permissionCodes.includes(permission);
 }
 
-const routePermissions: Record<string, string[]> = {
-  members: ["members.manage"], bookings: ["bookings.manage"], courts: ["bookings.manage"], content: ["content.manage"],
-  coupons: ["coupons.manage"], trainers: ["trainers.manage"], uploads: ["trainers.manage", "content.manage"],
-  payments: ["payments.manage"], staff: ["staff.manage"], roles: ["roles.manage"],
-  qr: ["bookings.manage", "coupons.manage", "payments.manage"], profile: [],
-};
-
 export async function assertAdminRequest(request: NextRequest) {
   const originError = assertSameOrigin(request);
   if (originError) return originError;
@@ -52,7 +46,7 @@ export async function assertAdminRequest(request: NextRequest) {
   const admin = await getAdminIdentity(request.cookies.get(sessionCookieName)?.value || "");
   if (!admin) return secureResponse(NextResponse.json({ message: "Admin access denied" }, { status: 401 }));
   const resource = request.nextUrl.pathname.split("/")[3];
-  const required = routePermissions[resource];
+  const required = requiredPermissions(resource, request.method);
   if (!required || (required.length && !required.some((code) => hasAdminPermission(admin, code)))) {
     return secureResponse(NextResponse.json({ message: "Permission denied" }, { status: 403 }));
   }

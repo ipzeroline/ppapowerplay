@@ -6,6 +6,15 @@ declare global {
   var ppaPool: mysql.Pool | undefined;
 }
 
+function positiveInteger(value: string | undefined, fallback: number) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : fallback;
+}
+
+// The member app's bootstrap runs ~16 queries per open, so requests queue for a connection
+// (DB_QUEUE_LIMIT) rather than failing during a burst of app opens.
+const connectionLimit = positiveInteger(process.env.DB_CONNECTION_LIMIT, 10);
+
 export const pool =
   global.ppaPool ??
   mysql.createPool({
@@ -15,10 +24,10 @@ export const pool =
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     waitForConnections: true,
-    connectionLimit: 10,
-    maxIdle: 10,
+    connectionLimit,
+    maxIdle: connectionLimit,
     idleTimeout: 60_000,
-    queueLimit: 100,
+    queueLimit: positiveInteger(process.env.DB_QUEUE_LIMIT, 1000),
     connectTimeout: 10_000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10_000,

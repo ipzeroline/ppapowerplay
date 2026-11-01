@@ -4,6 +4,7 @@ import { z } from "zod";
 import { assertApiUser, authErrorResponse } from "@/lib/auth";
 import { createQrToken, hashQrToken } from "@/lib/qr";
 import { pool, query } from "@/lib/db";
+import { MEMBERSHIP_NOT_PAUSED } from "@/lib/renewals";
 import { checkRateLimit, clientIp, secureResponse } from "@/lib/security";
 
 const purposeSchema = z.enum(["member", "booking", "coupon", "entitlement", "payment"]);
@@ -35,6 +36,14 @@ export async function GET(req: NextRequest) {
 
 async function issueQr(req: NextRequest, userId: number, purpose: z.infer<typeof purposeSchema>) {
   const ref = await resolveRef(req, userId, purpose);
+  if (!ref && purpose === "member") {
+    // Say why: an active package that is currently paused (lib/renewals.ts).
+    const [paused] = await query<{ pausedUntil: string }>(
+      "SELECT MAX(mp.ends_at) pausedUntil FROM memberships m JOIN membership_pauses mp ON mp.membership_id = m.id AND mp.status = 'active' AND mp.starts_at <= NOW() AND mp.ends_at > NOW() WHERE m.user_id = ? AND m.status = 'active' AND m.ends_at > NOW() HAVING MAX(mp.ends_at) IS NOT NULL",
+      [userId],
+    );
+    if (paused) return secureResponse(NextResponse.json({ code: "MEMBERSHIP_PAUSED", message: "แพ็กเกจอยู่ระหว่างพักการใช้งาน", pausedUntil: paused.pausedUntil }, { status: 404 }));
+  }
   if (!ref) return secureResponse(NextResponse.json({
     code: purpose === "member" ? "NO_ACTIVE_MEMBERSHIP" : "NO_QR_RIGHTS",
     message: purpose === "member" ? "ไม่พบแพ็กเกจสมาชิกที่ใช้งานได้" : "ไม่พบสิทธิ์สำหรับออก QR",
@@ -69,7 +78,7 @@ async function resolveRef(req: NextRequest, userId: number, purpose: z.infer<typ
   if (purpose === "member") {
     const membership = (
       await query<{ id: number; planName: string }>(
-        "SELECT id, plan_name planName FROM memberships WHERE user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() ORDER BY ends_at DESC LIMIT 1",
+        `SELECT id, plan_name planName FROM memberships WHERE user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() AND ${MEMBERSHIP_NOT_PAUSED} ORDER BY ends_at DESC LIMIT 1`,
         [userId],
       )
     )[0];

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { assertAdminRequest, getAdminIdentity, adminSessionCookieName, hasAdminPermission } from "@/lib/admin-auth";
 import { hashQrToken } from "@/lib/qr";
 import { pool } from "@/lib/db";
+import { MEMBERSHIP_NOT_PAUSED } from "@/lib/renewals";
 import { parseJsonBody, secureResponse, validationErrorResponse } from "@/lib/security";
 
 const schema = z.object({
@@ -20,6 +21,14 @@ type QrRow = {
   expired: number;
   displayName: string;
   memberCode: string;
+};
+
+// Label stored with each visit (payment QRs are never consumed, so they have no visit).
+const visitTitle: Record<string, string> = {
+  booking: "SELECT title FROM bookings WHERE booking_no = ? AND user_id = ? LIMIT 1",
+  coupon: "SELECT c.name FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id WHERE uc.id = ? AND uc.user_id = ? LIMIT 1",
+  entitlement: "SELECT title FROM user_entitlements WHERE id = ? AND user_id = ? LIMIT 1",
+  member: `SELECT plan_name FROM memberships WHERE id = ? AND user_id = ? AND ${MEMBERSHIP_NOT_PAUSED} LIMIT 1`,
 };
 
 export async function POST(req: NextRequest) {
@@ -67,7 +76,7 @@ export async function POST(req: NextRequest) {
       booking: "SELECT id FROM bookings WHERE booking_no = ? AND user_id = ? AND status = 'paid' AND ends_at > NOW() FOR UPDATE",
       coupon: "SELECT id FROM user_coupons WHERE id = ? AND user_id = ? AND status = 'active' AND remaining_uses > 0 AND expires_at > NOW() FOR UPDATE",
       entitlement: "SELECT id FROM user_entitlements WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND (remaining_uses IS NULL OR remaining_uses > 0) AND (ends_at IS NULL OR ends_at > NOW()) FOR UPDATE",
-      member: "SELECT id FROM memberships WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() FOR UPDATE",
+      member: `SELECT id FROM memberships WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() AND ${MEMBERSHIP_NOT_PAUSED} FOR UPDATE`,
       payment: "SELECT id FROM payments WHERE payment_no = ? AND user_id = ? FOR UPDATE",
     };
     if (!qr.refId || !eligibility[qr.purpose]) {
@@ -101,7 +110,7 @@ export async function POST(req: NextRequest) {
         affectedRows = (result as { affectedRows: number }).affectedRows;
       }
       if (qr.purpose === "member" && qr.refId) {
-        const [memberships] = await conn.execute("SELECT id FROM memberships WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() FOR UPDATE", [qr.refId, qr.userId]);
+        const [memberships] = await conn.execute(`SELECT id FROM memberships WHERE id = ? AND user_id = ? AND status = 'active' AND starts_at <= NOW() AND ends_at > NOW() AND ${MEMBERSHIP_NOT_PAUSED} FOR UPDATE`, [qr.refId, qr.userId]);
         affectedRows = (memberships as unknown[]).length;
       }
       if (!affectedRows) {
@@ -114,6 +123,11 @@ export async function POST(req: NextRequest) {
         qr.purpose,
         qr.refId,
       ]);
+      // The member's visit history (bootstrap "visits"), titled with the right that was used.
+      await conn.execute(
+        `INSERT INTO member_visits (user_id, purpose, ref_id, title, staff_id, qr_token_id) VALUES (?, ?, ?, (${visitTitle[qr.purpose]}), ?, ?)`,
+        [qr.userId, qr.purpose, qr.refId, qr.refId, qr.userId, admin.id, qr.id],
+      );
       consumed = true;
     }
 

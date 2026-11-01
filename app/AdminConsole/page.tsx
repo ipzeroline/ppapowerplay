@@ -5,6 +5,8 @@ import { adminSessionCookieName, getAdminIdentity, hasAdminPermission } from "@/
 import { canAccessSection } from "@/lib/admin-permissions";
 import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
+import { adminPaymentListSql } from "@/lib/admin-payment-list";
+import { loadDashboard } from "@/lib/admin-dashboard";
 
 type AdminConsolePageProps = {
   searchParams: Promise<{ key?: string | string[]; report?: string | string[] }>;
@@ -76,9 +78,9 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     ),
     allowedQuery<AdminConsoleData["bookings"][number]>(["bookings.manage","reports.view"], "SELECT b.id, b.booking_no bookingNo, b.title, u.display_name displayName, s.name_th sportName, c.name courtName, b.starts_at startsAt, b.ends_at endsAt, b.players, b.amount, b.status, b.expires_at expiresAt, b.cancel_reason cancelReason, b.checked_in_at checkedInAt FROM bookings b JOIN users u ON u.id = b.user_id JOIN sports s ON s.id = b.sport_id LEFT JOIN courts c ON c.id = b.court_id ORDER BY b.starts_at DESC LIMIT 200",
     ),
-    allowedQuery<AdminConsoleData["payments"][number]>(["payments.manage","reports.view"], "SELECT p.payment_no paymentNo, u.display_name displayName, p.method, p.amount, p.status, p.paid_at paidAt FROM payments p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 80",
+    allowedQuery<AdminConsoleData["payments"][number]>(["payments.manage","reports.view"], adminPaymentListSql,
     ),
-    allowedQuery<AdminConsoleData["coupons"][number]>(["coupons.manage","reports.view"], "SELECT id, code, name, category, price, total_uses totalUses, validity_days validityDays, active FROM coupons ORDER BY id DESC LIMIT 80",
+    allowedQuery<AdminConsoleData["coupons"][number]>(["coupons.manage","reports.view"], "SELECT id, code, name, category, price, total_uses totalUses, validity_days validityDays, active, sort_order sortOrder, CAST(metadata AS CHAR) metadata FROM coupons ORDER BY id DESC LIMIT 80",
     ),
     allowedQuery<AdminConsoleData["trainers"][number]>(["trainers.manage","reports.view"], "SELECT id, slug, name, nickname, role, avatar, image_url imageUrl, experience, zodiac, birth_year birthYear, blood_type bloodType, contact_phone contactPhone, bio, CAST(specialties AS CHAR) specialties, CAST(packages AS CHAR) packages, CAST(weekly_schedule AS CHAR) weeklySchedule, social_line socialLine, start_price startPrice, CAST(certifications AS CHAR) certifications, active, sort_order sortOrder FROM trainers ORDER BY active DESC, sort_order, id DESC LIMIT 120",
     ),
@@ -113,7 +115,11 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     permissionCodes: typeof admin.permissionCodes === "string" ? admin.permissionCodes.split(",").filter(Boolean) : admin.permissionCodes,
   }));
 
+  // First dashboard snapshot (role-gated); the dashboard keeps it fresh from /api/admin/dashboard.
+  const dashboard = can("dashboard.view") ? await loadDashboard(can).catch(() => undefined) : undefined;
+
   const data: AdminConsoleData = {
+    dashboard,
     metrics: [
       { label: "สมาชิก", value: userCount[0]?.total ?? 0, hint: "สมาชิกทั้งหมดในระบบ" },
       { label: "การจอง", value: bookingCount[0]?.total ?? 0, hint: "booking ทุกสถานะ" },

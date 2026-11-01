@@ -63,13 +63,14 @@
     <rect width="740" height="626" rx="36" fill="url(#card)" stroke="#333c45" stroke-width="5"/>
     <path class="shine" d="M30 30h680v96C470 85 232 92 30 180z"/>
     <circle cx="376" cy="175" r="116" fill="url(#glowOrange)" opacity=".82"/>
-    <g transform="translate(260 68)">
-      <rect class="strokeO" x="16" y="36" width="198" height="198" rx="24"/>
-      <path class="thinO" d="M115 36v198M16 135h198M66 36v198M164 36v198"/>
-      <path class="thinO" d="M16 83h198M16 187h198"/>
+    <g transform="translate(246 64)">
+      <path class="strokeO" d="M18 128L130 30l112 98"/>
+      <path class="strokeO" d="M50 104v128h160V104"/>
+      <path class="thinO" d="M106 232v-62h48v62"/>
+      <path class="thinO" d="M178 58v-24h26v46"/>
     </g>
-    <text x="76" y="395" class="title">จองสนาม</text>
-    <text x="76" y="456" class="meta">คอร์ท เวลา กีฬา</text>
+    <text x="76" y="395" class="title">หน้าหลัก</text>
+    <text x="76" y="456" class="meta">ภาพรวม ข่าวสาร โปรโมชัน</text>
     <path d="M76 535h520" stroke="#ff7a1a" stroke-width="8" stroke-linecap="round"/>
     <path d="M552 492l48 43-48 43" fill="none" stroke="#ff7a1a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
@@ -78,19 +79,47 @@
     <rect width="740" height="626" rx="36" fill="url(#card)" stroke="#333c45" stroke-width="5"/>
     <path class="shine" d="M30 30h680v96C470 85 232 92 30 180z"/>
     <circle cx="376" cy="175" r="116" fill="url(#glowGreen)" opacity=".86"/>
-    <g transform="translate(258 67)">
-      <rect class="strokeG" x="10" y="10" width="82" height="82" rx="14"/>
-      <rect class="strokeG" x="144" y="10" width="82" height="82" rx="14"/>
-      <rect class="strokeG" x="10" y="144" width="82" height="82" rx="14"/>
-      <path class="strokeG" d="M144 144h82v82h-82zM116 36h18M116 78h18M36 116v18M78 116v18M116 144h18M116 190h18M190 116v18"/>
+    <g transform="translate(246 60)">
+      <path class="strokeG" d="M130 22l104 54v112l-104 54-104-54V76z"/>
+      <path class="thinG" d="M26 76l104 54 104-54M130 130v112"/>
+      <path class="thinG" d="M78 49l104 54v42"/>
     </g>
-    <text x="76" y="395" class="title">สมาชิก</text>
-    <text x="76" y="456" class="meta">QR เช็กอิน แพ็กเกจ</text>
+    <text x="76" y="395" class="title">แพ็กเกจ</text>
+    <text x="76" y="456" class="meta">Monthly · Time · Coupon</text>
     <path d="M76 535h520" stroke="#30e17a" stroke-width="8" stroke-linecap="round"/>
     <path d="M552 492l48 43-48 43" fill="none" stroke="#30e17a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 
   <g transform="translate(1696 226)" filter="url(#shadow)">
+    <rect width="740" height="626" rx="36" fill="url(#card)" stroke="#333c45" stroke-width="5"/>
+    <path class="shine" d="M30 30h680v96C470 85 232 92 30 180z"/>
+    <circle cx="376" cy="175" r="116" fill="url(#glowOrange)" opacity=".82"/>
+    <g transform="translate(238 88)">
+      <path class="strokeO" d="M28 68h248v56c-32 0-32 50 0 50v56H28v-56c32 0 32-50 0-50z"/>
+      <path class="thinO" d="M104 68v162M154 108h74M154 150h74M154 192h48"/>
+    </g>
+    <text x="76" y="395" class="title">คูปอง</text>
+    <text x="76" y="456" class="meta">คูปองของฉัน ซื้อเพิ่ม</text>
+    <path d="M76 535h520" stroke="#ff7a1a" stroke-width="8" stroke-linecap="round"/>
+    <path d="M552 492l48 43-48 43" fill="none" stroke="#ff7a1a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(64 914)" filter="url(#shadow)">
+    <rect width="740" height="626" rx="36" fill="url(#card)" stroke="#333c45" stroke-width="5"/>
+    <path class="shine" d="M30 30h680v96C470 85 232 92 30 180z"/>
+    <circle cx="376" cy="175" r="116" fill="url(#glowGreen)" opacity=".86"/>
+    <g transform="translate(260 68)">
+      <rect class="strokeG" x="16" y="36" width="198" height="198" rx="24"/>
+      <path class="thinG" d="M115 36v198M16 135h198M66 36v198M164 36v198"/>
+      <path class="thinG" d="M16 83h198M16 187h198"/>
+    </g>
+    <text x="76" y="395" class="title">จองสนาม</text>
+    <text x="76" y="456" class="meta">คอร์ท เวลา กีฬา</text>
+    <path d="M76 535h520" stroke="#30e17a" stroke-width="8" stroke-linecap="round"/>
+    <path d="M552 492l48 43-48 43" fill="none" stroke="#30e17a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(880 914)" filter="url(#shadow)">
     <rect width="740" height="626" rx="36" fill="url(#card)" stroke="#333c45" stroke-width="5"/>
     <path class="shine" d="M30 30h680v96C470 85 232 92 30 180z"/>
     <circle cx="376" cy="175" r="116" fill="url(#glowOrange)" opacity=".82"/>
@@ -101,35 +130,6 @@
     </g>
     <text x="76" y="395" class="title">วอลเล็ต</text>
     <text x="76" y="456" class="meta">เติมเงิน Coin Point</text>
-    <path d="M76 535h520" stroke="#ff7a1a" stroke-width="8" stroke-linecap="round"/>
-    <path d="M552 492l48 43-48 43" fill="none" stroke="#ff7a1a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
-
-  <g transform="translate(64 914)" filter="url(#shadow)">
-    <rect width="740" height="626" rx="36" fill="url(#card)" stroke="#333c45" stroke-width="5"/>
-    <path class="shine" d="M30 30h680v96C470 85 232 92 30 180z"/>
-    <circle cx="376" cy="175" r="116" fill="url(#glowGreen)" opacity=".86"/>
-    <g transform="translate(238 88)">
-      <path class="strokeG" d="M28 68h248v56c-32 0-32 50 0 50v56H28v-56c32 0 32-50 0-50z"/>
-      <path class="thinG" d="M104 68v162M154 108h74M154 150h74M154 192h48"/>
-    </g>
-    <text x="76" y="395" class="title">คูปอง</text>
-    <text x="76" y="456" class="meta">โปรโมชัน สิทธิพิเศษ</text>
-    <path d="M76 535h520" stroke="#30e17a" stroke-width="8" stroke-linecap="round"/>
-    <path d="M552 492l48 43-48 43" fill="none" stroke="#30e17a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
-
-  <g transform="translate(880 914)" filter="url(#shadow)">
-    <rect width="740" height="626" rx="36" fill="url(#card)" stroke="#333c45" stroke-width="5"/>
-    <path class="shine" d="M30 30h680v96C470 85 232 92 30 180z"/>
-    <circle cx="376" cy="175" r="116" fill="url(#glowOrange)" opacity=".82"/>
-    <g transform="translate(238 88)">
-      <path class="strokeO" d="M36 162h240"/>
-      <path class="strokeO" d="M56 102v120M96 84v156M216 84v156M256 102v120"/>
-      <path class="thinO" d="M116 162h80"/>
-    </g>
-    <text x="76" y="395" class="title">เทรนเนอร์</text>
-    <text x="76" y="456" class="meta">PT ตาราง ราคา</text>
     <path d="M76 535h520" stroke="#ff7a1a" stroke-width="8" stroke-linecap="round"/>
     <path d="M552 492l48 43-48 43" fill="none" stroke="#ff7a1a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
   </g>

@@ -2,11 +2,12 @@ import { createInstance } from "i18next";
 import { initReactI18next } from "react-i18next";
 import { messages } from "@/lib/i18n/messages";
 import { additionalMessages } from "@/lib/i18n/additional-messages";
+import { packageMessages } from "@/lib/i18n/package-messages";
 
 export const locales = ["th", "en", "zh"] as const;
 export type Locale = typeof locales[number];
 export const localeTags: Record<Locale, string> = { th: "th-TH", en: "en-GB", zh: "zh-CN" };
-export const allMessages = [...messages, ...additionalMessages];
+export const allMessages = [...messages, ...additionalMessages, ...packageMessages];
 export const resources = Object.fromEntries(locales.map((locale) => [locale, { translation: Object.fromEntries(allMessages.map(([source, en, zh, th]) => [source, locale === "en" ? en : locale === "zh" ? zh : th || source])) }]));
 
 // The server always renders Thai. Only client effects/events change language,

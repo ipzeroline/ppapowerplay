@@ -4,7 +4,7 @@ import { assertAdminRequest, getAdminIdentity, adminSessionCookieName } from "@/
 import { pool, query } from "@/lib/db";
 import { parseJsonBody, secureResponse, validationErrorResponse } from "@/lib/security";
 
-const memberSelect = "SELECT u.id, u.display_name displayName, u.member_code memberCode, u.phone, u.email, u.status, u.created_at createdAt, COALESCE(w.balance, 0) balance FROM users u LEFT JOIN wallet_accounts w ON w.user_id = u.id";
+const memberSelect = "SELECT u.id, u.display_name displayName, u.member_code memberCode, u.phone, u.email, u.status, u.created_at createdAt, u.pdpa_accepted_at pdpaAcceptedAt, u.pdpa_version pdpaVersion, COALESCE(w.balance, 0) balance FROM users u LEFT JOIN wallet_accounts w ON w.user_id = u.id";
 const inputSchema = z.object({
   id: z.number().int().positive(), displayName: z.string().trim().min(1).max(160),
   phone: z.string().trim().max(32).regex(/^[+\d\s()-]*$/),

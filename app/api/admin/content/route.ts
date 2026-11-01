@@ -3,6 +3,7 @@ import { z } from "zod";
 import { assertAdminRequest } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
 import { parseJsonBody, validationErrorResponse } from "@/lib/security";
+import { contentProblem } from "@/lib/site-settings";
 
 const cleanText = (max: number) => z.string().trim().max(max);
 const metadataSchema = z.record(z.string(), z.unknown()).default({});
@@ -40,6 +41,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return validationErrorResponse(error);
   }
+  const problem = contentProblem(body.contentType, body.slug, body.metadata);
+  if (problem) return NextResponse.json({ message: problem }, { status: 400 });
 
   try {
     await query(
@@ -70,6 +73,8 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     return validationErrorResponse(error);
   }
+  const problem = contentProblem(body.contentType, body.slug, body.metadata);
+  if (problem) return NextResponse.json({ message: problem }, { status: 400 });
 
   try {
     await query(

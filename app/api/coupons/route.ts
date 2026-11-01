@@ -12,7 +12,7 @@ export async function GET() {
     return authErrorResponse(error);
   }
   const coupons = await query(
-    "SELECT id, code, name, category, price, total_uses totalUses, validity_days validityDays FROM coupons WHERE active = TRUE ORDER BY id",
+    "SELECT id, code, name, category, price, total_uses totalUses, validity_days validityDays, sort_order sortOrder, CAST(metadata AS CHAR) metadata FROM coupons WHERE active = TRUE ORDER BY sort_order, id",
   );
   return secureResponse(NextResponse.json({ coupons }));
 }

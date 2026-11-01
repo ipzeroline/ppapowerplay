@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import test from "node:test";
@@ -148,7 +148,9 @@ test("i18n changes labels and dates without changing identities, prices or conte
 });
 
 test("member JSX has no untranslated Thai text or hardcoded Thai date locale", () => {
-  for (const file of ["components/ppa-app.tsx", "components/booking-calendar.tsx"]) {
+  const memberFiles = readdirSync("components").filter((name) => /^(member-.*|gymnos-hub)\.tsx$/.test(name)).map((name) => `components/${name}`);
+  assert.ok(memberFiles.includes("components/member-ui.tsx"), "member screen components are scanned");
+  for (const file of ["components/ppa-app.tsx", "components/booking-calendar.tsx", ...memberFiles]) {
     const text = readFileSync(file, "utf8");
     const root = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     function walk(node) {
@@ -236,7 +238,7 @@ test("profile cannot modify another staff account", async () => {
 test("catalog ignores client amount and entitlement type", async () => {
   const catalog = load("lib/payment-catalog.ts", { "@/lib/db": { query: async () => [{ title: "Monthly", price: 1900, contentType: "membership_plan" }] } });
   const item = await catalog.resolvePaymentItem({ contentId: 1, amount: 1, itemType: "trainer", itemName: "Annual" });
-  assert.deepEqual(item, { amount: 1900, itemName: "Monthly", itemType: "membership" });
+  assert.deepEqual(item, { amount: 1900, itemName: "Monthly", itemType: "membership", contentId: 1, grant: {} });
   assert.equal(await catalog.resolvePaymentItem({ amount: 1, itemName: "Annual" }), null);
   assert.equal(await catalog.resolvePaymentItem({ contentId: 1, trainerId: 1, trainerPackage: "Monthly" }), null);
 });

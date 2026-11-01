@@ -6,6 +6,7 @@ import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from
 import { expirePendingBookings } from "@/lib/booking-rules";
 import { grantPaidEntitlement } from "@/lib/entitlements";
 import { resolvePaymentItem } from "@/lib/payment-catalog";
+import { findPaymentByRequest, isDuplicateEntry, requestIdPattern } from "@/lib/wallet";
 
 const schema = z.object({
   bookingNo: z.string().min(4).max(40).optional(),
@@ -16,6 +17,7 @@ const schema = z.object({
   amount: z.number().positive().optional(),
   itemName: z.string().trim().max(180).optional(),
   itemType: z.string().trim().max(64).optional(),
+  requestId: z.string().regex(requestIdPattern).optional(),
 });
 
 export async function POST(req: Request) {
@@ -55,6 +57,11 @@ export async function POST(req: Request) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const replay = await findPaymentByRequest(conn, user.id, input.requestId);
+    if (replay) {
+      await conn.rollback();
+      return NextResponse.json({ ...replay, replayed: true });
+    }
     if (booking) {
       const [rows] = await conn.execute("SELECT status, expires_at > NOW() valid FROM bookings WHERE id = ? FOR UPDATE", [booking.id]);
       const locked = (rows as { status: string; valid: number }[])[0];
@@ -71,21 +78,31 @@ export async function POST(req: Request) {
         await conn.rollback();
         return NextResponse.json({ message: "ยอดเงินใน Wallet ไม่พอ" }, { status: 409 });
       }
+    }
+    const paid = input.method === "wallet";
+    // Snapshot the catalog terms so staff approval later grants exactly what was sold.
+    const metadata = {
+      itemName: input.itemName || null,
+      itemType: input.itemType || (booking ? "booking" : null),
+      ...(catalogItem?.contentId ? { contentId: catalogItem.contentId } : {}),
+      ...(catalogItem && Object.keys(catalogItem.grant).length ? { grant: catalogItem.grant } : {}),
+    };
+    const [paymentResult] = await conn.execute(
+      "INSERT INTO payments (payment_no, user_id, booking_id, method, amount, status, provider_ref, request_id, metadata, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [paymentNo, user.id, booking?.id ?? null, input.method, amount, paid ? "paid" : "created", createPublicId("REF"), input.requestId || null, JSON.stringify(metadata), paid ? new Date() : null],
+    );
+    const paymentId = Number((paymentResult as { insertId?: number }).insertId || 0) || null;
+    if (paid) {
       await conn.execute("UPDATE wallet_accounts SET balance = balance - ?, coin_balance = coin_balance + 1, point_balance = point_balance + ? WHERE user_id = ?", [
         amount,
         Math.floor(amount),
         user.id,
       ]);
       await conn.execute(
-        "INSERT INTO wallet_ledger (user_id, kind, amount, coin_delta, point_delta, ref_type, note) VALUES (?, 'payment', ?, 1, ?, 'payment', ?)",
-        [user.id, -amount, Math.floor(amount), input.itemName || "PPA payment"],
+        "INSERT INTO wallet_ledger (user_id, kind, amount, coin_delta, point_delta, ref_type, ref_id, note) VALUES (?, 'payment', ?, 1, ?, 'payment', ?, ?)",
+        [user.id, -amount, Math.floor(amount), paymentId, input.itemName || "PPA payment"],
       );
     }
-    const paid = input.method === "wallet";
-    const [paymentResult] = await conn.execute(
-      "INSERT INTO payments (payment_no, user_id, booking_id, method, amount, status, provider_ref, metadata, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, JSON_OBJECT('itemName', ?, 'itemType', ?), ?)",
-      [paymentNo, user.id, booking?.id ?? null, input.method, amount, paid ? "paid" : "created", createPublicId("REF"), input.itemName || null, input.itemType || (booking ? "booking" : null), paid ? new Date() : null],
-    );
     if (booking && paid) {
       await conn.execute("UPDATE bookings SET status = 'paid' WHERE id = ?", [booking.id]);
     }
@@ -94,14 +111,17 @@ export async function POST(req: Request) {
         amount,
         itemName: input.itemName || "PPA package",
         itemType: input.itemType,
-        paymentId: Number((paymentResult as { insertId?: number }).insertId || 0) || null,
+        paymentId,
         userId: user.id,
+        grant: catalogItem?.grant,
       });
     }
     await conn.commit();
     return NextResponse.json({ paymentNo, status: paid ? "paid" : "created" }, { status: 201 });
   } catch (error) {
     await conn.rollback();
+    const winner = isDuplicateEntry(error) ? await findPaymentByRequest(conn, user.id, input.requestId) : null;
+    if (winner) return NextResponse.json({ ...winner, replayed: true });
     throw error;
   } finally {
     conn.release();

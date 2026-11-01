@@ -9,23 +9,23 @@
   "areas": [
     {
       "bounds": { "x": 0, "y": 0, "width": 834, "height": 843 },
-      "action": { "type": "uri", "label": "จองสนาม", "uri": "__PPA_LIFF_URL__?screen=sports" }
+      "action": { "type": "uri", "label": "หน้าหลัก", "uri": "__PPA_LIFF_URL__?screen=home" }
     },
     {
       "bounds": { "x": 834, "y": 0, "width": 833, "height": 843 },
-      "action": { "type": "uri", "label": "สมาชิก", "uri": "__PPA_LIFF_URL__?screen=membership" }
+      "action": { "type": "uri", "label": "แพ็กเกจ", "uri": "__PPA_LIFF_URL__?screen=plans" }
     },
     {
       "bounds": { "x": 1667, "y": 0, "width": 833, "height": 843 },
-      "action": { "type": "uri", "label": "วอลเล็ต", "uri": "__PPA_LIFF_URL__?screen=wallet" }
-    },
-    {
-      "bounds": { "x": 0, "y": 843, "width": 834, "height": 843 },
       "action": { "type": "uri", "label": "คูปอง", "uri": "__PPA_LIFF_URL__?screen=coupon" }
     },
     {
+      "bounds": { "x": 0, "y": 843, "width": 834, "height": 843 },
+      "action": { "type": "uri", "label": "จองสนาม", "uri": "__PPA_LIFF_URL__?screen=sports" }
+    },
+    {
       "bounds": { "x": 834, "y": 843, "width": 833, "height": 843 },
-      "action": { "type": "uri", "label": "เทรนเนอร์", "uri": "__PPA_LIFF_URL__?screen=trainer" }
+      "action": { "type": "uri", "label": "วอลเล็ต", "uri": "__PPA_LIFF_URL__?screen=wallet" }
     },
     {
       "bounds": { "x": 1667, "y": 843, "width": 833, "height": 843 },

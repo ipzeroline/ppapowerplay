@@ -5,9 +5,11 @@ import { AdminQrScanner } from "@/components/admin-qr-scanner";
 import { safeImageSource } from "@/lib/media";
 import { AdminDialog } from "@/components/admin-dialog";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { canAccessSection } from "@/lib/admin-permissions";
+import { canAccessSection, canViewSlips } from "@/lib/admin-permissions";
+import { AdminDashboard } from "@/components/admin-dashboard";
+import type { DashboardSnapshot } from "@/lib/admin-dashboard";
 
 type Lang = "th" | "en";
 type Theme = "dark" | "light";
@@ -29,7 +31,7 @@ type AdminBooking = {
   cancelReason?: string | null;
   checkedInAt?: string | null;
 };
-type AdminCoupon = { id: number; code: string; name: string; category: string; price: number; totalUses: number; validityDays: number; active: number | boolean };
+type AdminCoupon = { id: number; code: string; name: string; category: string; price: number; totalUses: number; validityDays: number; active: number | boolean; sortOrder?: number | null; metadata?: string | Record<string, unknown> | null };
 type AdminTrainer = {
   id: number;
   slug: string;
@@ -55,7 +57,7 @@ type AdminTrainer = {
 };
 type TrainerPackage = { title: string; text: string; price: number };
 type TrainerScheduleDay = { day: string; date?: string; slots: { time: string; status: "available" | "full" | "off" }[] };
-type AdminPayment = { paymentNo: string; displayName: string; method: string; amount: number; status: string; paidAt?: string | null };
+type AdminPayment = { paymentNo: string; displayName: string; method: string; amount: number; status: string; createdAt?: string | null; paidAt?: string | null; itemName?: string | null; itemType?: string | null; slipUploadedAt?: string | null; previousSlipCount?: number | null; refundStatus?: string | null; cancelReason?: string | null };
 type AdminCourt = { id: number; sportId?: number; sportName: string; name: string; zone?: string | null; capacity?: number | null; surface?: string | null; hourlyRate?: number | null; sortOrder?: number | null; notes?: string | null; status: string };
 type AdminStaff = {
   id: number;
@@ -122,6 +124,8 @@ type AdminContentItem = {
 };
 
 export type AdminConsoleData = {
+  // Role-gated figures for the dashboard (lib/admin-dashboard.ts); refreshed from /api/admin/dashboard.
+  dashboard?: DashboardSnapshot;
   metrics: AdminMetric[];
   users: AdminUser[];
   bookings: AdminBooking[];
@@ -195,6 +199,21 @@ const copy = {
     bookingCheckin: "เช็คอิน",
     bookingMarkPaid: "ชำระแล้ว",
     paymentMarkPaid: "ยืนยันชำระ",
+    paymentCancel: "ยกเลิกรายการ",
+    viewSlip: "ดูสลิป",
+    previousSlip: "สลิปเดิม",
+    queueEmpty: "ไม่มีรายการรอยืนยันหรือรอคืนเงิน รายการใหม่จะขึ้นที่นี่เองภายใน 1 นาที",
+    awaitingConfirmation: "รอยืนยัน",
+    cancelReasonLabel: "เหตุผลที่ยกเลิก (แจ้งสมาชิก)",
+    cancelReasons: ["ยอดโอนไม่ตรง", "ไม่พบยอดโอนในบัญชี", "สลิปไม่ถูกต้อง", "ลูกค้าขอยกเลิก", "อื่นๆ"],
+    cancelOther: "ระบุเหตุผล",
+    cancelSlipWarning: "สมาชิกส่งสลิปแล้ว หากได้รับเงินจริงต้องโอนคืนให้สมาชิก แล้วกด \"บันทึกคืนเงินแล้ว\" ที่รายการนี้",
+    confirmCancel: "ยืนยันยกเลิกรายการ",
+    keepPayment: "กลับ",
+    refundPending: "รอคืนเงิน",
+    recordRefund: "บันทึกคืนเงินแล้ว",
+    refundNote: "หมายเหตุการโอนคืน (ไม่บังคับ)",
+    confirmRefund: "ยืนยันว่าโอนคืนแล้ว",
     paymentUpdated: "อัปเดต payment แล้ว",
     bookingExpire: "หมดอายุ",
     cancelReason: "เหตุผลยกเลิก",
@@ -486,6 +505,21 @@ const copy = {
     bookingCheckin: "Check in",
     bookingMarkPaid: "Mark paid",
     paymentMarkPaid: "Confirm paid",
+    paymentCancel: "Cancel",
+    viewSlip: "View slip",
+    previousSlip: "Earlier slip",
+    queueEmpty: "Nothing is waiting. New payment requests appear here within a minute.",
+    awaitingConfirmation: "Awaiting confirmation",
+    cancelReasonLabel: "Reason (sent to the member)",
+    cancelReasons: ["Amount does not match", "Transfer not found", "Invalid slip", "Customer asked to cancel", "Other"],
+    cancelOther: "Describe the reason",
+    cancelSlipWarning: "The member sent a slip. If the money arrived, transfer it back, then use \"Record refund\" on this payment.",
+    confirmCancel: "Cancel payment",
+    keepPayment: "Back",
+    refundPending: "Refund due",
+    recordRefund: "Record refund",
+    refundNote: "Refund note (optional)",
+    confirmRefund: "Confirm refund sent",
     paymentUpdated: "Payment updated",
     bookingExpire: "Expire",
     cancelReason: "Cancel reason",
@@ -1064,7 +1098,8 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
           <ProfileModal admin={currentAdmin} adminKey={adminKey} lang={lang} onClose={() => setProfileOpen(false)} onProfileSaved={(updated) => setStaffRows((existing) => [...existing.filter((row) => !updated.some((item) => item.id === row.id)), ...updated])} t={t} />
         ) : null}
 
-        <header className="admin-top">
+        {/* The dashboard has its own header (date, last update, refresh). */}
+        {tab !== "dashboard" ? <header className="admin-top">
           <div>
             <p className="eyebrow">{t.eyebrow}</p>
             <h1>{currentTitle}</h1>
@@ -1079,10 +1114,20 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
               </label>
             ) : null}
           </div>
-        </header>
+        </header> : null}
 
-        {tab === "dashboard" && <Dashboard adminKey={adminKey} data={{ ...data, payments: paymentRows }} lang={lang} onPaymentsChange={setPaymentRows} t={t} />}
-        {tab === "members" && <AdminMembers search={query} lang={lang} />}
+        {tab === "dashboard" && (
+          <AdminDashboard
+            initial={data.dashboard}
+            lang={lang}
+            systemIssues={canAccessTab("system") ? [...data.securityItems, ...data.systemHealth].filter((item) => item.status !== "good").length : null}
+            onNavigate={goTab}
+            renderQueue={(rows, onChange) => (
+              <PaymentTable canManage={canViewSlips(data.currentAdmin)} adminKey={adminKey} rows={rows} lang={lang} t={t} emptyText={t.queueEmpty} onPaymentsChange={(payments) => { setPaymentRows(payments); onChange(payments); }} />
+            )}
+          />
+        )}
+        {tab === "members" && <AdminMembers search={query} lang={lang} canSell={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("sales.manage"))} canManage={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("members.manage"))} />}
         {tab === "staff" && (
           <StaffManager
             adminKey={adminKey}
@@ -1262,139 +1307,6 @@ function Segment({ label, value, options, onChange }: { label: string; value: st
   );
 }
 
-function Dashboard({ adminKey, data, lang, onPaymentsChange, t }: { adminKey: string; data: AdminConsoleData; lang: Lang; onPaymentsChange: (rows: AdminPayment[]) => void; t: typeof copy[Lang] }) {
-  const revenue = useMemo(() => buildRevenueBars(data.payments, lang), [data.payments, lang]);
-  const bookingActivity = useMemo(() => buildBookingActivityBars(data.bookings, lang), [data.bookings, lang]);
-  const statuses = useMemo(() => buildStatusBars(data.bookings), [data.bookings]);
-  const courts = useMemo(() => buildCourtBars(data.courts), [data.courts]);
-  const courtStatus = useMemo(() => buildCourtStatusBars(data.courts), [data.courts]);
-  const paymentMethods = useMemo(() => buildPaymentMethodBars(data.payments), [data.payments]);
-  const memberStatus = useMemo(() => buildMemberStatusBars(data.users), [data.users]);
-  const trainerPrices = useMemo(() => buildTrainerPriceBars(data.trainers), [data.trainers]);
-  const totalBookings = data.bookings.length || 1;
-  const paidBookings = data.bookings.filter((booking) => booking.status === "paid").length;
-  const checkedInBookings = data.bookings.filter((booking) => booking.status === "checked_in").length;
-  const pendingBookings = data.bookings.filter((booking) => ["hold", "pending_payment"].includes(booking.status)).length;
-  const paidRevenue = data.payments.filter((payment) => payment.status === "paid").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const activeCourts = data.courts.filter((court) => court.status === "available").length;
-  const maintenanceCourts = data.courts.filter((court) => court.status === "maintenance").length;
-  const activeMembers = data.users.filter((user) => user.status === "active").length;
-  const activeTrainers = data.trainers.filter((trainer) => Boolean(trainer.active)).length;
-  const avgBookingValue = data.bookings.length ? Math.round(data.bookings.reduce((sum, booking) => sum + Number(booking.amount || 0), 0) / data.bookings.length) : 0;
-  const paidRate = Math.round((paidBookings / totalBookings) * 100);
-  const courtReadyRate = data.courts.length ? Math.round((activeCourts / data.courts.length) * 100) : 0;
-  const metrics = translatedMetrics(data.metrics, t);
-  const readinessScore = readiness(data.securityItems, data.systemHealth);
-  const lastAudit = data.auditLogs[0];
-  const dashboardCopy = lang === "th" ? {
-    title: "Sport Complex Command Center",
-    subtitle: "มองภาพรวมรายได้ การจอง สนาม ทีมเทรนเนอร์ และความพร้อมระบบในหน้าเดียว",
-    live: "LIVE OPERATIONS",
-    paidRate: "อัตราชำระ",
-    courtReady: "สนามพร้อม",
-    todaySignal: "สัญญาณวันนี้",
-    bookingActivity: "กิจกรรมการจอง 7 วัน",
-    paymentMethod: "รายได้แยกช่องทางชำระ",
-    memberStatus: "สถานะสมาชิก",
-    trainerPrice: "ราคาเทรนเนอร์แนะนำ",
-    capacity: "สนามและความพร้อม",
-    revenueHint: "ยอดรับชำระสำเร็จ",
-    averageSpend: "ค่าเฉลี่ยต่อการจอง",
-    checkedIn: "เข้าใช้งานแล้ว",
-    pending: "รอดำเนินการ",
-    actionQueue: "คิวงานผู้จัดการ",
-    pendingPayment: "ติดตามรอชำระ",
-    reviewAudit: "ตรวจ Audit เสี่ยง",
-    reviewSystem: "รายการระบบต้องตรวจ",
-    courtAttention: "สนามที่ต้องดูแล",
-  } : {
-    title: "Sport Complex Command Center",
-    subtitle: "Revenue, bookings, courts, trainers, and system readiness in one operational view.",
-    live: "LIVE OPERATIONS",
-    paidRate: "Paid rate",
-    courtReady: "Court ready",
-    todaySignal: "Today signal",
-    bookingActivity: "7-day booking activity",
-    paymentMethod: "Revenue by payment method",
-    memberStatus: "Member status",
-    trainerPrice: "Trainer starting price mix",
-    capacity: "Court capacity and readiness",
-    revenueHint: "Successful paid revenue",
-    averageSpend: "Average booking value",
-    checkedIn: "Checked in",
-    pending: "Pending",
-    actionQueue: "Manager action queue",
-    pendingPayment: "Follow pending payments",
-    reviewAudit: "Review risky audit",
-    reviewSystem: "System items to review",
-    courtAttention: "Courts needing attention",
-  };
-  const actionQueue = [
-    { label: dashboardCopy.pendingPayment, value: pendingBookings, hint: t.pendingBookings, tone: pendingBookings ? "warn" : "good" },
-    { label: dashboardCopy.courtAttention, value: maintenanceCourts, hint: t.courtMaintenance, tone: maintenanceCourts ? "warn" : "good" },
-    { label: dashboardCopy.reviewAudit, value: data.auditLogs.filter((log) => log.action.includes("delete") || log.action.includes("password")).length, hint: t.highRiskActions, tone: data.auditLogs.some((log) => log.action.includes("delete") || log.action.includes("password")) ? "warn" : "good" },
-    { label: dashboardCopy.reviewSystem, value: [...data.securityItems, ...data.systemHealth].filter((item) => item.status !== "good").length, hint: t.statusWarning, tone: [...data.securityItems, ...data.systemHealth].some((item) => item.status === "bad") ? "bad" : [...data.securityItems, ...data.systemHealth].some((item) => item.status === "warn") ? "warn" : "good" },
-  ] satisfies { label: string; value: number; hint: string; tone: AdminStatusTone }[];
-
-  return (
-    <>
-      <section className="admin-dashboard-hero">
-        <div>
-          <p>{dashboardCopy.live}</p>
-          <h2>{dashboardCopy.title}</h2>
-          <span>{dashboardCopy.subtitle}</span>
-          <div className="admin-hero-stats">
-            <b>{money(paidRevenue, lang)} ฿<small>{dashboardCopy.revenueHint}</small></b>
-            <b>{money(avgBookingValue, lang)} ฿<small>{dashboardCopy.averageSpend}</small></b>
-            <b>{activeTrainers}<small>{t.activeTrainers}</small></b>
-          </div>
-        </div>
-        <div className="admin-hero-rings">
-          <RingMetric label={dashboardCopy.paidRate} value={paidRate} hint={`${paidBookings}/${data.bookings.length}`} />
-          <RingMetric label={dashboardCopy.courtReady} value={courtReadyRate} hint={`${activeCourts}/${data.courts.length}`} />
-          <RingMetric label={t.readinessScore} value={readinessScore} hint={readinessScore >= 80 ? t.statusReady : t.statusWarning} />
-        </div>
-      </section>
-
-      <div className="admin-kpi-grid">
-        {metrics.map((metric) => (
-          <article key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.hint}</small></article>
-        ))}
-      </div>
-
-      <div className="admin-dashboard-grid">
-        <Panel title={t.revenueTrend}><BarChart rows={revenue} moneyBars /></Panel>
-        <Panel title={dashboardCopy.bookingActivity}><BarChart rows={bookingActivity} /></Panel>
-        <Panel title={t.bookingStatus}><DonutSummary rows={statuses} t={t} /></Panel>
-        <Panel title={dashboardCopy.paymentMethod}><BarChart rows={paymentMethods} moneyBars /></Panel>
-        <Panel title={t.courtMix}><BarChart rows={courts} /></Panel>
-        <Panel title={dashboardCopy.memberStatus}><DonutSummary rows={memberStatus} t={t} /></Panel>
-        <Panel title={dashboardCopy.trainerPrice}><BarChart rows={trainerPrices} moneyBars /></Panel>
-        <Panel title={dashboardCopy.capacity}><CapacityGrid rows={courtStatus} t={t} /></Panel>
-        <Panel title={t.operationsPulse}>
-          <div className="admin-pulse-grid">
-            <PulseCard label={t.paidBookingRate} value={`${paidRate}%`} hint={`${paidBookings}/${data.bookings.length}`} />
-            <PulseCard label={t.availableCourts} value={activeCourts} hint={`${data.courts.length} ${t.total}`} />
-            <PulseCard label={dashboardCopy.checkedIn} value={checkedInBookings} hint={`${data.bookings.length} ${t.allBookings}`} />
-            <PulseCard label={dashboardCopy.pending} value={pendingBookings} hint={t.pendingBookings} />
-            <PulseCard label={t.activeMembers} value={activeMembers} hint={`${data.users.length} ${t.allMembers}`} />
-            <PulseCard label={t.courtMaintenance} value={maintenanceCourts} hint={`${data.courts.length} ${t.allCourts}`} />
-            <PulseCard label={t.livePayments} value={data.payments.length} hint={t.live} />
-            <PulseCard label={t.readinessScore} value={`${readinessScore}%`} hint={readinessScore >= 80 ? t.statusReady : t.statusWarning} />
-            <PulseCard label={t.lastAudit} value={lastAudit ? auditActionLabel(lastAudit.action, lang) : "-"} hint={lastAudit ? formatDate(lastAudit.createdAt, lang) : t.noData} />
-          </div>
-        </Panel>
-        <Panel title={dashboardCopy.actionQueue}><ActionQueue rows={actionQueue} /></Panel>
-      </div>
-
-      <div className="admin-panels">
-        <Panel title={t.recentBookings}><BookingTable rows={data.bookings.slice(0, 6)} lang={lang} t={t} /></Panel>
-        <Panel title={t.recentPayments}><PaymentTable canManage={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("payments.manage"))} adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={data.payments.slice(0, 6)} lang={lang} t={t} /></Panel>
-      </div>
-    </>
-  );
-}
-
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return <section className="admin-panel"><h2>{title}</h2>{children}</section>;
 }
@@ -1567,20 +1479,24 @@ function TrainerTable({ rows, lang, t }: { rows: AdminTrainer[]; lang: Lang; t: 
   return <table><thead><tr><th>{t.imagePreview}</th><th>{t.cols.trainer}</th><th>{t.cols.role}</th><th>{t.experience}</th><th>{t.cols.startPrice}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td><TrainerPhoto row={r} /></td><td>{r.name}<small>{r.nickname} · {r.slug}</small></td><td>{r.role}</td><td>{r.experience}</td><td>{money(r.startPrice, lang)} ฿</td><td><Badge tone={r.active ? "good" : "bad"}>{statusLabel(r.active ? "active" : "off", t)}</Badge></td></tr>)}</tbody></table>;
 }
 
-function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t }: { adminKey?: string; canManage: boolean; rows: AdminPayment[]; lang: Lang; onPaymentsChange?: (rows: AdminPayment[]) => void; t: typeof copy[Lang] }) {
+function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, emptyText }: { adminKey?: string; canManage: boolean; rows: AdminPayment[]; lang: Lang; onPaymentsChange?: (rows: AdminPayment[]) => void; t: typeof copy[Lang]; emptyText?: string }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // One inline form at a time: cancel a waiting payment (with a reason) or record a refund.
+  const [form, setForm] = useState<{ paymentNo: string; mode: "cancel" | "refund"; preset: string; text: string } | null>(null);
   const pending = useRef(false);
-  const updatePayment = async (paymentNo: string, status: "paid" | "failed" | "cancelled") => {
-    if (!canManage || !onPaymentsChange || pending.current) return;
+  const actionable = canManage && Boolean(onPaymentsChange);
+  const updatePayment = async (paymentNo: string, status: "paid" | "cancelled" | "refunded", reason?: string) => {
+    if (!actionable || !onPaymentsChange || pending.current) return;
     pending.current = true;
     setBusy(true);
     setMessage("");
     try {
-      const response = await adminFetch(adminKey || "", "/api/admin/payments", { method: "PUT", body: JSON.stringify({ paymentNo, status }) });
+      const response = await adminFetch(adminKey || "", "/api/admin/payments", { method: "PUT", body: JSON.stringify({ paymentNo, status, ...(reason ? { reason } : {}) }) });
       const result = await response.json();
       if (!response.ok) return setMessage(result.message || t.saveFailed);
       onPaymentsChange(result.payments);
+      setForm(null);
       setMessage(t.paymentUpdated);
     } catch {
       setMessage(lang === "th" ? "ไม่ทราบผลการยืนยัน กรุณารีเฟรชตรวจสถานะก่อนลองใหม่" : "Confirmation result is unknown. Refresh and check the status before retrying.");
@@ -1589,22 +1505,55 @@ function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t }: 
       setBusy(false);
     }
   };
+  const other = t.cancelReasons[t.cancelReasons.length - 1];
+  const formReason = form ? (form.mode === "cancel" && form.preset !== other ? form.preset : form.text.trim()) : "";
   return (
     <>
-      <table>
+      {emptyText && !rows.length ? <p className="dash-empty">{emptyText}</p> : null}
+      {!emptyText || rows.length ? <table>
         <thead><tr><th>{t.cols.payment}</th><th>{t.cols.member}</th><th>{t.cols.method}</th><th>{t.cols.amount}</th><th>{t.cols.status}</th><th>{t.action}</th></tr></thead>
         <tbody>{rows.map((r) => (
-          <tr key={r.paymentNo}>
-            <td>{r.paymentNo}<small>{formatDate(r.paidAt || "", lang)}</small></td>
-            <td>{r.displayName}</td>
-            <td>{r.method}</td>
-            <td>{money(r.amount, lang)} ฿</td>
-            <td><Badge tone={r.status === "paid" ? "good" : r.status === "failed" || r.status === "cancelled" ? "bad" : "warn"}>{statusLabel(r.status, t)}</Badge></td>
-            <td><button type="button" disabled={r.status !== "created" || !canManage || !onPaymentsChange || busy} onClick={() => updatePayment(r.paymentNo, "paid")}>{t.paymentMarkPaid}</button></td>
-          </tr>
+          <Fragment key={r.paymentNo}>
+            <tr>
+              <td>{r.paymentNo}<small>{paymentItemLabel(r, lang)}</small><small>{formatDate(r.paidAt || r.createdAt || "", lang)}</small>{canManage && r.slipUploadedAt ? <a className="admin-slip-link" href={`/api/admin/payments/slip?paymentNo=${encodeURIComponent(r.paymentNo)}`} target="_blank" rel="noopener noreferrer">{t.viewSlip} · {formatDate(r.slipUploadedAt, lang)}</a> : null}{canManage && Number(r.previousSlipCount) > 0 ? <span className="admin-slip-previous">{Array.from({ length: Math.min(Number(r.previousSlipCount), 10) }, (_, index) => <a key={index} href={`/api/admin/payments/slip?paymentNo=${encodeURIComponent(r.paymentNo)}&previous=${index}`} target="_blank" rel="noopener noreferrer">{t.previousSlip} {index + 1}</a>)}</span> : null}</td>
+              <td>{r.displayName}</td>
+              <td>{r.method}</td>
+              <td>{money(r.amount, lang)} ฿</td>
+              <td>
+                {r.refundStatus === "pending" && r.status === "cancelled" ? <Badge tone="warn">{t.refundPending}</Badge> : <Badge tone={r.status === "paid" ? "good" : r.status === "failed" || r.status === "cancelled" ? "bad" : r.status === "refunded" ? "neutral" : "warn"}>{r.status === "created" ? t.awaitingConfirmation : statusLabel(r.status, t)}</Badge>}
+                {r.cancelReason ? <small>{r.cancelReason}</small> : null}
+              </td>
+              <td>
+                {r.status === "created" ? <button type="button" disabled={!actionable || busy} onClick={() => updatePayment(r.paymentNo, "paid")}>{t.paymentMarkPaid}</button> : null}
+                {r.status === "created" && actionable ? <button type="button" className="danger" disabled={busy} aria-expanded={form?.paymentNo === r.paymentNo} onClick={() => setForm({ paymentNo: r.paymentNo, mode: "cancel", preset: t.cancelReasons[0], text: "" })}>{t.paymentCancel}</button> : null}
+                {r.status === "cancelled" && r.refundStatus === "pending" && actionable ? <button type="button" disabled={busy} aria-expanded={form?.paymentNo === r.paymentNo} onClick={() => setForm({ paymentNo: r.paymentNo, mode: "refund", preset: "", text: "" })}>{t.recordRefund}</button> : null}
+              </td>
+            </tr>
+            {form?.paymentNo === r.paymentNo ? (
+              <tr className="payment-action-row">
+                <td colSpan={6}>
+                  <form className="payment-action-form" onSubmit={(event) => { event.preventDefault(); if (form.mode === "cancel" && !formReason) return; void updatePayment(r.paymentNo, form.mode === "cancel" ? "cancelled" : "refunded", formReason || undefined); }}>
+                    {form.mode === "cancel" ? (
+                      <>
+                        <label>{t.cancelReasonLabel}<select value={form.preset} disabled={busy} onChange={(event) => setForm({ ...form, preset: event.target.value })}>{t.cancelReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</select></label>
+                        {form.preset === other ? <label>{t.cancelOther}<input required pattern={".*\\S.*"} maxLength={200} value={form.text} disabled={busy} onChange={(event) => setForm({ ...form, text: event.target.value })} /></label> : null}
+                        {r.slipUploadedAt ? <p className="payment-action-note" role="note">{t.cancelSlipWarning}</p> : null}
+                      </>
+                    ) : (
+                      <label>{t.refundNote}<input maxLength={200} value={form.text} disabled={busy} onChange={(event) => setForm({ ...form, text: event.target.value })} /></label>
+                    )}
+                    <div className="payment-action-buttons">
+                      <button type="submit" className={form.mode === "cancel" ? "danger" : ""} disabled={busy}>{form.mode === "cancel" ? t.confirmCancel : t.confirmRefund}</button>
+                      <button type="button" disabled={busy} onClick={() => setForm(null)}>{t.keepPayment}</button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+            ) : null}
+          </Fragment>
         ))}</tbody>
-      </table>
-      {message ? <p className="admin-message">{message}</p> : null}
+      </table> : null}
+      {message ? <p className="admin-message" role="status">{message}</p> : null}
     </>
   );
 }
@@ -1726,6 +1675,8 @@ function CouponManager({
     totalUses: 1,
     validityDays: 30,
     active: true,
+    sortOrder: 0,
+    metadataText: "{}",
   });
   const filteredRows = useMemo(() => {
     const needle = couponSearch.trim().toLowerCase();
@@ -1738,7 +1689,7 @@ function CouponManager({
 
   const reset = () => {
     setEditingId(null);
-    setForm({ code: "", name: "", category: "fitness", price: 0, totalUses: 1, validityDays: 30, active: true });
+    setForm({ code: "", name: "", category: "fitness", price: 0, totalUses: 1, validityDays: 30, active: true, sortOrder: 0, metadataText: "{}" });
   };
   const openCreate = () => {
     reset();
@@ -1747,13 +1698,23 @@ function CouponManager({
   };
   const edit = (row: AdminCoupon) => {
     setEditingId(row.id);
-    setForm({ code: row.code, name: row.name, category: row.category, price: Number(row.price || 0), totalUses: Number(row.totalUses || 1), validityDays: Number(row.validityDays || 30), active: Boolean(row.active) });
+    setForm({ code: row.code, name: row.name, category: row.category, price: Number(row.price || 0), totalUses: Number(row.totalUses || 1), validityDays: Number(row.validityDays || 30), active: Boolean(row.active), sortOrder: Number(row.sortOrder || 0), metadataText: formatMetadata(row.metadata) });
     setMessage("");
     setModalOpen(true);
   };
   const submit = async () => {
     setMessage("");
-    const response = await adminFetch(adminKey, "/api/admin/coupons", { method: editingId ? "PUT" : "POST", body: JSON.stringify({ ...form, id: editingId || undefined }) });
+    let metadata: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(form.metadataText || "{}") as unknown;
+      metadata = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch {
+      setMessage(`${t.metadata} ${lang === "th" ? "ไม่ถูกต้อง" : "is invalid"}`);
+      return;
+    }
+    const { metadataText: _metadataText, ...fields } = form;
+    void _metadataText;
+    const response = await adminFetch(adminKey, "/api/admin/coupons", { method: editingId ? "PUT" : "POST", body: JSON.stringify({ ...fields, metadata, id: editingId || undefined }) });
     const result = await response.json();
     if (!response.ok) return setMessage(result.message || t.saveFailed);
     setRows(result.coupons);
@@ -1808,6 +1769,8 @@ function CouponManager({
               <label>{t.totalUses}<input type="number" value={form.totalUses} onChange={(event) => setForm({ ...form, totalUses: Number(event.target.value) })} /></label>
               <label>{t.validityDays}<input type="number" value={form.validityDays} onChange={(event) => setForm({ ...form, validityDays: Number(event.target.value) })} /></label>
               <label>{t.status}<select value={form.active ? "active" : "off"} onChange={(event) => setForm({ ...form, active: event.target.value === "active" })}><option value="active">{t.active}</option><option value="off">{t.inactive}</option></select></label>
+              <label>{t.sortOrder}<input type="number" value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) })} /></label>
+              <label className="wide">{t.metadata}<textarea placeholder='{"tab":"coupon","group":"c10","variant":"base","badge":"BEST SELLER"}' value={form.metadataText} onChange={(event) => setForm({ ...form, metadataText: event.target.value })} /></label>
               <div className="admin-form-actions"><button type="button" onClick={submit}>{t.save}</button><button type="button" className="ghost" onClick={() => { reset(); setModalOpen(false); }}>{t.cancel}</button></div>
               {message ? <p className="admin-message">{message}</p> : null}
             </div>
@@ -1950,7 +1913,7 @@ function ContentManager({
           <section className="admin-modal">
             <header><div><small>{t.content}</small><h2>{editingId ? t.editContent : t.addContent}</h2></div><button type="button" onClick={() => { reset(); setModalOpen(false); }}>×</button></header>
             <div className="admin-form">
-              <label>{t.contentType}<input value={form.contentType} onChange={(event) => setForm({ ...form, contentType: event.target.value.trim().toLowerCase() })} /></label>
+              <label>{t.contentType}<input list="admin-content-types" value={form.contentType} onChange={(event) => setForm({ ...form, contentType: event.target.value.trim().toLowerCase() })} /><datalist id="admin-content-types">{contentTypes.map((type) => <option key={type} value={type} />)}</datalist></label>
               <label>{t.slug}<input value={form.slug} onChange={(event) => setForm({ ...form, slug: slugify(event.target.value) })} /></label>
               <label>{t.title}<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
               <label>{t.subtitle}<input value={form.subtitle} onChange={(event) => setForm({ ...form, subtitle: event.target.value })} /></label>
@@ -1973,7 +1936,16 @@ function ContentManager({
   );
 }
 
-const couponCategories = ["food", "promotion", "fitness", "court", "trainer", "tennis", "badminton", "pickleball", "padel", "hyrox", "pilates"];
+const couponCategories = ["food", "promotion", "fitness", "fitness-swim", "fitness-hyrox", "swim", "court", "trainer", "tennis", "badminton", "pickleball", "padel", "hyrox", "pilates", "airfit"];
+// Member package page reads membership_plan / time_pass (tabs) and renewal_option (pause, coupon renewal);
+// reward items (metadata {"cost": coins}) are the coin rewards members redeem. site_setting holds
+// support-contact (Help page) and privacy-policy (PDPA consent, metadata {"version"}).
+const contentTypes = ["membership_plan", "time_pass", "renewal_option", "reward", "site_setting", "service_package", "class_schedule", "home_slide", "live_tv", "feature_screen"];
+
+function paymentItemLabel(payment: AdminPayment, lang: Lang) {
+  if (payment.itemType === "wallet_topup") return lang === "th" ? "เติมเงิน Wallet" : "Wallet top-up";
+  return payment.itemName || payment.itemType || "-";
+}
 
 function CouponPreview({ coupon, lang }: { coupon: Pick<AdminCoupon, "name" | "category" | "price" | "totalUses" | "validityDays">; lang: Lang }) {
   const qty = Number(coupon.totalUses || 1);
@@ -1987,7 +1959,7 @@ function CouponPreview({ coupon, lang }: { coupon: Pick<AdminCoupon, "name" | "c
 }
 
 function couponIcon(category: string) {
-  const icons: Record<string, string> = { food: "🍜", promotion: "🛍️", fitness: "💪", court: "🏟️", trainer: "🏋️", tennis: "🎾", badminton: "🏸", pickleball: "🥒", padel: "🎯", hyrox: "🔥", pilates: "🧘" };
+  const icons: Record<string, string> = { food: "🍜", promotion: "🛍️", fitness: "💪", "fitness-swim": "🏊", "fitness-hyrox": "🔥", swim: "🏊", court: "🏟️", trainer: "🏋️", tennis: "🎾", badminton: "🏸", pickleball: "🥒", padel: "🎯", hyrox: "🔥", pilates: "🧘", airfit: "🪂" };
   return icons[category] || "🎟️";
 }
 
@@ -2497,7 +2469,7 @@ function Reports({ adminKey, data, lang, onPaymentsChange, section, t }: { admin
           <Panel title={t.reportExportAll}><div className="admin-report-export-grid"><ExportButton label={t.reportFinance} filename="ppa-report-payments.csv" rows={data.payments} /><ExportButton label={t.reportBookings} filename="ppa-report-bookings.csv" rows={data.bookings} /><ExportButton label={t.reportMembers} filename="ppa-report-members.csv" rows={data.users} /></div></Panel>
         </div>
       )}
-      {section === "finance" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.paidAt} filename="ppa-payments.csv" lang={lang} renderTable={(rows) => <PaymentTable canManage={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("payments.manage"))} adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={rows} lang={lang} t={t} />} rows={data.payments} searchText={(row) => `${row.paymentNo} ${row.displayName} ${row.method} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
+      {section === "finance" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.paidAt || row.createdAt} filename="ppa-payments.csv" lang={lang} renderTable={(rows) => <PaymentTable canManage={canViewSlips(data.currentAdmin)} adminKey={adminKey} onPaymentsChange={onPaymentsChange} rows={rows} lang={lang} t={t} />} rows={data.payments} searchText={(row) => `${row.paymentNo} ${row.displayName} ${row.method} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "bookings" && <ReportDataList amountLabel={t.reportFilteredAmount} dateGetter={(row) => row.startsAt} filename="ppa-bookings.csv" lang={lang} renderTable={(rows) => <BookingTable rows={rows} lang={lang} t={t} />} rows={data.bookings} searchText={(row) => `${row.bookingNo} ${row.title} ${row.displayName} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "members" && <ReportDataList dateGetter={(row) => row.createdAt} filename="ppa-members.csv" lang={lang} renderTable={(rows) => <MemberTable rows={rows} lang={lang} t={t} />} rows={data.users} searchText={(row) => `${row.displayName} ${row.memberCode} ${row.phone || ""} ${row.email || ""} ${row.status}`} statusGetter={(row) => row.status} t={t} title={t.reportDetail} />}
       {section === "coupons" && <ReportDataList filename="ppa-coupons.csv" lang={lang} renderTable={(rows) => <CouponTable rows={rows} lang={lang} t={t} />} rows={data.coupons} searchText={(row) => `${row.name} ${row.code} ${row.category}`} statusGetter={(row) => row.active ? "active" : "off"} t={t} title={t.reportDetail} />}
@@ -2689,50 +2661,11 @@ function DonutSummary({ rows, t }: { rows: { label: string; value: number }[]; t
   );
 }
 
-function PulseCard({ label, value, hint }: { label: string; value: number | string; hint: string }) {
-  return <article className="pulse-card"><span>{label}</span><b>{value}</b><small>{hint}</small></article>;
-}
 
-function ActionQueue({ rows }: { rows: { label: string; value: number; hint: string; tone: AdminStatusTone }[] }) {
-  return (
-    <div className="admin-action-queue">
-      {rows.map((row) => (
-        <article key={row.label}>
-          <div><b>{row.label}</b><span>{row.hint}</span></div>
-          <strong>{row.value}</strong>
-          <Badge tone={row.tone}>{row.tone === "good" ? "OK" : row.tone === "warn" ? "Review" : "Risk"}</Badge>
-        </article>
-      ))}
-    </div>
-  );
-}
 
-function RingMetric({ hint, label, value }: { hint: string; label: string; value: number }) {
-  return (
-    <article className="admin-ring-metric">
-      <div style={{ background: `conic-gradient(var(--admin-accent) 0 ${value}%, var(--admin-chart-soft) ${value}% 100%)` }}><b>{value}%</b></div>
-      <span>{label}</span>
-      <small>{hint}</small>
-    </article>
-  );
-}
 
-function CapacityGrid({ rows, t }: { rows: { label: string; value: number }[]; t: typeof copy[Lang] }) {
-  const max = Math.max(...rows.map((row) => row.value), 1);
-  return (
-    <div className="admin-capacity-grid">
-      {rows.map((row) => (
-        <article key={row.label}>
-          <span>{statusLabel(row.label, t)}</span>
-          <b>{row.value}</b>
-          <i style={{ height: `${Math.max((row.value / max) * 100, 10)}%` }} />
-        </article>
-      ))}
-    </div>
-  );
-}
 
-function Badge({ children, tone }: { children: React.ReactNode; tone: "good" | "warn" | "bad" }) {
+function Badge({ children, tone }: { children: React.ReactNode; tone: "good" | "warn" | "bad" | "neutral" }) {
   return <span className={`admin-badge ${tone}`}>{children}</span>;
 }
 
@@ -2753,14 +2686,6 @@ function buildStatusBars(bookings: AdminBooking[]) {
   return Array.from(buckets, ([label, value]) => ({ label, value }));
 }
 
-function buildBookingActivityBars(bookings: AdminBooking[], lang: Lang) {
-  const buckets = new Map<string, number>();
-  for (const booking of bookings) {
-    const label = formatShortDate(booking.startsAt, lang);
-    buckets.set(label, (buckets.get(label) || 0) + 1);
-  }
-  return Array.from(buckets, ([label, value]) => ({ label, value })).slice(-7);
-}
 
 function buildCourtBars(courts: AdminCourt[]) {
   const buckets = new Map<string, number>();
@@ -2768,30 +2693,9 @@ function buildCourtBars(courts: AdminCourt[]) {
   return Array.from(buckets, ([label, value]) => ({ label, value })).slice(0, 8);
 }
 
-function buildCourtStatusBars(courts: AdminCourt[]) {
-  const buckets = new Map<string, number>();
-  for (const court of courts) buckets.set(court.status, (buckets.get(court.status) || 0) + 1);
-  return Array.from(buckets, ([label, value]) => ({ label, value }));
-}
 
-function buildPaymentMethodBars(payments: AdminPayment[]) {
-  const buckets = new Map<string, number>();
-  for (const payment of payments.filter((row) => row.status === "paid")) buckets.set(payment.method || "-", (buckets.get(payment.method || "-") || 0) + Number(payment.amount || 0));
-  return Array.from(buckets, ([label, value]) => ({ label, value })).slice(0, 8);
-}
 
-function buildMemberStatusBars(users: AdminUser[]) {
-  const buckets = new Map<string, number>();
-  for (const user of users) buckets.set(user.status, (buckets.get(user.status) || 0) + 1);
-  return Array.from(buckets, ([label, value]) => ({ label, value }));
-}
 
-function buildTrainerPriceBars(trainers: AdminTrainer[]) {
-  return [...trainers]
-    .sort((a, b) => Number(b.startPrice || 0) - Number(a.startPrice || 0))
-    .slice(0, 7)
-    .map((trainer) => ({ label: trainer.nickname || trainer.name, value: Number(trainer.startPrice || 0) }));
-}
 
 function money(value: number | string | undefined, lang: Lang = "th") {
   return Number(value || 0).toLocaleString(lang === "th" ? "th-TH" : "en-US");
@@ -2950,19 +2854,6 @@ function uniqueSports(courts: AdminCourt[]) {
   return [...map.entries()].map(([id, name]) => ({ id, name }));
 }
 
-function translatedMetrics(metrics: AdminMetric[], t: typeof copy[Lang]) {
-  const labels = [
-    [t.metricMembers, t.metricMembersHint],
-    [t.metricBookings, t.metricBookingsHint],
-    [t.metricPaid, t.metricPaidHint],
-    [t.metricRevenue, t.metricRevenueHint],
-  ];
-  return metrics.map((metric, index) => ({
-    ...metric,
-    label: labels[index]?.[0] || metric.label,
-    hint: labels[index]?.[1] || metric.hint,
-  }));
-}
 
 function statusText(status: AdminStatusTone, t: typeof copy[Lang]) {
   if (status === "good") return t.statusReady;

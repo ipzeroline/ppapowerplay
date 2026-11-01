@@ -86,7 +86,8 @@ export async function POST(req: Request) {
       "INSERT INTO bookings (booking_no, user_id, sport_id, court_id, title, starts_at, ends_at, players, amount, status, qr_secret, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE))",
       [bookingNo, user.id, sports[0].id, input.courtId || null, title, startsAt, endsAt, input.players, amount, qrSecret],
     );
-    const [booking] = await conn.execute("SELECT * FROM bookings WHERE booking_no = ? LIMIT 1", [bookingNo]);
+    // Explicit columns: the check-in secret and internal ids never leave the server.
+    const [booking] = await conn.execute("SELECT booking_no, title, starts_at, ends_at, players, amount, status, expires_at FROM bookings WHERE booking_no = ? LIMIT 1", [bookingNo]);
     await conn.commit();
     return NextResponse.json({ booking: (booking as unknown[])[0] }, { status: 201 });
   } catch (error) {
