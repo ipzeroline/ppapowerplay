@@ -1,21 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import nextEnv from "@next/env";
 
 const root = process.cwd();
-const envPath = path.join(root, ".env.local");
-const fileEnv = {};
-
-if (fs.existsSync(envPath)) {
-  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
-    const index = trimmed.indexOf("=");
-    fileEnv[trimmed.slice(0, index)] = trimmed.slice(index + 1);
-  }
-}
+// Same env files and precedence as the app: shell variables, then .env.production.local,
+// .env.local, .env.production and .env.
+nextEnv.loadEnvConfig(root, false);
 
 function env(name) {
-  return process.env[name] ?? fileEnv[name] ?? "";
+  return process.env[name] ?? "";
 }
 
 function requireEnv(name) {
