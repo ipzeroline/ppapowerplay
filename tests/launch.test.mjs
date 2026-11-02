@@ -69,7 +69,7 @@ test("PromptPay QR is issued only for the member's own unpaid PromptPay payment"
   delete process.env.PROMPTPAY_ID;
 });
 
-function slipConnection({ payment, booking = null, taken = [] }) {
+function slipConnection({ payment, booking = null, taken = [], blocks = [] }) {
   const statements = [];
   const state = { committed: false, rolledBack: false };
   return {
@@ -80,6 +80,7 @@ function slipConnection({ payment, booking = null, taken = [] }) {
       if (sql.includes("FROM payments WHERE")) return [payment && params[0] === payment.paymentNo ? [payment] : []];
       if (sql.includes("FROM bookings WHERE id = ?")) return [booking ? [booking] : []];
       if (sql.includes("FROM bookings WHERE court_id = ?")) return [taken];
+      if (sql.includes("FROM court_blocks")) return [blocks];
       return [{ affectedRows: 1 }];
     },
   };
@@ -203,6 +204,20 @@ test("a late slip re-reserves the court only while the slot is still free", asyn
       assert.equal(conn.state.committed, false, reason);
       assert.equal(readdirSync(dir).length, kept, `${reason}: no slip stored`);
     }
+  });
+});
+
+test("a late slip does not re-reserve a court that staff blocked in the meantime", async () => {
+  await withSlipDir(async () => {
+    const late = { ...heldBooking, status: "expired", holdValid: 0 };
+    const conn = slipConnection({ payment: bookingPayment, booking: late, taken: [], blocks: [{ id: 4 }] });
+    const response = await uploadSlip(slipRoute(conn), "PAYBOOK1234");
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).code, "BOOKING_EXPIRED");
+    assert.equal(conn.statements.some(([sql]) => sql.startsWith("UPDATE")), false, "the blocked court stays blocked");
+    const [blockSql, blockParams] = conn.statements.find(([sql]) => sql.includes("FROM court_blocks"));
+    assert.match(blockSql, /court_id = \? AND cancelled_at IS NULL AND starts_at < \? AND ends_at > \?.*FOR UPDATE/);
+    assert.deepEqual(blockParams, [3, late.endsAt, late.startsAt]);
   });
 });
 
@@ -1056,7 +1071,7 @@ test("dashboard figures come from SQL for stated periods and only for roles allo
   const scheduleRows = seen.find((sql) => sql.includes("FROM bookings b") && !sql.includes("checkedIn"));
   for (const text of [bookingCounts, scheduleRows]) {
     assert.match(text, /b\.starts_at >= CURDATE\(\) AND b\.starts_at < CURDATE\(\) \+ INTERVAL 1 DAY/);
-    assert.match(text, /b\.status IN \('hold', 'pending_payment'\) AND b\.expires_at > NOW\(\)/, "lapsed holds are not counted or listed");
+    assert.match(text, /b\.status IN \('hold', 'pending_payment'\) AND \(b\.expires_at IS NULL OR b\.expires_at > NOW\(\)\)/, "lapsed holds are not counted or listed (counter holds have no expiry)");
   }
   assert.match(bookingCounts, /COUNT\(CASE WHEN b\.status = 'checked_in' THEN 1 END\) checkedIn/);
   assert.doesNotMatch(bookingCounts, /LIMIT/, "the day's count is not capped");

@@ -47,3 +47,55 @@ test("files the build regenerates stay out of git, so a server pull never confli
   assert.ok(ignored.includes("*.tsbuildinfo"), "tsconfig.tsbuildinfo is written by every type check");
   assert.equal(execFileSync("git", ["ls-files", "next-env.d.ts", "tsconfig.tsbuildinfo"], { encoding: "utf8" }).trim(), "");
 });
+
+// ---------- Backups and health check ----------
+
+test("backup statements escape quotes, backslashes, Thai text, JSON and NULL and split back exactly", async () => {
+  const { insertStatements, splitDump, dumpHeader, dumpFooter } = await import("../scripts/lib/db-dump.mjs");
+  const { default: mysql } = await import("mysql2");
+  const tricky = [1, "O'Reilly", "back\\slash", "สมาชิกทดสอบ ภาษาไทย", '{"note":"a \\"quote\\"","n":1}', null, "line1\nline2;\nDROP TABLE users;", "2026-11-02 18:42:00", "300.00"];
+  const rows = Array.from({ length: 1201 }, (_, index) => [index + 1, ...tricky.slice(1)]);
+  const statements = insertStatements("payments", ["id", "name", "path", "thai", "metadata", "missing", "note", "paid_at", "amount"], rows, mysql.escape);
+  assert.equal(statements.length, 3, "at most 500 rows per INSERT");
+  assert.match(statements[0], /^INSERT INTO `payments` \(`id`, `name`, `path`, `thai`, `metadata`, `missing`, `note`, `paid_at`, `amount`\) VALUES \(1, 'O\\'Reilly', 'back\\\\slash', 'สมาชิกทดสอบ ภาษาไทย', '\{\\"note\\":\\"a \\\\\\"quote\\\\\\"\\",\\"n\\":1\}', NULL, 'line1\\nline2;\\nDROP TABLE users;', '2026-11-02 18:42:00', '300\.00'\)/);
+  for (const statement of statements) {
+    assert.equal(statement.includes("\n"), false, "one statement per line: newlines inside values are escaped");
+    assert.ok(statement.endsWith(";"));
+  }
+  const header = splitDump(dumpHeader());
+  assert.deepEqual(header, ["SET NAMES utf8mb4;", "SET time_zone = '+00:00';", "SET FOREIGN_KEY_CHECKS = 0;", "SET UNIQUE_CHECKS = 0;"]);
+  const ddl = "CREATE TABLE `payments` (\n  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+  const text = `${dumpHeader()}DROP TABLE IF EXISTS \`payments\`;\n${ddl}\n${statements.join("\n")}\n${dumpFooter()}`;
+  assert.deepEqual(splitDump(text), [...header, "DROP TABLE IF EXISTS `payments`;", ddl, ...statements, "SET UNIQUE_CHECKS = 1;", "SET FOREIGN_KEY_CHECKS = 1;"]);
+});
+
+test("restore check refuses to restore over the live database", () => {
+  const dir = serverFolder({ "backup.sql.gz": "not used", "backup.json": "{}" });
+  for (const [env, message] of [
+    ["DB_HOST=127.0.0.1\nDB_PORT=1\nDB_USER=release_test\nDB_NAME=ppa_live\n", /RESTORE_DB_NAME/],
+    ["DB_HOST=127.0.0.1\nDB_PORT=1\nDB_USER=release_test\nDB_NAME=ppa_live\nRESTORE_DB_NAME=ppa_live\n", /live database/],
+    ["DB_HOST=127.0.0.1\nDB_PORT=1\nDB_USER=release_test\nDB_NAME=ppa_live\nRESTORE_DB_NAME=ppa_restore; DROP DATABASE ppa_live\n", /RESTORE_DB_NAME/],
+  ]) {
+    writeFileSync(path.join(dir, ".env.production.local"), env);
+    const result = spawnSync(process.execPath, [path.resolve("scripts/db-restore-check.mjs"), "backup.sql.gz"], { cwd: dir, encoding: "utf8", env: { PATH: process.env.PATH }, timeout: 30_000 });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, message);
+    assert.doesNotMatch(result.stderr, /ECONNREFUSED/, "refused before connecting to anything");
+  }
+});
+
+test("health check answers 200 with a database and 503 without one", async () => {
+  const { load } = await import("./load-ts.mjs");
+  const up = load("app/api/health/route.ts", { "@/lib/db": { query: async () => [{ ok: 1 }] } });
+  const ok = await up.GET();
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { ok: true });
+  assert.match(ok.headers.get("cache-control"), /no-store/);
+  const down = load("app/api/health/route.ts", { "@/lib/db": { query: async () => { throw new Error("connect ECONNREFUSED 10.0.0.5:3306 user ppa"); } } });
+  const failed = await down.GET();
+  assert.equal(failed.status, 503);
+  assert.deepEqual(await failed.json(), { ok: false }, "no database detail leaks to the monitor");
+  const scripts = JSON.parse(readFileSync("package.json", "utf8")).scripts;
+  assert.equal(scripts["db:backup"], "node scripts/db-backup.mjs");
+  assert.equal(scripts["db:restore-check"], "node scripts/db-restore-check.mjs");
+});

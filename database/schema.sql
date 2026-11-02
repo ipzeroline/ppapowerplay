@@ -242,6 +242,28 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at DATETIME NULL AFTER e
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancel_reason VARCHAR(255) NULL AFTER cancelled_at;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS checked_in_at DATETIME NULL AFTER cancel_reason;
 ALTER TABLE bookings ADD INDEX IF NOT EXISTS idx_bookings_expiry (status, expires_at);
+-- Counter bookings (staff): walk-in guests keep their name and phone here (the booking belongs to the
+-- walk-in system user); weekly series share series_key (the client request id); created_by = staff.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS guest_name VARCHAR(160) NULL AFTER user_id;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS guest_phone VARCHAR(32) NULL AFTER guest_name;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS series_key VARCHAR(64) NULL AFTER checked_in_at;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS created_by BIGINT UNSIGNED NULL AFTER series_key;
+ALTER TABLE bookings ADD INDEX IF NOT EXISTS idx_bookings_series (series_key);
+
+-- Court time blocks (maintenance, events, private hire): the slot is not bookable while active.
+CREATE TABLE IF NOT EXISTS court_blocks (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  court_id BIGINT UNSIGNED NOT NULL,
+  starts_at DATETIME NOT NULL,
+  ends_at DATETIME NOT NULL,
+  reason VARCHAR(160) NOT NULL,
+  created_by BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  cancelled_at DATETIME NULL,
+  PRIMARY KEY (id),
+  KEY idx_court_blocks_slot (court_id, starts_at, ends_at),
+  CONSTRAINT fk_court_blocks_court FOREIGN KEY (court_id) REFERENCES courts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS payments (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -271,7 +293,29 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS request_id VARCHAR(64) NULL AFTER 
 -- PDPA consent: when the member accepted the published privacy policy (site_setting privacy-policy) and which version.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS pdpa_accepted_at DATETIME NULL AFTER status;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS pdpa_version VARCHAR(20) NULL AFTER pdpa_accepted_at;
+-- Walk-in system user (lib/walk-in.ts): owns counter bookings and payments of customers without a
+-- LINE account. Its LINE id can never collide with a real one (LINE ids start with "U").
+INSERT IGNORE INTO users (line_user_id, display_name, member_code, status)
+VALUES ('system:walk-in', 'ลูกค้าหน้าเคาน์เตอร์', 'WALK-IN', 'active');
 ALTER TABLE payments ADD UNIQUE KEY IF NOT EXISTS uq_payments_user_request (user_id, request_id);
+
+-- Receipts (lib/receipts.ts): one number per paid payment, RC<Buddhist year>-<6 digits>, counted per
+-- Bangkok year in receipt_sequences inside the issuing transaction (no gaps, no shared numbers).
+CREATE TABLE IF NOT EXISTS receipt_sequences (
+  year SMALLINT UNSIGNED NOT NULL,
+  last_no INT UNSIGNED NOT NULL,
+  PRIMARY KEY (year)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS payment_receipts (
+  payment_id BIGINT UNSIGNED NOT NULL,
+  receipt_no VARCHAR(24) NOT NULL,
+  issued_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  issued_by BIGINT UNSIGNED NULL,
+  PRIMARY KEY (payment_id),
+  UNIQUE KEY uq_payment_receipts_no (receipt_no),
+  CONSTRAINT fk_payment_receipts_payment FOREIGN KEY (payment_id) REFERENCES payments(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS wallet_accounts (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -420,6 +464,17 @@ CREATE TABLE IF NOT EXISTS notifications (
   CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Reminders already sent by the scheduled job (lib/scheduled-jobs.ts): one per booking
+-- (booking_soon) and one per membership (membership_ending), never repeated.
+CREATE TABLE IF NOT EXISTS member_reminders (
+  kind VARCHAR(32) NOT NULL,
+  ref_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  sent_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (kind, ref_id),
+  KEY idx_member_reminders_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS app_content_items (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   content_type VARCHAR(64) NOT NULL,
@@ -560,6 +615,13 @@ VALUES
 INSERT IGNORE INTO app_content_items (content_type, slug, title, subtitle, body, icon, action_label, target_screen, price, metadata, sort_order)
 VALUES
   ('site_setting', 'support-contact', 'ช่วยเหลือ & ติดต่อเรา', 'PPA Power Play Sport Club', NULL, '❓', NULL, 'help', 0, '{"phone":"02-123-4567","email":"support@ppapowerplay.com","line":"@ppapowerplay","lineUrl":"https://line.me/R/ti/p/@ppapowerplay","hours":"08:00-21:00"}', 10);
+
+-- receipt-info: header printed on receipts (business name, branch, address, 13-digit tax ID, phone,
+-- vatRegistered for an abbreviated tax invoice, footer). Read by receipts only, so it is seeded OFF:
+-- active items are sent to the member app and this one is not for members.
+INSERT IGNORE INTO app_content_items (content_type, slug, title, subtitle, body, icon, action_label, target_screen, price, metadata, active, sort_order)
+VALUES
+  ('site_setting', 'receipt-info', 'ข้อมูลหัวใบเสร็จ', 'ใช้พิมพ์ใบเสร็จ ไม่ต้องเปิดใช้งาน', NULL, '🧾', NULL, NULL, 0, '{"businessName":"PPA Power Play Sport Club","branch":"สำนักงานใหญ่","address":"","taxId":"","phone":"","vatRegistered":false,"footer":"ขอบคุณที่ใช้บริการ"}', FALSE, 30);
 
 -- privacy-policy: PDPA notice members accept in the app. Seeded OFF as a draft. The owner reviews the text,
 -- keeps or changes metadata.version, then activates it. Members are asked again whenever the version changes.

@@ -39,6 +39,12 @@ async function holdBookingForSlip(conn: Connection, bookingId: number, userId: n
         [booking.courtId, booking.id, booking.endsAt, booking.startsAt],
       );
       if ((taken as unknown[]).length) return false;
+      // A court staff blocked after the hold expired (maintenance, an event) is not re-reserved either.
+      const [blocked] = await conn.execute(
+        "SELECT id FROM court_blocks WHERE court_id = ? AND cancelled_at IS NULL AND starts_at < ? AND ends_at > ? LIMIT 1 FOR UPDATE",
+        [booking.courtId, booking.endsAt, booking.startsAt],
+      );
+      if ((blocked as unknown[]).length) return false;
     }
   }
   await conn.execute("UPDATE bookings SET expires_at = ends_at, status = IF(status = 'expired', 'pending_payment', status) WHERE id = ?", [booking.id]);

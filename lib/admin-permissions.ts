@@ -10,6 +10,8 @@ const routePermissions: Record<string, string[]> = {
   coupons: ["coupons.manage"], trainers: ["trainers.manage"], uploads: ["trainers.manage", "content.manage"],
   payments: ["payments.manage"], sales: ["sales.manage"], staff: ["staff.manage"], roles: ["roles.manage"],
   qr: ["bookings.manage", "coupons.manage", "payments.manage"], profile: [], dashboard: ["dashboard.view"],
+  // Receipts are printed at the counter (sales), by finance (payments) and for reports.
+  receipts: ["payments.manage", "sales.manage", "reports.view"], reports: ["reports.view", "payments.manage"],
 };
 
 export function requiredPermissions(resource: string, method: string) {

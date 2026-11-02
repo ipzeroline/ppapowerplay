@@ -40,10 +40,16 @@ export async function GET(req: Request) {
     "SELECT id, name, zone, capacity, hourly_rate hourlyRate FROM courts WHERE sport_id = ? AND status = 'available' ORDER BY sort_order, id",
     [sports[0].id],
   );
-  // Read only, with one bounded range query and no expired holds blocking dates.
+  // Read only, with one bounded range query and no expired holds blocking dates. Active court blocks
+  // (maintenance, events) occupy their slots exactly like bookings.
+  const range = [`${dates.at(-1)} 23:59:59`, `${dates[0]} 00:00:00`];
+  const courtIds = courts.map((court) => court.id);
+  const blocks = courtIds.length
+    ? ` UNION ALL SELECT court_id courtId, DATE_FORMAT(starts_at, '%Y-%m-%d %H:%i:%s') startsAt, DATE_FORMAT(ends_at, '%Y-%m-%d %H:%i:%s') endsAt FROM court_blocks WHERE court_id IN (${courtIds.map(() => "?").join(", ")}) AND cancelled_at IS NULL AND starts_at < ? AND ends_at > ?`
+    : "";
   const booked = await query<Occupancy>(
-    "SELECT court_id courtId, DATE_FORMAT(starts_at, '%Y-%m-%d %H:%i:%s') startsAt, DATE_FORMAT(ends_at, '%Y-%m-%d %H:%i:%s') endsAt FROM bookings WHERE sport_id = ? AND starts_at < ? AND ends_at > ? AND (status IN ('paid','checked_in') OR (status IN ('hold','pending_payment') AND (expires_at IS NULL OR expires_at > NOW())))",
-    [sports[0].id, `${dates.at(-1)} 23:59:59`, `${dates[0]} 00:00:00`],
+    `SELECT court_id courtId, DATE_FORMAT(starts_at, '%Y-%m-%d %H:%i:%s') startsAt, DATE_FORMAT(ends_at, '%Y-%m-%d %H:%i:%s') endsAt FROM bookings WHERE sport_id = ? AND starts_at < ? AND ends_at > ? AND (status IN ('paid','checked_in') OR (status IN ('hold','pending_payment') AND (expires_at IS NULL OR expires_at > NOW())))${blocks}`,
+    [sports[0].id, ...range, ...(courtIds.length ? [...courtIds, ...range] : [])],
   );
   const now = Date.now();
   const slotsFor = (date: string) => courts.flatMap((court) => bookingSlots.map((time) => {

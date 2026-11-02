@@ -94,7 +94,7 @@ between `npm ci` and the restart). Every script reads the same env files as the 
 shell variables, then `.env.production.local`, `.env.local`, `.env.production`, `.env`.
 
 ```sh
-# 1. Back up the database first (provider snapshot or mysqldump).
+# 1. Back up the database first: npm run db:backup (then copy the file off the server).
 git status                              # nothing should be modified except generated files
 git checkout -- next-env.d.ts tsconfig.tsbuildinfo 2>/dev/null || true   # only needed once, see below
 git pull --ff-only origin main
@@ -117,6 +117,38 @@ npm run line:rich-menu:create           # becomes the default rich menu for ever
 - `SLIP_STORAGE_DIR` defaults to `storage/payment-slips` in the app folder. `git pull`
   leaves that folder alone (it is ignored by git), but include it in backups, or point the
   variable at a backed-up volume.
+
+### Backups, scheduled job and monitoring
+
+`npm run db:backup` writes every table (definitions and rows, one consistent snapshot) as
+gzipped SQL to `BACKUP_DIR` (default `storage/backups`, ignored by git):
+`ppa-YYYYMMDD-HHmm.sql.gz` (Bangkok time) plus a `.json` manifest of row counts. It deletes
+its own backups older than `BACKUP_KEEP_DAYS` (default 14) and needs no `mysqldump`.
+
+Crontab of the app user (`crontab -e`; it holds the cron secret, so keep it private):
+
+```cron
+# Daily backup at 03:00 server time, then a copy off the server (another machine or cloud storage).
+0 3 * * *    cd /path/to/app && npm run db:backup >> storage/backups/backup.log 2>&1
+30 3 * * *   rsync -a /path/to/app/storage/backups/ backup@other-host:/backups/ppa/
+# Scheduled job: booking/package reminders and auto-cancel of unpaid requests (needs CRON_SECRET).
+*/10 * * * * curl -fsS -X POST -H "Authorization: Bearer <CRON_SECRET>" https://gymnos234.com/api/cron/run > /dev/null
+```
+
+- **Off the server:** a backup on the same disk is lost with the server. Copy each file to
+  another machine or to cloud storage (`rsync`, `rclone`, the host's object storage) and
+  keep at least 30 days there.
+- **Monthly restore check:** set `RESTORE_DB_NAME` to a scratch database the DB user may
+  create (never `DB_NAME`; the script refuses it) and run
+  `npm run db:restore-check -- storage/backups/ppa-YYYYMMDD-HHmm.sql.gz`. It loads the file
+  into that database and compares every table's row count with the manifest. Drop the
+  scratch database afterwards.
+- **Restoring production:** stop the app, then
+  `gunzip -c storage/backups/ppa-YYYYMMDD-HHmm.sql.gz | mysql -h <host> -u <user> -p <DB_NAME>`
+  (the file is plain SQL), then start the app.
+- **Uptime monitor:** point a monitor (UptimeRobot, Better Stack or the host's own) at
+  `https://gymnos234.com/api/health` every 5 minutes. It answers 200 `{"ok":true}` when the
+  app reaches its database and 503 `{"ok":false}` otherwise, with no other detail.
 
 ## Release 2026-10-31: package page, coupons, Find Your Game, GYMNOS, rich menu
 
@@ -286,3 +318,75 @@ actually received, including top-ups).
 
 PromptPay QR is a standard Thai QR with the exact amount. Payment is confirmed by staff
 from the slip; there is no automatic bank reconciliation.
+
+## Release 2026-11-02: counter operations
+
+Court calendar with counter booking, daily cash-up, numbered receipts, reminders,
+automatic cancellation of unpaid requests, backups and a health check, and report figures
+with stated periods. The plan and decisions are in
+`docs/superpowers/plans/2026-11-02-ppa-counter-operations.md`.
+
+**1. Environment** (see `.env.production.example`)
+
+| Variable | Purpose |
+| --- | --- |
+| `CRON_SECRET` | Secret for the scheduled job `POST /api/cron/run` (at least 32 random characters). Empty turns reminders off; unpaid requests are then cleared only when staff open AdminConsole. |
+| `BACKUP_DIR` | Where `npm run db:backup` writes (default `storage/backups`). Use a persistent volume and copy the files off the server. |
+| `BACKUP_KEEP_DAYS` | Days of backups kept on the server (default 14). |
+| `RESTORE_DB_NAME` | Scratch database for `npm run db:restore-check`; never the live `DB_NAME`. |
+
+**2. Database migration (run before deploying this build)**
+
+Back up (`npm run db:backup`), run `npm run db:init` on staging, check `SHOW WARNINGS`, then
+on production, then deploy the build. It adds:
+
+- `bookings.guest_name`, `guest_phone`, `series_key`, `created_by` and the walk-in system
+  user (`system:walk-in`, shown as "ลูกค้าหน้าเคาน์เตอร์") that owns counter bookings of
+  customers without a LINE account. It never appears in member lists or counts.
+- `court_blocks` (maintenance, events, private hire), `receipt_sequences`,
+  `payment_receipts`, `member_reminders`.
+- The `receipt-info` site setting (seeded off: receipts read it either way).
+
+All changes add tables, nullable columns and insert-only seeds; rolling the code back needs
+no database rollback.
+
+**3. Before opening**
+
+1. App Content → `site_setting` → `receipt-info`: business name, branch, address, phone and
+   footer printed on receipts. Set `taxId` (13 digits) and `"vatRegistered": true` only if
+   the club is VAT-registered: receipts then print as "ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ"
+   with the VAT inside the price. Check the wording with the accountant.
+2. Set `CRON_SECRET`, add the cron lines from "Backups, scheduled job and monitoring", run
+   `npm run db:backup` once and `npm run db:restore-check` against it, and point an uptime
+   monitor at `/api/health`.
+
+**4. Staff workflow**
+
+- **Court calendar** (ระบบจอง, top of the page): one day, courts × hours 08:00–23:00. A free
+  cell books that court and hour. Choose a member (search by name, code or phone; needs
+  member or counter-sale access) or "ลูกค้าทั่วไป" with name and phone. "จองซ้ำทุกสัปดาห์"
+  books the same slot up to 12 weeks; taken weeks are skipped and listed. "ชำระตอนนี้"
+  records the payment at once (cash, card or transfer); "ชำระทีหลัง" holds the court until
+  staff press "รับชำระ" or cancel. The price comes from the court rate (×1.5 from 17:00).
+- **Booking detail** (select a booking): take payment, check in, cancel with a reason, and
+  print the receipt. A member's own PromptPay request for the booking is confirmed in the
+  payment queue instead, so it is never paid twice.
+- **Court blocks:** "บล็อกสนาม" closes a court for a time range with a reason; members cannot
+  book it in the app either. A block is refused while bookings overlap it (the dialog
+  lists them): move or cancel those first. Select a block to remove it.
+- **Receipts:** "ใบเสร็จ" on paid payments, after a counter sale and in booking details opens a
+  printable receipt (80 mm, also fine on A5/A4). The first print takes the next number
+  (RC2569-000001 …, per Buddhist year); printing again shows the same number.
+- **Daily cash-up** (รายงาน → ปิดยอดประจำวัน): money taken on a day by channel and by staff
+  member, payments made from app credit (not money received), refunds and every payment.
+  Count the drawer against "เงินสดรับเข้า", then print and sign. Payments confirmed by
+  staff are now attributed to them; older ones show "ไม่ระบุผู้รับ".
+- **Unpaid requests** without a slip are cancelled automatically after 3 days, and court
+  bookings once their session has ended; the member is told nothing was charged. Requests
+  with a slip always wait for staff. Counter "pay later" holds are never cancelled
+  automatically.
+- **Reminders** (in-app, and LINE when push is on): 2 hours before a paid court booking,
+  and 3 days before a package ends unless the member already renewed. Each is sent once.
+- **Reports:** every figure states its period ("เดือนนี้ 1–2 พ.ย.", "ตอนนี้", "ทั้งหมด") and
+  every list says how many recent rows it holds. "ควรเพิ่มอะไร" lists what is built, what
+  comes next once there is real data, and what is not worth doing now.

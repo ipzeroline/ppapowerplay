@@ -8,6 +8,9 @@ type SettingItem = { id: number; contentType: string; slug: string; title: strin
 export type SupportContact = { phone: string; email: string; line: string; lineUrl: string; hours: string };
 export type PrivacyPolicy = { id: number; title: string; summary: string | null; body: string | null; version: string; url: string | null };
 export type ConsentState = { acceptedAt: string | null; version: string | null };
+// Receipt header (setting "receipt-info"). vatRegistered prints an abbreviated tax invoice with the
+// VAT inside the amount; it needs the 13-digit tax ID.
+export type ReceiptInfo = { businessName: string; branch: string; address: string; taxId: string; phone: string; vatRegistered: boolean; footer: string };
 
 // What the app shipped with; used until the owner edits the "support-contact" setting.
 export const defaultSupportContact: SupportContact = {
@@ -16,6 +19,16 @@ export const defaultSupportContact: SupportContact = {
   line: "@ppapowerplay",
   lineUrl: "https://line.me/R/ti/p/@ppapowerplay",
   hours: "08:00-21:00",
+};
+
+export const defaultReceiptInfo: ReceiptInfo = {
+  businessName: "PPA Power Play Sport Club",
+  branch: "สำนักงานใหญ่",
+  address: "",
+  taxId: "",
+  phone: "",
+  vatRegistered: false,
+  footer: "ขอบคุณที่ใช้บริการ",
 };
 
 // Stored in users.pdpa_version VARCHAR(20).
@@ -54,6 +67,31 @@ export function supportContact(items: SettingItem[]): SupportContact {
     line,
     lineUrl: httpsUrl(meta.lineUrl, lineHosts) || `https://line.me/R/ti/p/${line}`,
     hours: matching(meta.hours, hoursPattern) || defaultSupportContact.hours,
+  };
+}
+
+function text(value: unknown, max: number) {
+  return typeof value === "string" && value.trim() && value.trim().length <= max ? value.trim() : null;
+}
+
+// 13 digits, written with or without the dashes and spaces printed on the certificate.
+function taxIdOf(value: unknown) {
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/[\s-]/g, "");
+  return /^\d{13}$/.test(digits) ? digits : null;
+}
+
+export function receiptInfo(items: SettingItem[]): ReceiptInfo {
+  const meta = parseMeta(setting(items, "receipt-info")?.metadata);
+  const taxId = taxIdOf(meta.taxId) || "";
+  return {
+    businessName: text(meta.businessName, 160) || defaultReceiptInfo.businessName,
+    branch: text(meta.branch, 80) || defaultReceiptInfo.branch,
+    address: text(meta.address, 300) || "",
+    taxId,
+    phone: matching(meta.phone, phonePattern) || "",
+    vatRegistered: meta.vatRegistered === true && Boolean(taxId),
+    footer: text(meta.footer, 200) || defaultReceiptInfo.footer,
   };
 }
 
@@ -102,6 +140,13 @@ export function contentProblem(contentType: string, slug: string, metadata: Reco
     ];
     const invalid = checks.filter(([field, ok]) => metadata[field] !== undefined && !ok).map(([field]) => field);
     return invalid.length ? `support-contact: ค่าไม่ถูกต้อง ${invalid.join(", ")} (lineUrl ต้องเป็น https://line.me หรือ https://lin.ee)` : null;
+  }
+  if (slug === "receipt-info") {
+    if (metadata.taxId !== undefined && metadata.taxId !== "" && !taxIdOf(metadata.taxId)) return "receipt-info: taxId ต้องเป็นเลขประจำตัวผู้เสียภาษี 13 หลัก (เว้นว่างได้)";
+    if (metadata.vatRegistered !== undefined && typeof metadata.vatRegistered !== "boolean") return "receipt-info: vatRegistered ต้องเป็น true หรือ false";
+    if (metadata.vatRegistered === true && !taxIdOf(metadata.taxId)) return "receipt-info: จดทะเบียน VAT ต้องระบุ taxId 13 หลัก";
+    if (metadata.phone !== undefined && metadata.phone !== "" && matching(metadata.phone, phonePattern) === null) return "receipt-info: phone ไม่ถูกต้อง";
+    return null;
   }
   return null;
 }

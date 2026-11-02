@@ -3,7 +3,7 @@ import { createPublicId } from "@/lib/db";
 
 type Connection = Pick<mysql.PoolConnection, "execute">;
 
-export const requestIdPattern = /^[A-Za-z0-9-]{8,64}$/;
+export { requestIdPattern } from "@/lib/request-id";
 
 export function isDuplicateEntry(error: unknown) {
   return typeof error === "object" && error !== null && (error as { code?: string }).code === "ER_DUP_ENTRY";

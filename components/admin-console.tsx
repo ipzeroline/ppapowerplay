@@ -4,6 +4,8 @@ import { AdminMembers } from "@/components/admin-members";
 import { AdminQrScanner } from "@/components/admin-qr-scanner";
 import { safeImageSource } from "@/lib/media";
 import { AdminDialog } from "@/components/admin-dialog";
+import { AdminCourtCalendar, CounterPaymentDialog } from "@/components/admin-court-calendar";
+import { AdminCashup } from "@/components/admin-cashup";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,6 +16,9 @@ import {
 import { canAccessSection, canViewSlips } from "@/lib/admin-permissions";
 import { AdminDashboard } from "@/components/admin-dashboard";
 import type { DashboardSnapshot } from "@/lib/admin-dashboard";
+import type { ReportFigures } from "@/lib/report-figures";
+import { coverageLabel, periodLabel } from "@/lib/report-periods";
+import { completionChecklist, recommendations, roadmap } from "@/lib/admin-analysis";
 import { adminLangCookie, adminThemeCookie, type AdminLang, type AdminTheme } from "@/lib/admin-preferences";
 
 type Lang = AdminLang;
@@ -131,6 +136,8 @@ type AdminContentItem = {
 export type AdminConsoleData = {
   // Role-gated figures for the dashboard (lib/admin-dashboard.ts); refreshed from /api/admin/dashboard.
   dashboard?: DashboardSnapshot;
+  // Reports cards, counted in SQL for a stated period (lib/report-figures.ts).
+  reportFigures?: ReportFigures;
   metrics: AdminMetric[];
   users: AdminUser[];
   bookings: AdminBooking[];
@@ -205,10 +212,11 @@ const copy = {
     bookingUpdated: "อัปเดตรายการจองแล้ว",
     bookingCancelled: "ยกเลิกรายการจองแล้ว",
     bookingCheckin: "เช็คอิน",
-    bookingMarkPaid: "ชำระแล้ว",
+    bookingMarkPaid: "รับชำระ",
     paymentMarkPaid: "ยืนยันชำระ",
     paymentCancel: "ยกเลิกรายการ",
     viewSlip: "ดูสลิป",
+    receipt: "ใบเสร็จ",
     previousSlip: "สลิปเดิม",
     queueEmpty: "ไม่มีรายการรอยืนยันหรือรอคืนเงิน รายการใหม่จะขึ้นที่นี่เองภายใน 1 นาที",
     awaitingConfirmation: "รอยืนยัน",
@@ -253,6 +261,7 @@ const copy = {
     reportCourts: "สนาม",
     reportEngagement: "การใช้งาน",
     reportAudit: "บันทึกการทำงาน",
+    reportCashup: "ปิดยอดประจำวัน",
     reportKpi: "KPI สำคัญ",
     reportDetail: "รายละเอียดรายงาน",
     reportSearchRows: "ค้นหาในรายการ",
@@ -285,7 +294,7 @@ const copy = {
     allMembers: "สมาชิกทั้งหมด",
     activeMembers: "สมาชิกที่ใช้งาน",
     noData: "ยังไม่มีข้อมูล",
-    recommendations: "วิเคราะห์สิ่งที่ควรเพิ่มให้สมบูรณ์",
+    recommendations: "ทำต่อเมื่อมีข้อมูลหรือความต้องการจริง",
     auditTitle: "ประวัติการทำงานของระบบ",
     auditActor: "ผู้ดำเนินการ",
     auditAction: "การกระทำ",
@@ -306,10 +315,17 @@ const copy = {
     statusRisk: "เสี่ยง",
     readinessScore: "คะแนนความพร้อม",
     lastAudit: "Audit ล่าสุด",
-    checklistTitle: "Checklist ความครบถ้วนตามเมนู",
+    checklistTitle: "ความพร้อมตามเมนู",
     checklistStatusReady: "พร้อมใช้",
-    checklistStatusNext: "ควรเพิ่ม",
+    checklistStatusNext: "ทำภายหลัง",
     paidBookingRate: "อัตราการจองที่ชำระแล้ว",
+    salesExTopup: "ยอดขาย (ไม่รวมเติมเงิน)",
+    paidPayments: "รายการชำระสำเร็จ",
+    bookingsMade: "การจองที่ทำ",
+    newMembers: "สมาชิกใหม่",
+    memberVisits: "เข้าใช้บริการ",
+    couponsSold: "คูปองที่ขาย",
+    checkedInBookings: "การจองที่เช็คอินแล้ว",
     availableCourts: "สนามพร้อมใช้งาน",
     livePayments: "การชำระเงินล่าสุด",
     total: "ทั้งหมด",
@@ -515,10 +531,11 @@ const copy = {
     bookingUpdated: "Booking updated",
     bookingCancelled: "Booking cancelled",
     bookingCheckin: "Check in",
-    bookingMarkPaid: "Mark paid",
+    bookingMarkPaid: "Take payment",
     paymentMarkPaid: "Confirm paid",
     paymentCancel: "Cancel",
     viewSlip: "View slip",
+    receipt: "Receipt",
     previousSlip: "Earlier slip",
     queueEmpty: "Nothing is waiting. New payment requests appear here within a minute.",
     awaitingConfirmation: "Awaiting confirmation",
@@ -563,6 +580,7 @@ const copy = {
     reportCourts: "Courts",
     reportEngagement: "Engagement",
     reportAudit: "Audit",
+    reportCashup: "Daily cash-up",
     reportKpi: "Key KPIs",
     reportDetail: "Report Details",
     reportSearchRows: "Search rows",
@@ -595,7 +613,7 @@ const copy = {
     allMembers: "Members",
     activeMembers: "Active Members",
     noData: "No data",
-    recommendations: "Recommended Systems to Complete Production",
+    recommendations: "Next, once there is real data or demand",
     auditTitle: "System audit trail",
     auditActor: "Actor",
     auditAction: "Action",
@@ -616,10 +634,17 @@ const copy = {
     statusRisk: "Risk",
     readinessScore: "Readiness score",
     lastAudit: "Last audit",
-    checklistTitle: "Menu completion checklist",
+    checklistTitle: "What each menu can do",
     checklistStatusReady: "Ready",
-    checklistStatusNext: "Recommended",
+    checklistStatusNext: "Later",
     paidBookingRate: "Paid booking rate",
+    salesExTopup: "Sales (excl. top-ups)",
+    paidPayments: "Paid payments",
+    bookingsMade: "Bookings made",
+    newMembers: "New members",
+    memberVisits: "Visits",
+    couponsSold: "Coupons sold",
+    checkedInBookings: "Checked-in bookings",
     availableCourts: "Available courts",
     livePayments: "Live payments",
     total: "total",
@@ -789,10 +814,10 @@ const tabs = [
 ] as const satisfies readonly (readonly [string, string, string, LucideIcon])[];
 
 type AdminTab = (typeof tabs)[number][0];
-type ReportSection = "overview" | "finance" | "bookings" | "members" | "coupons" | "trainers" | "courts" | "engagement" | "audit";
+type ReportSection = "overview" | "finance" | "cashup" | "bookings" | "members" | "coupons" | "trainers" | "courts" | "engagement" | "audit";
 type AdminNavGroup = { labelTh: string; labelEn: string; items: AdminTab[] };
 
-const reportSectionIds = ["overview", "finance", "bookings", "members", "coupons", "trainers", "courts", "engagement", "audit"] as const;
+const reportSectionIds = ["overview", "finance", "cashup", "bookings", "members", "coupons", "trainers", "courts", "engagement", "audit"] as const;
 const adminNavGroups: AdminNavGroup[] = [
   { labelTh: "ภาพรวม", labelEn: "Overview", items: ["dashboard"] },
   { labelTh: "งานบริการหลัก", labelEn: "Core Operations", items: ["bookings", "scanner", "members", "trainers", "coupons", "content"] },
@@ -812,7 +837,7 @@ function pageDescription(tab: AdminTab, lang: Lang) {
       content: "จัดการ banner, promotion, class schedule, live TV, membership และ screen จาก prototype",
       coupons: "ตรวจสอบคูปอง หมวดหมู่ ราคา และการใช้งาน",
       reports: "วิเคราะห์ข้อมูลรายงานพร้อมตัวกรอง สรุปรวม และส่งออก CSV",
-      analysis: "รายการตรวจสอบและข้อเสนอแนะเพื่อยกระดับ production",
+      analysis: "สิ่งที่ระบบทำได้แล้ว สิ่งที่ควรทำต่อเมื่อมีข้อมูลจริง และสิ่งที่ยังไม่คุ้มที่จะทำ",
       staff: "จัดการบัญชีพนักงาน บทบาท สถานะ และการเข้าถึงระบบ",
       roles: "กำหนดสิทธิ์ตามบทบาทและควบคุม permission สำคัญ",
       audit: "ตรวจสอบประวัติการทำงาน การแก้ไข และ action เสี่ยง",
@@ -828,7 +853,7 @@ function pageDescription(tab: AdminTab, lang: Lang) {
       content: "Manage banners, promotions, class schedules, live TV, membership, and prototype screens.",
       coupons: "Review coupons, categories, pricing, and usage.",
       reports: "Analyze reports with filters, summaries, and CSV export.",
-      analysis: "Production checklist and recommendations for system maturity.",
+      analysis: "What is built, what comes next once there is real data, and what is not worth doing now.",
       staff: "Manage staff accounts, roles, status, and system access.",
       roles: "Assign permissions by role and protect critical access.",
       audit: "Review activity logs, edits, and high-risk actions.",
@@ -843,6 +868,7 @@ function reportMenu(t: typeof copy[Lang]): [ReportSection, string, string][] {
   return [
     ["overview", t.reportOverview, "📌"],
     ["finance", t.reportFinance, "💳"],
+    ["cashup", t.reportCashup, "🧮"],
     ["bookings", t.reportBookings, "📅"],
     ["members", t.reportMembers, "👤"],
     ["coupons", t.reportCoupons, "🎟️"],
@@ -852,87 +878,6 @@ function reportMenu(t: typeof copy[Lang]): [ReportSection, string, string][] {
     ["audit", t.reportAudit, "🧾"],
   ];
 }
-
-const recommendations = {
-  th: [
-    "Booking calendar แบบ resource view รายสนาม: day/week/month, drag-reschedule, block ซ่อมบำรุง, peak/off-peak pricing",
-    "ระบบ payment operations: pending/failed queue, refund, void, payment reconciliation, receipt/tax invoice",
-    "ระบบ check-in หน้างาน: QR scan, staff override, no-show, late arrival, court handover และ activity log",
-    "Member CRM: segment สมาชิก, tag, tier, wallet history, coupon history, PDPA consent, suspend/reactivate",
-    "Trainer operations: package, schedule availability, commission, payout, occupancy, rating และ performance report",
-    "Coupon campaign builder: usage limit, member segment, expiry, blackout date, fraud checks และ redemption analytics",
-    "LINE OA integration: rich menu per role/member tier, notification template, booking reminder, payment reminder, broadcast segment",
-    "Admin security: 2FA, session timeout, password policy, OTP confirmation สำหรับ refund/role/payment action",
-    "Audit ระดับ production: log ทุก action สำคัญ, IP/user-agent, immutable retention, export audit และ alert action เสี่ยง",
-    "Reports: CSV/PDF export, scheduled daily report, utilization heatmap, revenue by court/trainer/sport, cohort และ churn",
-    "Inventory/Pro shop: สินค้า, stock, member price, coupon usage, sale report และเชื่อม POS ในอนาคต",
-    "Facility maintenance: work order, equipment checklist, court downtime, preventive maintenance และ vendor contact",
-    "Notification center: inbox ในแอป, email/SMS fallback, template variables, delivery log และ retry",
-    "Data & backup: automated backup monitor, restore drill, data retention, anonymize/delete user และ environment health",
-    "Production observability: uptime, slow query, API error rate, payment webhook failure, LINE webhook failure และ alert",
-  ],
-  en: [
-    "Resource booking calendar: day/week/month, drag-reschedule, maintenance blocks, and peak/off-peak pricing.",
-    "Payment operations: pending/failed queue, refund, void, reconciliation, receipt, and tax invoice.",
-    "On-site check-in: QR scan, staff override, no-show, late arrival, court handover, and activity log.",
-    "Member CRM: segments, tags, tiers, wallet history, coupon history, PDPA consent, suspend/reactivate.",
-    "Trainer operations: packages, availability, commission, payout, occupancy, rating, and performance reports.",
-    "Coupon campaign builder: usage limit, member segment, expiry, blackout date, fraud checks, and redemption analytics.",
-    "LINE OA integration: role/tier rich menus, notification templates, booking reminder, payment reminder, segmented broadcast.",
-    "Admin security: 2FA, session timeout, password policy, OTP confirmation for refund/role/payment actions.",
-    "Production audit: every critical action, IP/user-agent, immutable retention, audit export, and risky-action alerts.",
-    "Reports: CSV/PDF export, scheduled reports, utilization heatmap, revenue by court/trainer/sport, cohort, and churn.",
-    "Inventory/Pro shop: products, stock, member price, coupon usage, sale report, and future POS integration.",
-    "Facility maintenance: work orders, equipment checklist, court downtime, preventive maintenance, and vendor contacts.",
-    "Notification center: in-app inbox, email/SMS fallback, template variables, delivery log, and retry.",
-    "Data and backup: automated backup monitor, restore drill, retention, anonymize/delete user, and environment health.",
-    "Production observability: uptime, slow query, API error rate, payment webhook failure, LINE webhook failure, and alerts.",
-  ],
-};
-
-const roadmap = {
-  th: [
-    { phase: "Phase 1 · ต้องทำก่อน Production", items: ["Admin session + 2FA", "Booking calendar รายสนาม", "Payment queue/refund/reconciliation", "Audit log พร้อม IP/user-agent", "Backup monitor และ restore test"] },
-    { phase: "Phase 2 · ทำให้ Operations ใช้งานจริงเร็ว", items: ["Check-in QR หน้างาน", "LINE reminder และ notification template", "Member CRM + segment", "Trainer package/commission", "Maintenance block และ work order"] },
-    { phase: "Phase 3 · ทำให้ธุรกิจโต", items: ["Coupon campaign builder", "Revenue/utilization heatmap", "Scheduled executive report", "Pro shop/POS integration", "Loyalty tier และ campaign automation"] },
-    { phase: "Phase 4 · Enterprise readiness", items: ["Immutable audit retention", "PDPA export/delete/anonymize", "Role approval workflow", "Webhook monitoring", "Multi-branch support"] },
-  ],
-  en: [
-    { phase: "Phase 1 · Production essentials", items: ["Admin sessions + 2FA", "Resource booking calendar", "Payment queue/refund/reconciliation", "Audit logs with IP/user-agent", "Backup monitor and restore test"] },
-    { phase: "Phase 2 · Faster operations", items: ["On-site QR check-in", "LINE reminders and templates", "Member CRM + segments", "Trainer packages/commission", "Maintenance blocks and work orders"] },
-    { phase: "Phase 3 · Business growth", items: ["Coupon campaign builder", "Revenue/utilization heatmaps", "Scheduled executive reports", "Pro shop/POS integration", "Loyalty tiers and campaign automation"] },
-    { phase: "Phase 4 · Enterprise readiness", items: ["Immutable audit retention", "PDPA export/delete/anonymize", "Role approval workflow", "Webhook monitoring", "Multi-branch support"] },
-  ],
-};
-
-const completionChecklist = {
-  th: [
-    { menu: "ภาพรวม", items: [{ ready: true, text: "มี KPI, หลายกราฟ, action queue และ operational signal" }, { ready: false, text: "เพิ่ม filter ช่วงเวลา/สาขา/กีฬา และ alert KPI ผิดปกติแบบ real-time" }] },
-    { menu: "ระบบจอง", items: [{ ready: true, text: "มีรายการจองและสถานะพื้นฐาน" }, { ready: false, text: "เพิ่ม calendar รายสนาม, drag/drop, recurring booking, waiting list, maintenance block และ no-show" }] },
-    { menu: "สมาชิก", items: [{ ready: true, text: "ดูสมาชิกและสถานะจากฐานข้อมูลจริง" }, { ready: false, text: "เพิ่ม edit/suspend, segment, tag, tier, PDPA consent, wallet/coupon/package history รายคน" }] },
-    { menu: "เทรนเนอร์", items: [{ ready: true, text: "เพิ่ม แก้ไข ลบ รูปภาพ ค้นหา และแบ่งหน้า" }, { ready: false, text: "เพิ่ม schedule availability, package, commission, payout, rating และ occupancy report" }] },
-    { menu: "คูปอง", items: [{ ready: true, text: "มีรายการคูปองและสถานะ" }, { ready: false, text: "เพิ่ม campaign builder, segment, usage limit, blackout date, redemption analytics และ fraud checks" }] },
-    { menu: "การเงิน", items: [{ ready: true, text: "มีรายงาน payment และยอดรวม" }, { ready: false, text: "เพิ่ม refund/void, reconciliation, receipt/tax invoice, failed payment queue และ webhook retry" }] },
-    { menu: "พนักงานและสิทธิ์", items: [{ ready: true, text: "มี CRUD พนักงาน, role, permission และ profile modal" }, { ready: false, text: "เพิ่ม session login, 2FA, approval workflow, prevent self-escalation และ password policy" }] },
-    { menu: "รายงาน", items: [{ ready: true, text: "มี filter, date range, summary, pagination และ CSV export" }, { ready: false, text: "เพิ่ม PDF export, scheduled report, heatmap, cohort, churn และ profit by court/trainer/sport" }] },
-    { menu: "LINE และ Notification", items: [{ ready: false, text: "เพิ่ม LINE rich menu ตาม role/tier, booking/payment reminder, broadcast segment และ delivery log" }, { ready: false, text: "เพิ่ม inbox ในแอป, email/SMS fallback และ template variables" }] },
-    { menu: "ตรวจสอบและความปลอดภัย", items: [{ ready: true, text: "มี audit log และ security readiness เบื้องต้น" }, { ready: false, text: "เพิ่ม IP/user-agent, immutable log, risky action alert, 2FA, session timeout และ OTP confirm" }] },
-    { menu: "ระบบและข้อมูล", items: [{ ready: true, text: "มี health checklist และ database pool retry" }, { ready: false, text: "เพิ่ม backup monitor, restore drill, slow query, uptime, webhook failure alert และ data retention" }] },
-  ],
-  en: [
-    { menu: "Dashboard", items: [{ ready: true, text: "KPIs, multiple charts, action queue, and operational signals" }, { ready: false, text: "Add period/branch/sport filters and real-time abnormal KPI alerts" }] },
-    { menu: "Bookings", items: [{ ready: true, text: "Booking list and basic status are available" }, { ready: false, text: "Add resource calendar, drag/drop, recurring bookings, waiting list, maintenance blocks, and no-show" }] },
-    { menu: "Members", items: [{ ready: true, text: "View members and statuses from live data" }, { ready: false, text: "Add edit/suspend, segments, tags, tiers, PDPA consent, and per-member wallet/coupon/package history" }] },
-    { menu: "Trainers", items: [{ ready: true, text: "Create, update, delete, image upload, search, and pagination" }, { ready: false, text: "Add availability, packages, commission, payout, rating, and occupancy reports" }] },
-    { menu: "Coupons", items: [{ ready: true, text: "Coupon list and status are available" }, { ready: false, text: "Add campaign builder, segments, usage limits, blackout dates, redemption analytics, and fraud checks" }] },
-    { menu: "Finance", items: [{ ready: true, text: "Payment report and summary are available" }, { ready: false, text: "Add refund/void, reconciliation, receipt/tax invoice, failed-payment queue, and webhook retry" }] },
-    { menu: "Staff & Roles", items: [{ ready: true, text: "Staff CRUD, role, permission, and profile modal" }, { ready: false, text: "Add login sessions, 2FA, approval workflow, self-escalation prevention, and password policy" }] },
-    { menu: "Reports", items: [{ ready: true, text: "Filters, date range, summary, pagination, and CSV export" }, { ready: false, text: "Add PDF export, scheduled reports, heatmaps, cohort, churn, and profit by court/trainer/sport" }] },
-    { menu: "LINE & Notification", items: [{ ready: false, text: "Add LINE rich menus by role/tier, booking/payment reminders, segmented broadcast, and delivery logs" }, { ready: false, text: "Add in-app inbox, email/SMS fallback, and template variables" }] },
-    { menu: "Audit & Security", items: [{ ready: true, text: "Basic audit log and security readiness exist" }, { ready: false, text: "Add IP/user-agent, immutable logs, risky-action alerts, 2FA, session timeout, and OTP confirmation" }] },
-    { menu: "System & Data", items: [{ ready: true, text: "Health checklist and database pool retry exist" }, { ready: false, text: "Add backup monitor, restore drill, slow query, uptime, webhook failure alerts, and data retention" }] },
-  ],
-};
 
 export function AdminConsole({ adminKey, data, initialReportSection, initialTab = "dashboard", initialTheme = "light", initialLang = "th" }: { adminKey: string; data: AdminConsoleData; initialReportSection?: string; initialTab?: string; initialTheme?: Theme; initialLang?: Lang }) {
   const router = useRouter();
@@ -1389,6 +1334,13 @@ function BookingManager({
 }) {
   const [bookingSearch, setBookingSearch] = useState("");
   const [cancelReason, setCancelReason] = useState("");
+  // The calendar and the list show the same bookings: a change in one reloads the other.
+  const [calendarKey, setCalendarKey] = useState(0);
+  const [paying, setPaying] = useState<AdminBooking | null>(null);
+  const reloadBookings = useCallback(async () => {
+    const response = await adminFetch(adminKey, "/api/admin/bookings", { method: "GET" });
+    if (response.ok) setRows((await response.json()).bookings);
+  }, [adminKey, setRows]);
   const [courtModalOpen, setCourtModalOpen] = useState(false);
   const [editingCourtId, setEditingCourtId] = useState<number | null>(null);
   const [courtSearch, setCourtSearch] = useState("");
@@ -1425,6 +1377,7 @@ function BookingManager({
     if (!response.ok) return setMessage(result.message || t.saveFailed);
     setRows(result.bookings);
     setCancelReason("");
+    setCalendarKey((value) => value + 1);
     setMessage(status === "cancelled" ? t.bookingCancelled : t.bookingUpdated);
   };
   const resetCourt = () => {
@@ -1457,6 +1410,7 @@ function BookingManager({
 
   return (
     <div className="admin-trainer-layout">
+      <AdminCourtCalendar lang={lang} onBookingsChange={reloadBookings} refreshKey={calendarKey} />
       <Panel title={t.bookingManager}>
         <div className="admin-list-toolbar">
           <input placeholder={t.bookingSearch} value={bookingSearch} onChange={(event) => setBookingSearch(event.target.value)} />
@@ -1469,7 +1423,7 @@ function BookingManager({
               <div><b>{booking.title}</b><span>{booking.bookingNo} · {booking.displayName}</span><small>{booking.sportName || "-"} · {booking.courtName || "-"} · {formatDate(booking.startsAt, lang)}</small><small>{booking.cancelReason || ""}</small></div>
               <Badge tone={booking.status === "paid" || booking.status === "checked_in" ? "good" : booking.status === "cancelled" || booking.status === "expired" ? "bad" : "warn"}>{statusLabel(booking.status, t)}</Badge>
               <div className="admin-row-actions">
-                <button type="button" disabled={!["hold", "pending_payment"].includes(booking.status)} onClick={() => updateBooking(booking, "paid")}>{t.bookingMarkPaid}</button>
+                <button type="button" disabled={!["hold", "pending_payment"].includes(booking.status)} onClick={() => { setMessage(""); setPaying(booking); }}>{t.bookingMarkPaid}</button>
                 <button type="button" disabled={booking.status !== "paid"} onClick={() => updateBooking(booking, "checked_in")}>{t.bookingCheckin}</button>
                 <button type="button" disabled={["checked_in", "cancelled", "expired"].includes(booking.status)} onClick={() => updateBooking(booking, "expired")}>{t.bookingExpire}</button>
                 <button type="button" className="danger" disabled={["checked_in", "cancelled", "expired"].includes(booking.status)} onClick={() => updateBooking(booking, "cancelled")}>{t.cancel}</button>
@@ -1495,6 +1449,9 @@ function BookingManager({
           ))}
         </div>
       </Panel>
+      {paying ? (
+        <CounterPaymentDialog lang={lang} booking={paying} onClose={() => setPaying(null)} onDone={(text) => { setPaying(null); setMessage(text); setCalendarKey((value) => value + 1); void reloadBookings(); }} />
+      ) : null}
       {courtModalOpen ? (
         <AdminDialog onClose={() => { resetCourt(); setCourtModalOpen(false); }}>
           <section className="admin-modal">
@@ -1570,6 +1527,7 @@ function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, em
                 {r.status === "created" ? <button type="button" disabled={!actionable || busy} onClick={() => updatePayment(r.paymentNo, "paid")}>{t.paymentMarkPaid}</button> : null}
                 {r.status === "created" && actionable ? <button type="button" className="danger" disabled={busy} aria-expanded={form?.paymentNo === r.paymentNo} onClick={() => setForm({ paymentNo: r.paymentNo, mode: "cancel", preset: t.cancelReasons[0], text: "" })}>{t.paymentCancel}</button> : null}
                 {r.status === "cancelled" && r.refundStatus === "pending" && actionable ? <button type="button" disabled={busy} aria-expanded={form?.paymentNo === r.paymentNo} onClick={() => setForm({ paymentNo: r.paymentNo, mode: "refund", preset: "", text: "" })}>{t.recordRefund}</button> : null}
+                {r.status === "paid" ? <a className="admin-button" href={`/AdminConsole/receipt/${encodeURIComponent(r.paymentNo)}`} target="_blank" rel="noopener">{t.receipt}</a> : null}
               </td>
             </tr>
             {form?.paymentNo === r.paymentNo ? (
@@ -1649,6 +1607,7 @@ function ReportDataList<T>({
       return textMatches && statusMatches && dateMatches;
     });
   }, [dateFrom, dateGetter, dateTo, query, rows, searchText, status, statusGetter]);
+  const oldest = useMemo(() => (dateGetter ? oldestOf(rows.map(dateGetter)) : null), [dateGetter, rows]);
   const totalPages = Math.max(Math.ceil(filteredRows.length / pageSize), 1);
   const currentPage = Math.min(page, totalPages);
   const pagedRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -1666,7 +1625,7 @@ function ReportDataList<T>({
           <ExportButton label={t.exportCsv} filename={filename} rows={filteredRows.map((row) => row as Record<string, unknown>)} />
         </div>
         <div className="admin-report-summary">
-          <article><span>{t.total}</span><b>{rows.length}</b><small>{t.reportSummary}</small></article>
+          <article><span>{t.total}</span><b>{rows.length}</b><small>{coverageLabel(rows.length, oldest, lang)}</small></article>
           <article><span>{t.reportFilteredRows}</span><b>{filteredRows.length}</b><small>{t.rowsShowing} {pagedRows.length}</small></article>
           <article><span>{amountLabel || t.reportSummary}</span><b>{amountLabel ? `${money(sumReportAmount(filteredRows), lang)} ฿` : filteredRows.length}</b><small>{t.total}</small></article>
         </div>
@@ -2466,48 +2425,49 @@ function adminFetch(adminKey: string, input: string, init: RequestInit) {
 }
 
 function Reports({ adminKey, data, lang, onPaymentsChange, section, t }: { adminKey: string; data: AdminConsoleData; lang: Lang; onPaymentsChange: (rows: AdminPayment[]) => void; section: ReportSection; t: typeof copy[Lang] }) {
-  const paidRevenue = data.payments.filter((payment) => payment.status === "paid").reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const paidBookings = data.bookings.filter((booking) => booking.status === "paid").length;
-  const pendingBookings = data.bookings.filter((booking) => ["hold", "pending_payment"].includes(booking.status)).length;
-  const cancelledBookings = data.bookings.filter((booking) => ["cancelled", "expired"].includes(booking.status)).length;
-  const activeCoupons = data.coupons.filter((coupon) => Boolean(coupon.active)).length;
-  const activeTrainers = data.trainers.filter((trainer) => Boolean(trainer.active)).length;
-  const availableCourts = data.courts.filter((court) => court.status === "available").length;
-  const maintenanceCourts = data.courts.filter((court) => court.status === "maintenance").length;
-  const avgBookingValue = data.bookings.length ? Math.round(data.bookings.reduce((sum, booking) => sum + Number(booking.amount || 0), 0) / data.bookings.length) : 0;
-  const avgTrainerPrice = data.trainers.length ? Math.round(data.trainers.reduce((sum, trainer) => sum + Number(trainer.startPrice || 0), 0) / data.trainers.length) : 0;
-  const paidRate = data.bookings.length ? Math.round((paidBookings / data.bookings.length) * 100) : 0;
+  // Every card states its period: month to date (from the 1st to today), now, or all time.
+  const f = data.reportFigures;
+  const month = periodLabel("month", f?.period, lang);
+  const now = periodLabel("now", f?.period, lang);
+  const all = periodLabel("all", f?.period, lang);
+  const show = (value: number | null | undefined, format: (value: number) => string = String) => (value === null || value === undefined ? "-" : format(value));
+  const baht = (value: number) => `${money(value, lang)} ฿`;
+  const percent = (value: number) => `${value}%`;
+  const paidRate = f?.bookings?.paidRate ?? 0;
   const reportTabs = reportMenu(t);
 
-  const cards = {
+  const cards: Record<ReportSection, [string, string, string][]> = {
     overview: [
-      [t.paidRevenue, `${money(paidRevenue, lang)} ฿`],
-      [t.paidBookingRate, `${paidRate}%`],
-      [t.activeMembers, data.users.filter((user) => user.status === "active").length],
-      [t.availableCourts, `${availableCourts}/${data.courts.length}`],
+      [t.salesExTopup, show(f?.finance?.salesMonth, baht), month],
+      [t.paidBookingRate, show(f?.bookings?.paidRate, percent), month],
+      [t.activeMembers, show(f?.members?.active), now],
+      [t.availableCourts, f?.courts ? `${f.courts.available}/${f.courts.total}` : "-", now],
     ],
-    finance: [[t.paidRevenue, `${money(paidRevenue, lang)} ฿`], [t.paymentRows, data.payments.length], [t.avgBookingValue, `${money(avgBookingValue, lang)} ฿`]],
-    bookings: [[t.allBookings, data.bookings.length], [t.paidBookingRate, `${paidRate}%`], [t.pendingBookings, pendingBookings], [t.cancelledBookings, cancelledBookings]],
-    members: [[t.allMembers, data.users.length], [t.activeMembers, data.users.filter((user) => user.status === "active").length], [t.checkinSignal, data.bookings.filter((booking) => booking.status === "checked_in").length]],
-    coupons: [[t.total, data.coupons.length], [t.activeCoupons, activeCoupons], [t.cols.usage, data.coupons.reduce((sum, coupon) => sum + Number(coupon.totalUses || 0), 0)]],
-    trainers: [[t.total, data.trainers.length], [t.activeTrainers, activeTrainers], [t.trainerAvgPrice, `${money(avgTrainerPrice, lang)} ฿`]],
-    courts: [[t.allCourts, data.courts.length], [t.availableCourts, availableCourts], [t.courtMaintenance, maintenanceCourts]],
-    engagement: [[t.utilizationSignal, `${paidRate}%`], [t.checkinSignal, data.bookings.filter((booking) => booking.status === "checked_in").length], [t.livePayments, data.payments.length]],
-    audit: [[t.auditEvents, data.auditLogs.length], [t.highRiskActions, data.auditLogs.filter((log) => log.action.includes("delete") || log.action.includes("password")).length], [t.staff, data.staff.length]],
-  } as Record<ReportSection, [string, number | string][]>;
+    finance: [[t.salesExTopup, show(f?.finance?.salesMonth, baht), month], [t.paidPayments, show(f?.finance?.paymentsMonth), month], [t.avgBookingValue, show(f?.finance?.avgBookingValueMonth, baht), month]],
+    cashup: [],
+    bookings: [[t.bookingsMade, show(f?.bookings?.month), month], [t.paidBookingRate, show(f?.bookings?.paidRate, percent), month], [t.pendingBookings, show(f?.bookings?.pendingNow), now], [t.cancelledBookings, show(f?.bookings?.cancelledMonth), month]],
+    members: [[t.allMembers, show(f?.members?.total), all], [t.activeMembers, show(f?.members?.active), now], [t.newMembers, show(f?.members?.newMonth), month], [t.memberVisits, show(f?.members?.checkinsMonth), month]],
+    coupons: [[t.total, show(f?.coupons?.total), all], [t.activeCoupons, show(f?.coupons?.active), now], [t.couponsSold, show(f?.coupons?.soldMonth), month]],
+    trainers: [[t.total, show(f?.trainers?.total), all], [t.activeTrainers, show(f?.trainers?.active), now], [t.trainerAvgPrice, show(f?.trainers?.avgPrice, baht), now]],
+    courts: [[t.allCourts, show(f?.courts?.total), all], [t.availableCourts, show(f?.courts?.available), now], [t.courtMaintenance, show(f?.courts?.maintenance), now]],
+    engagement: [[t.utilizationSignal, show(f?.bookings?.paidRate, percent), month], [t.checkedInBookings, show(f?.bookings?.checkedInMonth), month], [t.memberVisits, show(f?.members?.checkinsMonth), month]],
+    audit: [[t.auditEvents, show(f?.audit?.eventsMonth), month], [t.highRiskActions, show(f?.audit?.sensitiveMonth), month], [t.staff, String(data.staff.length), all]],
+  };
 
+  // The cash-up loads its own day from the server; it has no summary cards.
+  if (section === "cashup") return <div className="admin-report-content"><AdminCashup lang={lang} /></div>;
   return (
     <div className="admin-report-content">
       <Panel title={reportTabs.find(([id]) => id === section)?.[1] || t.reports}>
         <div className="admin-report-kpis">
-          {cards[section].map(([label, value]) => <ReportCard key={label} label={label} value={value} />)}
+          {cards[section].map(([label, value, period]) => <ReportCard key={label} label={label} period={period} value={value} />)}
         </div>
         <ReportRecommendation lang={lang} section={section} t={t} paidRate={paidRate} />
       </Panel>
       {section === "overview" && (
         <div className="admin-report-grid">
-          <Panel title={t.revenueTrend}><BarChart rows={buildRevenueBars(data.payments, lang)} moneyBars /></Panel>
-          <Panel title={t.bookingStatus}><DonutSummary rows={buildStatusBars(data.bookings)} t={t} /></Panel>
+          <Panel title={t.revenueTrend}><BarChart rows={buildRevenueBars(data.payments, lang)} moneyBars /><p className="admin-report-coverage">{coverageLabel(data.payments.length, oldestOf(data.payments.map((row) => row.paidAt || row.createdAt)), lang)}</p></Panel>
+          <Panel title={t.bookingStatus}><DonutSummary rows={buildStatusBars(data.bookings)} t={t} /><p className="admin-report-coverage">{coverageLabel(data.bookings.length, oldestOf(data.bookings.map((row) => row.startsAt)), lang)}</p></Panel>
           <Panel title={t.courtMix}><BarChart rows={buildCourtBars(data.courts)} /></Panel>
           <Panel title={t.reportExportAll}><div className="admin-report-export-grid"><ExportButton label={t.reportFinance} filename="ppa-report-payments.csv" rows={data.payments} /><ExportButton label={t.reportBookings} filename="ppa-report-bookings.csv" rows={data.bookings} /><ExportButton label={t.reportMembers} filename="ppa-report-members.csv" rows={data.users} /></div></Panel>
         </div>
@@ -2524,8 +2484,14 @@ function Reports({ adminKey, data, lang, onPaymentsChange, section, t }: { admin
   );
 }
 
-function ReportCard({ label, value }: { label: string; value: number | string }) {
-  return <div className="report-card"><span>{label}</span><b>{value}</b></div>;
+// Oldest of the given dates (ISO strings or Date objects from the server), or null.
+function oldestOf(values: (string | Date | null | undefined)[]) {
+  const times = values.map((value) => (value ? new Date(value).getTime() : Number.NaN)).filter(Number.isFinite);
+  return times.length ? new Date(Math.min(...times)).toISOString() : null;
+}
+
+function ReportCard({ label, period, value }: { label: string; period: string; value: number | string }) {
+  return <div className="report-card"><span>{label}</span><b>{value}</b><small>{period}</small></div>;
 }
 
 function ReportRecommendation({ lang, paidRate, section, t }: { lang: Lang; paidRate: number; section: string; t: typeof copy[Lang] }) {
@@ -2673,7 +2639,7 @@ function Analysis({ lang, t }: { lang: Lang; t: typeof copy[Lang] }) {
       <Panel title={t.recommendations}>
         <div className="recommend-list">{recommendations[lang].map((item, index) => <article key={item}><b>{String(index + 1).padStart(2, "0")}</b><span>{item}</span></article>)}</div>
       </Panel>
-      <Panel title={lang === "th" ? "Roadmap ตามความสำคัญ" : "Priority Roadmap"}>
+      <Panel title={lang === "th" ? "สรุปลำดับความสำคัญ" : "Priorities"}>
         <div className="admin-roadmap">
           {roadmap[lang].map((phase, index) => (
             <article key={phase.phase}>

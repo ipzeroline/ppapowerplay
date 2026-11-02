@@ -4,9 +4,12 @@ import { AdminConsole, type AdminConsoleData } from "@/components/admin-console"
 import { adminSessionCookieName, getAdminIdentity, hasAdminPermission } from "@/lib/admin-auth";
 import { canAccessSection } from "@/lib/admin-permissions";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { query } from "@/lib/db";
 import { adminPaymentListSql } from "@/lib/admin-payment-list";
 import { loadDashboard } from "@/lib/admin-dashboard";
+import { loadReportFigures } from "@/lib/report-figures";
+import { runStalePaymentSweep } from "@/lib/scheduled-jobs";
 import { adminLangCookie, adminThemeCookie, readAdminLang, readAdminTheme } from "@/lib/admin-preferences";
 
 type AdminConsolePageProps = {
@@ -46,6 +49,9 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     );
   }
 
+  // Unpaid requests past their time leave the payment queue even where no cron job is set up
+  // (at most once every 10 minutes, after this response).
+  after(runStalePaymentSweep);
   const can = (permission: string) => hasAdminPermission(currentAdmin, permission);
   if (!canAccessSection(initialTab, can)) {
     const first = adminConsoleSections.find((section) => canAccessSection(section, can));
@@ -74,13 +80,13 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     notifications,
     groups,
 ] = await Promise.all([
-    allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM users"),
+    allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM users u WHERE u.line_user_id <> 'system:walk-in'"),
     allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM bookings"),
     allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM payments WHERE status = 'paid'"),
     allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COALESCE(SUM(amount), 0) total FROM payments WHERE status = 'paid'"),
-    allowedQuery<AdminConsoleData["users"][number]>(["members.manage","reports.view"], "SELECT id, display_name displayName, member_code memberCode, phone, email, status, created_at createdAt FROM users ORDER BY created_at DESC LIMIT 80",
+    allowedQuery<AdminConsoleData["users"][number]>(["members.manage","reports.view"], "SELECT id, display_name displayName, member_code memberCode, phone, email, status, created_at createdAt FROM users u WHERE u.line_user_id <> 'system:walk-in' ORDER BY created_at DESC LIMIT 80",
     ),
-    allowedQuery<AdminConsoleData["bookings"][number]>(["bookings.manage","reports.view"], "SELECT b.id, b.booking_no bookingNo, b.title, u.display_name displayName, s.name_th sportName, c.name courtName, b.starts_at startsAt, b.ends_at endsAt, b.players, b.amount, b.status, b.expires_at expiresAt, b.cancel_reason cancelReason, b.checked_in_at checkedInAt FROM bookings b JOIN users u ON u.id = b.user_id JOIN sports s ON s.id = b.sport_id LEFT JOIN courts c ON c.id = b.court_id ORDER BY b.starts_at DESC LIMIT 200",
+    allowedQuery<AdminConsoleData["bookings"][number]>(["bookings.manage","reports.view"], "SELECT b.id, b.booking_no bookingNo, b.title, COALESCE(b.guest_name, u.display_name) displayName, b.guest_phone guestPhone, s.name_th sportName, c.name courtName, b.starts_at startsAt, b.ends_at endsAt, b.players, b.amount, b.status, b.expires_at expiresAt, b.cancel_reason cancelReason, b.checked_in_at checkedInAt FROM bookings b JOIN users u ON u.id = b.user_id JOIN sports s ON s.id = b.sport_id LEFT JOIN courts c ON c.id = b.court_id ORDER BY b.starts_at DESC LIMIT 200",
     ),
     allowedQuery<AdminConsoleData["payments"][number]>(["payments.manage","reports.view"], adminPaymentListSql,
     ),
@@ -121,9 +127,12 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
 
   // First dashboard snapshot (role-gated); the dashboard keeps it fresh from /api/admin/dashboard.
   const dashboard = can("dashboard.view") ? await loadDashboard(can).catch(() => undefined) : undefined;
+  // Reports cards (month-to-date SQL aggregates); a failure shows "-" instead of wrong numbers.
+  const reportFigures = can("reports.view") ? await loadReportFigures(can).catch(() => undefined) : undefined;
 
   const data: AdminConsoleData = {
     dashboard,
+    reportFigures,
     metrics: [
       { label: "สมาชิก", value: userCount[0]?.total ?? 0, hint: "สมาชิกทั้งหมดในระบบ" },
       { label: "การจอง", value: bookingCount[0]?.total ?? 0, hint: "booking ทุกสถานะ" },

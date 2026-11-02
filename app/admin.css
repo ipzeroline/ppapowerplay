@@ -1642,6 +1642,21 @@ dialog.admin-modal-backdrop::backdrop {
   line-height: 1.2;
 }
 
+.admin-report-coverage {
+  margin: 0;
+  border-top: 1px solid var(--admin-line);
+  padding: 10px 20px;
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+}
+
+.report-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+}
+
 .admin-report-note {
   border-top: 1px solid var(--admin-line);
   background: var(--admin-surface-2);
@@ -2883,6 +2898,1194 @@ dialog.admin-modal-backdrop::backdrop {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+/* ---------- Court calendar (Bookings) ----------
+   One day, courts × opening hours (08:00-23:00). Status is always written in the block; the tint
+   only repeats it. Free cells show a + on hover/focus. Phones scroll the grid inside the panel. */
+
+.cal-panel {
+  --cal-label: 148px;
+  --cal-hour: 60px;
+  --cal-row: 56px;
+}
+
+.cal-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+  border-bottom: 1px solid var(--admin-line);
+  padding: 14px 20px;
+}
+
+.cal-header h2 {
+  margin: 0;
+  font-size: var(--admin-text-lg);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cal-header p {
+  max-width: 72ch;
+  margin: 2px 0 0;
+  color: var(--admin-muted);
+  font-size: var(--admin-text-sm);
+}
+
+.cal-actions,
+.cal-nav,
+.cal-inline-actions,
+.cal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cal-nav {
+  gap: 6px;
+}
+
+.admin-console .cal-icon {
+  width: 36px;
+  padding: 0;
+}
+
+.cal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px 20px 0;
+}
+
+.admin-console .cal-date input {
+  width: 160px;
+}
+
+.cal-day {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--admin-text-md);
+  font-weight: 600;
+}
+
+.cal-sport {
+  margin-left: auto;
+}
+
+.admin-console .cal-sport select {
+  width: auto;
+  min-width: 160px;
+}
+
+.cal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 20px 12px;
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+}
+
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cal-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--admin-muted);
+}
+
+.cal-legend i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid;
+  border-radius: 3px;
+}
+
+.cal-notice {
+  margin: 0 20px 12px;
+}
+
+.cal-state {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin: 0;
+  border-top: 1px solid var(--admin-line);
+  padding: 32px 20px;
+  color: var(--admin-muted);
+  text-align: center;
+}
+
+.cal-state p {
+  margin: 0;
+}
+
+/* Positioned so the hour columns' offsetLeft (scroll to the current hour) is measured from here. */
+.cal-scroll {
+  position: relative;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  border-top: 1px solid var(--admin-line);
+}
+
+.cal-scroll[aria-busy="true"] {
+  opacity: 0.6;
+}
+
+.cal-grid {
+  min-width: calc(var(--cal-label) + 15 * var(--cal-hour));
+}
+
+.cal-head,
+.cal-row {
+  display: grid;
+  grid-template-columns: var(--cal-label) repeat(15, minmax(var(--cal-hour), 1fr));
+}
+
+.cal-head {
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--admin-surface-2);
+}
+
+.cal-corner,
+.cal-hour {
+  padding: 8px;
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-hour {
+  border-left: 1px solid var(--admin-line);
+}
+
+.cal-corner,
+.cal-court {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  border-right: 1px solid var(--admin-line);
+}
+
+.cal-corner {
+  background: var(--admin-surface-2);
+  padding-left: 12px;
+}
+
+.cal-body {
+  position: relative;
+}
+
+.cal-group {
+  border-bottom: 1px solid var(--admin-line);
+  background: var(--admin-surface-2);
+}
+
+.cal-group span {
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  padding: 5px 12px;
+  color: var(--admin-muted);
+  font-size: var(--admin-text-xs);
+  font-weight: 600;
+}
+
+.cal-row {
+  min-height: var(--cal-row);
+  border-bottom: 1px solid var(--admin-line);
+}
+
+.cal-body > .cal-row:last-of-type {
+  border-bottom: 0;
+}
+
+.cal-court {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  background: var(--admin-surface);
+  padding: 6px 12px;
+}
+
+.cal-court b {
+  overflow: hidden;
+  color: var(--admin-heading);
+  font-size: var(--admin-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-court small {
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+}
+
+.cal-court .cal-closed {
+  color: var(--admin-warn);
+  font-weight: 600;
+}
+
+.cal-cell {
+  border-left: 1px solid var(--admin-line);
+}
+
+.cal-cell.off {
+  background: var(--admin-surface-2);
+}
+
+.admin-console .cal-cell.free {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: var(--cal-row);
+  border: 0;
+  border-left: 1px solid var(--admin-line);
+  border-radius: 0;
+  background: transparent;
+  color: transparent;
+  padding: 0;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background-color 0.12s var(--admin-ease), color 0.12s var(--admin-ease);
+}
+
+.cal-cell.free svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-console .cal-cell.free:hover,
+.admin-console .cal-cell.free:focus-visible {
+  background: var(--admin-accent-soft);
+  color: var(--admin-accent-text);
+}
+
+.admin-console .cal-cell.free:focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: -2px;
+}
+
+.admin-console :is(.cal-event, .cal-block) {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  min-width: 0;
+  margin: 4px 3px;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: var(--admin-radius-sm);
+  padding: 3px 6px;
+  color: var(--admin-heading);
+  font: inherit;
+  line-height: 1.35;
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+  transition: box-shadow 0.12s var(--admin-ease), border-color 0.12s var(--admin-ease);
+}
+
+.admin-console :is(.cal-event, .cal-block):hover {
+  box-shadow: var(--admin-shadow-md);
+}
+
+.admin-console :is(.cal-event, .cal-block):focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 1px;
+}
+
+:is(.cal-event, .cal-block) :is(b, span) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:is(.cal-event, .cal-block) b {
+  font-size: var(--admin-text-sm);
+  font-weight: 600;
+}
+
+:is(.cal-event, .cal-block) span {
+  color: var(--admin-muted);
+  font-size: var(--admin-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-block b {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cal-block b svg {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+}
+
+.cal-legend i.paid,
+.admin-console .cal-event.paid {
+  border-color: color-mix(in oklch, var(--admin-good) 45%, transparent);
+  background: var(--admin-good-soft);
+}
+
+.cal-legend i.held,
+.admin-console .cal-event.held {
+  border-color: color-mix(in oklch, var(--admin-warn) 55%, transparent);
+  background: var(--admin-warn-soft);
+}
+
+.cal-legend i.in,
+.admin-console .cal-event.in {
+  border-color: color-mix(in oklch, var(--admin-info) 45%, transparent);
+  background: var(--admin-info-soft);
+}
+
+.cal-legend i.blocked,
+.admin-console .cal-block {
+  border-color: var(--admin-line-strong);
+  background: repeating-linear-gradient(135deg, var(--admin-surface-3) 0 6px, var(--admin-surface-2) 6px 12px);
+}
+
+.cal-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--cal-label) + (100% - var(--cal-label)) * var(--cal-now));
+  z-index: 1;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--admin-accent);
+  pointer-events: none;
+}
+
+.cal-now::before {
+  position: absolute;
+  top: -1px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--admin-accent);
+  content: "";
+}
+
+/* Calendar dialogs */
+.cal-modal {
+  width: min(680px, 100%);
+}
+
+.cal-modal-body {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+}
+
+.admin-modal .cal-modal-body > .admin-form {
+  overflow: visible;
+  padding: 0;
+}
+
+.cal-modal-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--admin-line);
+  padding: 14px 20px;
+}
+
+.cal-spacer {
+  flex: 1 1 auto;
+}
+
+.cal-field {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.cal-label {
+  color: var(--admin-text);
+  font-size: var(--admin-text-sm);
+  font-weight: 500;
+}
+
+.cal-hint {
+  margin: 0;
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+}
+
+.cal-warning {
+  margin: 0;
+  border: 1px solid color-mix(in oklch, var(--admin-warn) 45%, transparent);
+  border-radius: var(--admin-radius);
+  background: var(--admin-warn-soft);
+  padding: 8px 12px;
+  color: var(--admin-heading);
+  font-size: var(--admin-text-sm);
+}
+
+.cal-member {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid color-mix(in oklch, var(--admin-accent) 35%, var(--admin-line));
+  border-radius: var(--admin-radius);
+  background: var(--admin-accent-soft);
+  padding: 10px 12px;
+}
+
+.cal-member b,
+.cal-member small,
+.admin-console .cal-hits button :is(b, small) {
+  display: block;
+}
+
+.cal-member small,
+.admin-console .cal-hits button small {
+  color: var(--admin-muted);
+  font-size: var(--admin-text-xs);
+}
+
+.cal-search {
+  display: grid;
+  gap: 8px;
+}
+
+.cal-hits {
+  max-height: 240px;
+  margin: 0;
+  overflow-y: auto;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  padding: 0;
+  list-style: none;
+}
+
+.admin-console .cal-hits button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--admin-line);
+  border-radius: 0;
+  background: var(--admin-surface);
+  padding: 8px 12px;
+  color: var(--admin-heading);
+  font: inherit;
+  text-align: left;
+  box-shadow: none;
+}
+
+.cal-hits li:last-child button {
+  border-bottom: 0;
+}
+
+.admin-console .cal-hits button:hover:not(:disabled) {
+  background: var(--admin-surface-2);
+}
+
+.cal-price {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  border-top: 1px solid var(--admin-line);
+  padding-top: 12px;
+}
+
+.cal-price span {
+  color: var(--admin-muted);
+  font-size: var(--admin-text-sm);
+}
+
+.cal-price strong {
+  color: var(--admin-heading);
+  font-size: var(--admin-text-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-price small {
+  grid-column: 1 / -1;
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+}
+
+.cal-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin: 0;
+}
+
+.cal-facts div {
+  display: grid;
+  gap: 2px;
+}
+
+.cal-facts dt {
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+}
+
+.cal-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--admin-heading);
+  font-weight: 500;
+}
+
+.cal-pay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  background: var(--admin-surface-2);
+  padding: 12px;
+}
+
+.cal-pay label,
+.cal-cancel label {
+  display: grid;
+  flex: 1 1 200px;
+  gap: 6px;
+  color: var(--admin-text);
+  font-size: var(--admin-text-sm);
+  font-weight: 500;
+}
+
+.cal-cancel {
+  display: grid;
+  gap: 10px;
+}
+
+.cal-inline-actions {
+  justify-content: flex-end;
+}
+
+.admin-console .cal-chips .admin-button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: var(--admin-text-sm);
+}
+
+.admin-console .cal-chips .admin-button[aria-pressed="true"] {
+  border-color: var(--admin-accent);
+  background: var(--admin-accent-soft);
+  color: var(--admin-accent-text);
+}
+
+.cal-skips {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.cal-conflict-title {
+  display: block;
+  margin-top: 6px;
+}
+
+@media (max-width: 700px) {
+  .cal-panel {
+    --cal-label: 112px;
+    --cal-hour: 52px;
+  }
+
+  .cal-header,
+  .cal-meta {
+    padding-inline: 14px;
+  }
+
+  .cal-toolbar {
+    padding-inline: 14px;
+  }
+
+  .cal-notice {
+    margin-inline: 14px;
+  }
+
+  .cal-actions {
+    width: 100%;
+  }
+
+  .admin-console .cal-actions button {
+    flex: 1 1 0;
+  }
+
+  .cal-nav {
+    width: 100%;
+  }
+
+  .cal-date {
+    flex: 1 1 120px;
+  }
+
+  .admin-console .cal-date input {
+    width: 100%;
+  }
+
+  .cal-sport {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .admin-console .cal-sport select {
+    width: 100%;
+  }
+
+  .cal-modal-body {
+    padding: 16px;
+  }
+
+  .cal-modal-actions {
+    padding: 12px 16px;
+  }
+}
+
+.member-sale-receipt {
+  margin-top: 8px;
+}
+
+/* ---------- Daily cash-up (Reports → ปิดยอดประจำวัน) ----------
+   Screen: figures, then channel and staff tables side by side, then refunds and payments.
+   Print: only the cash-up, light colours whatever the theme, signature lines at the end. */
+
+.cashup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 16px;
+  border-bottom: 1px solid var(--admin-line);
+  padding: 14px 20px;
+}
+
+.cashup-head h2 {
+  margin: 0;
+  font-size: var(--admin-text-lg);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cashup-head p {
+  max-width: 72ch;
+  margin: 2px 0 0;
+  color: var(--admin-muted);
+  font-size: var(--admin-text-sm);
+}
+
+.cashup-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-console .cashup-tools input {
+  width: 160px;
+}
+
+.cashup-day {
+  margin: 0;
+  padding: 14px 20px 0;
+  color: var(--admin-heading);
+  font-weight: 600;
+}
+
+.cashup-state {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 32px 20px;
+  color: var(--admin-muted);
+  text-align: center;
+}
+
+.cashup-state p {
+  margin: 0;
+}
+
+.cashup-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 14px 20px 20px;
+}
+
+.cashup-figures div {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  border: 1px solid var(--admin-line);
+  border-radius: var(--admin-radius);
+  padding: 12px 14px;
+}
+
+.cashup-figures .lead {
+  border-color: color-mix(in oklch, var(--admin-accent) 40%, var(--admin-line));
+  background: var(--admin-accent-soft);
+}
+
+.cashup-figures dt {
+  color: var(--admin-muted);
+  font-size: var(--admin-text-sm);
+}
+
+.cashup-figures dd {
+  margin: 0;
+  color: var(--admin-heading);
+  font-size: var(--admin-text-figure);
+  font-weight: 600;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.cashup-figures small {
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+}
+
+.cashup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--admin-line);
+}
+
+.cashup-block {
+  min-width: 0;
+  border-top: 1px solid var(--admin-line);
+}
+
+.cashup-grid > .cashup-block {
+  border-top: 0;
+}
+
+.cashup-grid > .cashup-block + .cashup-block {
+  border-left: 1px solid var(--admin-line);
+}
+
+.cashup-block h3 {
+  margin: 0;
+  padding: 12px 20px;
+  font-size: var(--admin-text-md);
+  font-weight: 600;
+}
+
+.cashup-block h3 small {
+  margin-left: 6px;
+  color: var(--admin-soft);
+  font-size: var(--admin-text-xs);
+  font-weight: 400;
+}
+
+.cashup-empty {
+  margin: 0;
+  padding: 0 20px 16px;
+  color: var(--admin-soft);
+  font-size: var(--admin-text-sm);
+}
+
+.admin-console .cashup tfoot :is(th, td) {
+  border-top: 1px solid var(--admin-line-strong);
+  border-bottom: 0;
+  background: transparent;
+  color: var(--admin-heading);
+  font-weight: 600;
+}
+
+.cashup-print-only {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .cashup-head,
+  .cashup-figures,
+  .cashup-block h3 {
+    padding-inline: 14px;
+  }
+
+  .cashup-day {
+    padding-inline: 14px;
+  }
+
+  .cashup-empty {
+    padding-inline: 14px;
+  }
+
+  .cashup-tools {
+    width: 100%;
+  }
+
+  .cashup-tools label {
+    flex: 1 1 140px;
+  }
+
+  .admin-console .cashup-tools input {
+    width: 100%;
+  }
+
+  .cashup-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cashup-grid > .cashup-block + .cashup-block {
+    border-top: 1px solid var(--admin-line);
+    border-left: 0;
+  }
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html:has(.cashup),
+  body:has(.cashup) {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .admin-console:has(.cashup) {
+    --admin-surface: #fff;
+    --admin-surface-2: #fff;
+    --admin-line: #bbb;
+    --admin-line-strong: #666;
+    --admin-text: #000;
+    --admin-heading: #000;
+    --admin-muted: #333;
+    --admin-soft: #444;
+    --admin-accent-soft: #fff;
+    display: block;
+    height: auto;
+    overflow: visible;
+    background: #fff;
+    color: #000;
+  }
+
+  .admin-console:has(.cashup) > :not(.admin-main),
+  .admin-main:has(.cashup) :not(.cashup, .cashup *, :has(.cashup)),
+  .cashup .cashup-tools {
+    display: none !important;
+  }
+
+  .admin-main:has(.cashup) {
+    height: auto;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .admin-console .cashup {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .cashup .cashup-head,
+  .cashup .cashup-day,
+  .cashup .cashup-figures,
+  .cashup .cashup-block h3,
+  .cashup .cashup-empty {
+    padding-inline: 0;
+  }
+
+  .cashup span.cashup-print-only {
+    display: inline;
+  }
+
+  .cashup .admin-table-scroll {
+    overflow: visible;
+  }
+
+  .admin-console .cashup table {
+    min-width: 0;
+    font-size: 9pt;
+  }
+
+  .admin-console .cashup :is(th, td) {
+    padding: 4px 6px;
+  }
+
+  .cashup-block {
+    break-inside: avoid;
+  }
+
+  .cashup footer.cashup-sign {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px;
+    margin-top: 32px;
+    break-inside: avoid;
+  }
+
+  .cashup-sign div {
+    display: grid;
+    gap: 28px;
+    font-size: 9pt;
+  }
+
+  .cashup-sign i {
+    border-bottom: 1px solid #000;
+  }
+}
+
+/* ---------- Printable receipt (/AdminConsole/receipt/[paymentNo]) ----------
+   Its own page outside the console: white paper on a light desk, 80 mm wide so the same layout
+   prints on a receipt printer or centred on A5/A4. */
+
+.receipt-page {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  background: oklch(0.955 0.004 150);
+  color: oklch(0.2 0.01 150);
+  padding: 24px 16px 48px;
+  font-family: var(--font-aura), var(--font-inter), system-ui, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.receipt-state {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  max-width: 420px;
+  margin: 48px auto;
+  text-align: center;
+}
+
+.receipt-state p {
+  margin: 0;
+}
+
+.receipt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 420px;
+  margin: 0 auto 16px;
+}
+
+.receipt-toolbar p {
+  flex: 1 0 100%;
+  margin: 4px 0 0;
+  color: oklch(0.43 0.012 150);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.receipt-page button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px solid oklch(0.86 0.008 150);
+  border-radius: 8px;
+  background: oklch(1 0 0);
+  color: oklch(0.2 0.012 150);
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 500;
+}
+
+.receipt-page button.primary {
+  border-color: oklch(0.5 0.13 150);
+  background: oklch(0.5 0.13 150);
+  color: oklch(1 0 0);
+  font-weight: 600;
+}
+
+.receipt-page button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.receipt-paper {
+  width: min(100%, 360px);
+  margin: 0 auto;
+  border: 1px solid oklch(0.905 0.006 150);
+  border-radius: 4px;
+  background: oklch(1 0 0);
+  padding: 20px 18px;
+  box-shadow: 0 4px 12px oklch(0.25 0.02 150 / 0.08);
+  font-variant-numeric: tabular-nums;
+}
+
+.receipt-paper header {
+  display: grid;
+  gap: 1px;
+  border-bottom: 1px dashed oklch(0.64 0.01 150);
+  padding-bottom: 10px;
+  text-align: center;
+}
+
+.receipt-paper header strong {
+  font-size: 1rem;
+}
+
+.receipt-paper header span {
+  font-size: 0.8125rem;
+}
+
+.receipt-paper h1 {
+  margin: 10px 0 8px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.receipt-meta,
+.receipt-totals {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.receipt-meta div,
+.receipt-totals div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.receipt-meta dt,
+.receipt-totals dt {
+  flex: 0 0 auto;
+  color: oklch(0.43 0.012 150);
+}
+
+.receipt-meta dd,
+.receipt-totals dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.receipt-paper table {
+  width: 100%;
+  margin: 10px 0;
+  border-collapse: collapse;
+  border-block: 1px dashed oklch(0.64 0.01 150);
+}
+
+.receipt-paper th,
+.receipt-paper td {
+  padding: 6px 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.receipt-paper th {
+  border-bottom: 1px solid oklch(0.905 0.006 150);
+  color: oklch(0.43 0.012 150);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.receipt-paper :is(th, td):last-child {
+  padding-left: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.receipt-totals {
+  margin-bottom: 10px;
+}
+
+.receipt-totals .grand {
+  border-top: 1px solid oklch(0.905 0.006 150);
+  margin-top: 4px;
+  padding-top: 6px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.receipt-totals .grand dt {
+  color: inherit;
+}
+
+.receipt-note {
+  margin: -6px 0 10px;
+  color: oklch(0.43 0.012 150);
+  font-size: 0.75rem;
+}
+
+.receipt-paper footer {
+  margin-top: 12px;
+  border-top: 1px dashed oklch(0.64 0.01 150);
+  padding-top: 10px;
+  text-align: center;
+}
+
+@media print {
+  @page {
+    margin: 6mm;
+  }
+
+  html:has(.receipt-page),
+  body:has(.receipt-page) {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .receipt-page {
+    position: static;
+    overflow: visible;
+    background: #fff;
+    padding: 0;
+    color: #000;
+    font-size: 9.5pt;
+  }
+
+  .receipt-toolbar {
+    display: none;
+  }
+
+  .receipt-paper {
+    width: 100%;
+    max-width: 80mm;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
   }
 }
 

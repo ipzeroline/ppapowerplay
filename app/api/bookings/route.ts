@@ -4,6 +4,7 @@ import { assertApiUser, authErrorResponse } from "@/lib/auth";
 import { createPublicId, pool, query } from "@/lib/db";
 import { checkRateLimit, clientIp, parseJsonBody, validationErrorResponse } from "@/lib/security";
 import { buildSlotRange, expirePendingBookings, isPastSlot, rateForSlot } from "@/lib/booking-rules";
+import { courtConflict } from "@/lib/court-schedule";
 
 const schema = z.object({
   sportSlug: z.string().min(1).max(80).regex(/^[a-z0-9-]+$/),
@@ -73,13 +74,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ message: "สนามหรือช่วงเวลานี้ไม่พร้อมให้จอง กรุณาเลือกใหม่" }, { status: 409 });
       }
       amount = rateForSlot(Number(sports[0].baseRate), input.time, input.durationHours, lockedCourt.hourlyRate);
-      const [rows] = await conn.execute(
-        "SELECT id FROM bookings WHERE court_id = ? AND (status IN ('paid','checked_in') OR (status IN ('hold','pending_payment') AND (expires_at IS NULL OR expires_at > NOW()))) AND starts_at < ? AND ends_at > ? FOR UPDATE",
-        [input.courtId, endsAt, startsAt],
-      );
-      if ((rows as unknown[]).length) {
+      const conflict = await courtConflict(conn, input.courtId, startsAt, endsAt);
+      if (conflict) {
         await conn.rollback();
-        return NextResponse.json({ message: "ช่วงเวลานี้ถูกจองแล้ว" }, { status: 409 });
+        return NextResponse.json({ message: conflict === "blocked" ? "ช่วงเวลานี้ไม่เปิดให้จอง" : "ช่วงเวลานี้ถูกจองแล้ว" }, { status: 409 });
       }
     }
     await conn.execute(

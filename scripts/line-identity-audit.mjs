@@ -60,7 +60,7 @@ const checks = [
       SELECT u.id, u.member_code
       FROM users u
       LEFT JOIN wallet_accounts w ON w.user_id = u.id
-      WHERE u.status <> 'deleted' AND w.id IS NULL
+      WHERE u.status <> 'deleted' AND u.line_user_id NOT LIKE 'system:%' AND w.id IS NULL
       LIMIT 20
     `,
     ok: (rows) => rows.length === 0,

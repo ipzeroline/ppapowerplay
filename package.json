@@ -11,6 +11,8 @@
     "test:security:http": "node scripts/security-smoke.mjs",
     "test:responsive": "node scripts/responsive-check.mjs",
     "db:init": "node scripts/db-init.mjs",
+    "db:backup": "node scripts/db-backup.mjs",
+    "db:restore-check": "node scripts/db-restore-check.mjs",
     "production:check": "node scripts/production-check.mjs",
     "production:hardening:audit": "node scripts/production-hardening-audit.mjs",
     "line:identity:audit": "node scripts/line-identity-audit.mjs",

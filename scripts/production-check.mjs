@@ -30,6 +30,7 @@ if (!/^https:\/\//.test(readEnv("APP_BASE_URL"))) invalid.push("APP_BASE_URL mus
 const promptPayId = readEnv("PROMPTPAY_ID").replace(/[\s-]/g, "");
 if (promptPayId && !/^(0\d{9}|\d{13}|\d{15})$/.test(promptPayId)) invalid.push("PROMPTPAY_ID must be a 10-digit mobile number, 13-digit tax ID or 15-digit e-wallet ID");
 if (readEnv("LINE_PUSH_ENABLED") === "true" && !readEnv("LINE_CHANNEL_ACCESS_TOKEN")) invalid.push("LINE_PUSH_ENABLED=true requires LINE_CHANNEL_ACCESS_TOKEN");
+if (readEnv("CRON_SECRET") && readEnv("CRON_SECRET").length < 32) invalid.push("CRON_SECRET must contain at least 32 characters");
 
 if (missing.length || invalid.length) {
   console.error("Production check failed.");
@@ -39,6 +40,7 @@ if (missing.length || invalid.length) {
 }
 
 if (!promptPayId) console.warn("Warning: PROMPTPAY_ID is not set. Members get staff-confirmed payment requests without a PromptPay QR.");
+if (!readEnv("CRON_SECRET")) console.warn("Warning: CRON_SECRET is not set. Booking and package reminders are off, and unpaid requests are only cleared when staff open AdminConsole.");
 // Payment slips are financial records: a deploy that replaces the app folder must not delete them.
 // Compare real paths so symlinked release folders (and macOS /tmp) are judged correctly.
 const realPath = (target) => {

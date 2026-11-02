@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminRequest, getAdminIdentity, adminSessionCookieName } from "@/lib/admin-auth";
 import { pool, query } from "@/lib/db";
+import { notWalkIn } from "@/lib/walk-in";
 import { parseJsonBody, secureResponse, validationErrorResponse } from "@/lib/security";
 
 const memberSelect = "SELECT u.id, u.display_name displayName, u.member_code memberCode, u.phone, u.email, u.status, u.created_at createdAt, u.pdpa_accepted_at pdpaAcceptedAt, u.pdpa_version pdpaVersion, COALESCE(w.balance, 0) balance FROM users u LEFT JOIN wallet_accounts w ON w.user_id = u.id";
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   const search = (req.nextUrl.searchParams.get("search") || "").trim().slice(0, 160);
   const page = Number(req.nextUrl.searchParams.get("page") || 1);
   if (!Number.isSafeInteger(page) || page < 1 || page > 100000) return secureResponse(NextResponse.json({ message: "Invalid page" }, { status: 400 }));
-  const rows = await query(`${memberSelect} WHERE (? = '' OR LOCATE(?, u.display_name) > 0 OR LOCATE(?, u.member_code) > 0 OR LOCATE(?, COALESCE(u.phone, '')) > 0 OR LOCATE(?, COALESCE(u.email, '')) > 0) ORDER BY u.id DESC LIMIT 51 OFFSET ${(page - 1) * 50}`, [search, search, search, search, search]);
+  const rows = await query(`${memberSelect} WHERE ${notWalkIn()} AND (? = '' OR LOCATE(?, u.display_name) > 0 OR LOCATE(?, u.member_code) > 0 OR LOCATE(?, COALESCE(u.phone, '')) > 0 OR LOCATE(?, COALESCE(u.email, '')) > 0) ORDER BY u.id DESC LIMIT 51 OFFSET ${(page - 1) * 50}`, [search, search, search, search, search]);
   return secureResponse(NextResponse.json({ members: rows.slice(0, 50), hasMore: rows.length > 50 }));
 }
 

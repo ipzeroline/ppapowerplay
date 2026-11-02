@@ -1,5 +1,6 @@
 import { adminPaymentQueueSql } from "@/lib/admin-payment-list";
 import { query } from "@/lib/db";
+import { notWalkIn } from "@/lib/walk-in";
 
 // Back-office dashboard figures. Every number is computed in SQL for a stated period (today, this
 // month, the last 30 days) and each section is loaded only for staff whose permissions cover it.
@@ -28,8 +29,9 @@ type Run = (sql: string) => Promise<unknown[]>;
 
 const notTopup = "COALESCE(JSON_VALUE(metadata, '$.kind'), '') <> 'wallet_topup'";
 const monthStart = "DATE_FORMAT(CURDATE(), '%Y-%m-01')";
-// Today's live bookings: paid / checked in, or still inside their payment hold.
-const bookedToday = "b.starts_at >= CURDATE() AND b.starts_at < CURDATE() + INTERVAL 1 DAY AND (b.status IN ('paid', 'checked_in') OR (b.status IN ('hold', 'pending_payment') AND b.expires_at > NOW()))";
+// Today's live bookings: paid / checked in, or still inside their payment hold (a counter
+// "pay later" hold has no expiry: it occupies its court until staff take payment or cancel).
+const bookedToday = "b.starts_at >= CURDATE() AND b.starts_at < CURDATE() + INTERVAL 1 DAY AND (b.status IN ('paid', 'checked_in') OR (b.status IN ('hold', 'pending_payment') AND (b.expires_at IS NULL OR b.expires_at > NOW())))";
 
 const sql = {
   today: "SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') today",
@@ -43,8 +45,8 @@ const sql = {
   courts: "SELECT COUNT(*) total, COUNT(CASE WHEN status = 'available' THEN 1 END) available, COUNT(CASE WHEN status = 'maintenance' THEN 1 END) maintenance FROM courts",
   bookingsToday: `SELECT COUNT(*) total, COUNT(CASE WHEN b.status = 'checked_in' THEN 1 END) checkedIn FROM bookings b WHERE ${bookedToday}`,
   // What is playing now and next: a busy day has more bookings than fit, and finished games are not actionable.
-  schedule: `SELECT b.booking_no bookingNo, u.display_name displayName, s.name_th sportName, c.name courtName, b.starts_at startsAt, b.ends_at endsAt, b.status FROM bookings b JOIN users u ON u.id = b.user_id JOIN sports s ON s.id = b.sport_id LEFT JOIN courts c ON c.id = b.court_id WHERE ${bookedToday} AND b.ends_at > NOW() ORDER BY b.starts_at, c.name LIMIT 60`,
-  members: `SELECT COUNT(*) total, COUNT(CASE WHEN created_at >= CURDATE() THEN 1 END) newToday, COUNT(CASE WHEN created_at >= ${monthStart} THEN 1 END) newMonth FROM users WHERE status = 'active'`,
+  schedule: `SELECT b.booking_no bookingNo, COALESCE(b.guest_name, u.display_name) displayName, s.name_th sportName, c.name courtName, b.starts_at startsAt, b.ends_at endsAt, b.status FROM bookings b JOIN users u ON u.id = b.user_id JOIN sports s ON s.id = b.sport_id LEFT JOIN courts c ON c.id = b.court_id WHERE ${bookedToday} AND b.ends_at > NOW() ORDER BY b.starts_at, c.name LIMIT 60`,
+  members: `SELECT COUNT(*) total, COUNT(CASE WHEN created_at >= CURDATE() THEN 1 END) newToday, COUNT(CASE WHEN created_at >= ${monthStart} THEN 1 END) newMonth FROM users WHERE status = 'active' AND ${notWalkIn("users")}`,
   withMembership: "SELECT COUNT(DISTINCT user_id) total FROM memberships WHERE status = 'active' AND starts_at <= NOW() AND ends_at > NOW()",
   expiring: "SELECT m.id, u.display_name displayName, u.member_code memberCode, u.phone, m.plan_name planName, m.ends_at endsAt FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.status = 'active' AND m.ends_at > NOW() AND m.ends_at <= NOW() + INTERVAL 7 DAY AND NOT EXISTS (SELECT 1 FROM memberships n WHERE n.user_id = m.user_id AND n.status = 'active' AND n.ends_at > m.ends_at) ORDER BY m.ends_at LIMIT 50",
 };

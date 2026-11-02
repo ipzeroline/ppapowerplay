@@ -99,9 +99,35 @@ const dashboardFixture = {
     { id: 10, displayName: "สมาชิกหมดวันนี้", memberCode: "PPA-0010", phone: null, planName: "Fitness 1 เดือน", endsAt: `${bangkokDay(0)}T23:59:00+07:00` },
   ] },
 };
-const adminData = { dashboard: dashboardFixture, metrics: ["Members", "Bookings", "Payments", "Revenue"].map((label) => ({ label, value: 125, hint: "Test fixture" })), users: [user], bookings, courts: [{ id: 1, name: "Court A", sportId: 1, sportName: "Badminton", capacity: 4, status: "available", hourlyRate: 200 }], coupons: [], trainers: [trainer], payments: [paymentFixture], staff: [admin], roles: [{ id: 1, code: "super_admin", nameTh: "ผู้ดูแลระบบ", nameEn: "Administrator", level: 100, isSystem: true, permissionCodes: [] }], permissions: [], currentAdmin: admin, auditLogs: [], contentItems: [], systemHealth: [], securityItems: [] };
+// Reports cards: month-to-date SQL figures (lib/report-figures.ts shape).
+const reportFigures = {
+  period: { from: `${bangkokDay(0).slice(0, 8)}01`, to: bangkokDay(0) },
+  finance: { salesMonth: 48200, paymentsMonth: 31, avgBookingValueMonth: 295.24 },
+  bookings: { month: 40, paidMonth: 30, pendingNow: 3, cancelledMonth: 6, checkedInMonth: 12, paidRate: 75 },
+  members: { total: 420, active: 410, newMonth: 15, checkinsMonth: 380 },
+  courts: { total: 12, available: 11, maintenance: 1 },
+  coupons: { total: 8, active: 6, soldMonth: 21 },
+  trainers: { total: 5, active: 4, avgPrice: 1250 },
+  audit: { eventsMonth: 140, sensitiveMonth: 3 },
+};
+const adminData = { dashboard: dashboardFixture, reportFigures, metrics: ["Members", "Bookings", "Payments", "Revenue"].map((label) => ({ label, value: 125, hint: "Test fixture" })), users: [user], bookings, courts: [{ id: 1, name: "Court A", sportId: 1, sportName: "Badminton", capacity: 4, status: "available", hourlyRate: 200 }], coupons: [], trainers: [trainer], payments: [paymentFixture], staff: [admin], roles: [{ id: 1, code: "super_admin", nameTh: "ผู้ดูแลระบบ", nameEn: "Administrator", level: 100, isSystem: true, permissionCodes: [] }], permissions: [], currentAdmin: admin, auditLogs: [], contentItems: [], systemHealth: [], securityItems: [] };
+// Court calendar (Bookings tab): two sports, three courts; on whichever day is asked for, a paid
+// member booking, a held walk-in guest booking and a maintenance block.
+const calendarCourts = [
+  { id: 1, name: "Court A", sportId: 1, sportName: "แบดมินตัน", status: "available", hourlyRate: 200, baseRate: 200, capacity: 4 },
+  { id: 2, name: "Court B สนามชื่อยาวสำหรับทดสอบหน้าจอแคบ", sportId: 1, sportName: "แบดมินตัน", status: "available", hourlyRate: 200, baseRate: 200, capacity: 4 },
+  { id: 3, name: "Tennis 1", sportId: 2, sportName: "เทนนิส", status: "available", hourlyRate: 400, baseRate: 300, capacity: 4 },
+];
+const calendarDay = (date) => ({
+  date, courts: calendarCourts,
+  bookings: [
+    { bookingNo: "BK-CAL-1", courtId: 1, startsAt: `${date} 18:00:00`, endsAt: `${date} 20:00:00`, status: "paid", name: "สมาชิกจองประจำ", phone: "0812345678", guest: false, amount: 600, title: "แบดมินตัน - Court A", seriesKey: null, paymentNo: "PAY-CAL-1" },
+    { bookingNo: "BK-CAL-2", courtId: 2, startsAt: `${date} 13:00:00`, endsAt: `${date} 14:00:00`, status: "pending_payment", name: "คุณวอล์คอิน", phone: "0899999999", guest: true, amount: 200, title: "แบดมินตัน - Court B", seriesKey: null, paymentNo: null },
+  ],
+  blocks: [{ id: 4, courtId: 3, startsAt: `${date} 08:00:00`, endsAt: `${date} 11:00:00`, reason: "ซ่อมพื้น" }],
+});
 // ?nodash renders the console as if the server could not load the first dashboard snapshot.
-const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {PpaApp} from './components/ppa-app'; import {AdminConsole} from './components/admin-console'; const params=new URLSearchParams(location.search); const tab=params.get('tab')||'dashboard'; const data=${JSON.stringify(adminData)}; if (params.has('nodash')) delete data.dashboard; createRoot(document.getElementById('root')).render(location.pathname.includes('admin') ? <AdminConsole adminKey="" data={data} initialTab={tab}/> : <PpaApp/>);`;
+const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {PpaApp} from './components/ppa-app'; import {AdminConsole} from './components/admin-console'; import {AdminReceipt} from './components/admin-receipt'; const params=new URLSearchParams(location.search); const tab=params.get('tab')||'dashboard'; const data=${JSON.stringify(adminData)}; if (params.has('nodash')) delete data.dashboard; createRoot(document.getElementById('root')).render(location.pathname.includes('receipt') ? <main className="receipt-page"><AdminReceipt paymentNo="PAY-CAL-1" lang="th"/></main> : location.pathname.includes('admin') ? <AdminConsole adminKey="" data={data} initialTab={tab} initialReportSection={params.get('report') || undefined}/> : <PpaApp/>);`;
 const bundle = await build({
   stdin: { contents: entry, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife",
   define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_REQUIRE_LINE": '"false"', "process.env.NEXT_PUBLIC_LINE_LIFF_ID": '""' },
@@ -133,6 +159,8 @@ try {
   let failDashboard = false;
   const rewardRequests = [];
   const bookingRequests = [];
+  const calendarRequests = { bookings: [], blocks: [] };
+  const receiptRequests = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/__responsive__/**", async (route) => {
@@ -141,6 +169,30 @@ try {
   });
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname === "/api/admin/receipts" && route.request().method() === "POST") {
+      receiptRequests.push(route.request().postDataJSON());
+      return route.fulfill({ json: { receiptNo: "RC2569-000124", issuedAt: "2026-11-02 18:45:00", firstIssue: true, business: { businessName: "PPA Power Play Sport Club", branch: "สำนักงานใหญ่", address: "99/9 ถนนกีฬา แขวงทดสอบ เขตทดสอบ กรุงเทพฯ 10000", taxId: "0105561234567", phone: "02-123-4567", vatRegistered: true, footer: "ขอบคุณที่ใช้บริการ" }, payment: { paymentNo: "PAY-CAL-1", paidAt: "2026-11-02 18:42:00", method: "cash", amount: 300, itemName: "แบดมินตัน - Court A (2 ชั่วโมง เย็นวันจันทร์)" }, customer: { name: "สมาชิกจองประจำ", memberCode: "PPA-0001", phone: "0812345678" }, staffName: "ปวีณา", vat: { net: 280.37, vat: 19.63 } } });
+    }
+    if (url.pathname === "/api/admin/reports/cashup") return route.fulfill({ json: {
+      date: url.searchParams.get("date"),
+      cashIn: [{ method: "cash", amount: 1500, count: 4 }, { method: "promptpay", amount: 900, count: 2 }], cashInTotal: 2400,
+      walletFunded: { amount: 600, count: 2 },
+      byStaff: [{ staffId: 7, staffName: "ปวีณา", method: "cash", amount: 1500, count: 4 }, { staffId: null, staffName: null, method: "promptpay", amount: 900, count: 2 }],
+      refunds: [{ paymentNo: "PAY-REFUND-1", amount: 200, refundedAt: new Date().toISOString(), staffName: "ปวีณา", note: "โอนคืนเข้าบัญชีลูกค้าแล้ว" }], refundTotal: 200,
+      rows: Array.from({ length: 6 }, (_, index) => ({ paidAt: `${url.searchParams.get("date")} ${String(9 + index).padStart(2, "0")}:15:00`, paymentNo: `PAY-DAY-${index}`, itemName: index % 2 ? "Fitness 1 ครั้ง" : "แบดมินตัน - Court A สนามชื่อยาวสำหรับทดสอบ", customer: index % 2 ? "คุณเอ" : "สมาชิกทดสอบที่มีชื่อยาวมาก", method: index < 4 ? "cash" : "promptpay", amount: index < 4 ? 375 : 450, staffName: index < 4 ? "ปวีณา" : null })),
+    } });
+    if (url.pathname === "/api/admin/bookings/calendar") return route.fulfill({ json: calendarDay(url.searchParams.get("date")) });
+    if (url.pathname === "/api/admin/bookings" && route.request().method() === "POST") {
+      const input = route.request().postDataJSON();
+      calendarRequests.bookings.push(input);
+      const created = Array.from({ length: input.repeatWeeks }, (_, index) => ({ bookingNo: `BK-NEW-${index}`, startsAt: `${input.date} ${input.time}:00`, endsAt: `${input.date} ${input.time}:00`, amount: 200, status: input.payNow ? "paid" : "pending_payment" }));
+      return route.fulfill({ status: 201, json: { created, skipped: [], bookings } });
+    }
+    if (url.pathname === "/api/admin/bookings" && route.request().method() === "GET") return route.fulfill({ json: { bookings } });
+    if (url.pathname === "/api/admin/courts/blocks" && route.request().method() === "POST") {
+      calendarRequests.blocks.push(route.request().postDataJSON());
+      return route.fulfill({ status: 201, json: { id: 9 } });
+    }
     if (url.pathname === "/api/admin/members") {
       if (route.request().method() === "PUT") return route.fulfill({ json: { ok: true } });
       if (url.searchParams.has("id")) return route.fulfill({ json: { member: { ...user, balance: 2500 }, history: [{ id: 1, amount: 100, kind: "topup", note: "Fixture credit", createdAt: "2026-10-29T01:00:00Z", staffName: "Test admin", balanceBefore: "2400.00", balanceAfter: "2500.00", refType: "admin_credit" }], nextCursor: null } });
@@ -397,6 +449,51 @@ try {
         await page.keyboard.press("Escape");
         await page.evaluate(() => { document.cookie = "ppa_admin_theme=; path=/; max-age=0"; });
       }
+      if (tab === "bookings") {
+        // Court calendar: one timeline row per court, 08:00-23:00 in hour columns, status in text.
+        await page.locator(".cal-row").first().waitFor();
+        assert.equal(await page.locator(".cal-row").count(), 3, "one timeline row per court");
+        assert.equal(await page.locator(".cal-head .cal-hour").count(), 15, "08:00-23:00 in 15 hour columns");
+        for (const row of await page.locator(".cal-row").all()) {
+          assert.equal(await row.evaluate((node) => [...node.querySelectorAll("[data-hours]")].reduce((sum, cell) => sum + Number(cell.dataset.hours), 0)), 15, "each court row covers the 15 opening hours");
+        }
+        assert.match(await page.locator(".cal-event").filter({ hasText: "คุณวอล์คอิน" }).innerText(), /รอชำระ/, "a held guest booking shows the guest name and its status in words");
+        assert.match(await page.locator(".cal-event").filter({ hasText: "สมาชิกจองประจำ" }).innerText(), /ชำระแล้ว/);
+        assert.match(await page.locator(".cal-block").innerText(), /ซ่อมพื้น/);
+        const calendarFit = await page.evaluate(() => ({ docWidth: document.documentElement.scrollWidth, mainOverflow: document.querySelector(".admin-main").scrollWidth - document.querySelector(".admin-main").clientWidth }));
+        assert.ok(calendarFit.docWidth <= viewport.width + 1 && calendarFit.mainOverflow <= 1, `calendar fits ${viewport.width}: ${JSON.stringify(calendarFit)}`);
+        if ([390, 1440].includes(viewport.width)) await page.locator(".cal-panel").screenshot({ path: `${outDir}/calendar-admin-${viewport.width}.png` });
+        if (viewport.width === 1440) {
+          // Tomorrow: every hour is still ahead, whatever time the check runs.
+          await page.getByRole("button", { name: "วันถัดไป", exact: true }).click();
+          await page.getByRole("button", { name: "ว่าง 10:00 Court A, จอง", exact: true }).click();
+          const bookingDialog = page.getByRole("dialog", { name: "จองสนาม" });
+          await bookingDialog.waitFor();
+          await bookingDialog.getByRole("button", { name: "ลูกค้าทั่วไป", exact: true }).click();
+          await bookingDialog.getByLabel("ชื่อลูกค้า", { exact: true }).fill("คุณทดสอบ");
+          await bookingDialog.getByLabel("เบอร์โทร", { exact: true }).fill("081-234-5678");
+          // Selects by role + name: an exact getByLabel compares the whole <label> text, option texts included.
+          await bookingDialog.getByRole("combobox", { name: "จองซ้ำทุกสัปดาห์", exact: true }).selectOption("4");
+          await bookingDialog.getByRole("button", { name: "ชำระตอนนี้", exact: true }).click();
+          await bookingDialog.getByRole("combobox", { name: "ช่องทางชำระ", exact: true }).selectOption("cash");
+          await page.screenshot({ path: `${outDir}/calendar-booking-dialog-1440.png` });
+          await bookingDialog.getByRole("button", { name: /^บันทึกและรับชำระ/ }).click();
+          await page.getByText(/จองแล้ว 4 รายการ/).waitFor();
+          const sent = calendarRequests.bookings.at(-1);
+          assert.match(sent.requestId, /^[A-Za-z0-9-]{8,64}$/);
+          assert.deepEqual({ ...sent, requestId: "-" }, { courtId: 1, date: bangkokDay(1), time: "10:00", durationHours: 1, players: 2, customer: { kind: "guest", name: "คุณทดสอบ", phone: "081-234-5678" }, repeatWeeks: 4, payNow: { method: "cash" }, requestId: "-" });
+          await page.getByRole("button", { name: "บล็อกสนาม", exact: true }).click();
+          const blockDialog = page.getByRole("dialog", { name: "บล็อกสนาม" });
+          await blockDialog.waitFor();
+          await blockDialog.getByRole("combobox", { name: "สนาม", exact: true }).selectOption("3");
+          await blockDialog.getByRole("combobox", { name: "ตั้งแต่", exact: true }).selectOption("19:00");
+          await blockDialog.getByRole("combobox", { name: "ถึง", exact: true }).selectOption("21:00");
+          await blockDialog.getByLabel("เหตุผล", { exact: true }).fill("จัดแข่งขัน");
+          await blockDialog.getByRole("button", { name: "บันทึกการบล็อก", exact: true }).click();
+          await page.getByText("บล็อกสนามแล้ว", { exact: true }).waitFor();
+          assert.deepEqual(calendarRequests.blocks.at(-1), { courtId: 3, date: bangkokDay(1), from: "19:00", to: "21:00", reason: "จัดแข่งขัน" });
+        }
+      }
       results.push({ area: "admin", tab, viewport, metrics });
     }
     console.log(`PASS layout ${viewport.width}x${viewport.height}`);
@@ -650,6 +747,50 @@ try {
   failDashboard = false;
   await page.getByRole("button", { name: "ลองใหม่", exact: true }).click();
   await page.locator(".dash-chart-bars button").first().waitFor({ timeout: 5000 });
+  // Printable receipt: abbreviated tax invoice with the VAT inside the price, one request per view.
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${base}/__responsive__/receipt`);
+    const paper = page.locator(".receipt-paper");
+    await paper.waitFor();
+    assert.match(await paper.innerText(), /ใบเสร็จรับเงิน\/ใบกำกับภาษีอย่างย่อ[\s\S]*RC2569-000124[\s\S]*280\.37[\s\S]*19\.63[\s\S]*300\.00/);
+    const fit = await page.evaluate(() => ({ docWidth: document.documentElement.scrollWidth, paper: document.querySelector(".receipt-paper").getBoundingClientRect().right }));
+    assert.ok(fit.docWidth <= viewport.width + 1 && fit.paper <= viewport.width, `receipt fits ${viewport.width}: ${JSON.stringify(fit)}`);
+    await page.screenshot({ path: `${outDir}/receipt-${viewport.width}.png` });
+  }
+  assert.deepEqual(receiptRequests.at(-1), { paymentNo: "PAY-CAL-1" });
+  // Daily cash-up: drawer cash first, totals by channel and staff, print shows only the sheet.
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${base}/__responsive__/admin?tab=reports&report=cashup`);
+    await page.locator(".cashup-figures").waitFor();
+    assert.match(await page.locator(".cashup-figures .lead").innerText(), /เงินสดรับเข้า[\s\S]*1,500\.00/);
+    assert.match(await page.locator(".cashup-figures").innerText(), /2,400\.00[\s\S]*600\.00[\s\S]*200\.00/);
+    assert.match(await page.locator(".cashup-block").filter({ hasText: "แยกตามพนักงานที่รับเงิน" }).innerText(), /ปวีณา[\s\S]*ไม่ระบุผู้รับ/);
+    assert.equal(await page.getByRole("button", { name: "พิมพ์", exact: true }).isEnabled(), true);
+    const fit = await page.evaluate(() => ({ docWidth: document.documentElement.scrollWidth, mainOverflow: document.querySelector(".admin-main").scrollWidth - document.querySelector(".admin-main").clientWidth }));
+    assert.ok(fit.docWidth <= viewport.width + 1 && fit.mainOverflow <= 1, `cash-up fits ${viewport.width}: ${JSON.stringify(fit)}`);
+    await page.screenshot({ path: `${outDir}/cashup-${viewport.width}.png`, fullPage: true });
+  }
+  // Report cards state their period; report lists state how many recent rows they hold.
+  await page.goto(`${base}/__responsive__/admin?tab=reports&report=bookings`);
+  await page.locator(".report-card").first().waitFor();
+  assert.deepEqual(await page.locator(".report-card").evaluateAll((cards) => cards.map((card) => [card.querySelector("b").textContent, card.querySelector("small").textContent])), [["40", await page.locator(".report-card small").first().textContent()], ["75%", await page.locator(".report-card small").nth(1).textContent()], ["3", "ตอนนี้"], ["6", await page.locator(".report-card small").nth(3).textContent()]]);
+  assert.match(await page.locator(".report-card small").first().textContent(), /^เดือนนี้ \d/);
+  assert.match(await page.locator(".admin-report-summary article").first().innerText(), /ข้อมูล 12 รายการล่าสุด ตั้งแต่ 10 ธ\.ค\. 2569/);
+  await page.screenshot({ path: `${outDir}/report-bookings-1440.png` });
+  await page.goto(`${base}/__responsive__/admin?tab=reports&report=cashup`);
+  await page.locator(".cashup-figures").waitFor();
+  await page.emulateMedia({ media: "print" });
+  assert.equal(await page.locator(".admin-sidebar").isVisible(), false, "print leaves out the console navigation");
+  assert.equal(await page.locator(".cashup-tools").isVisible(), false);
+  assert.equal(await page.locator(".cashup-sign").isVisible(), true, "the printed sheet ends with signature lines");
+  await page.screenshot({ path: `${outDir}/cashup-print.png`, fullPage: true });
+  await page.emulateMedia({ media: "screen" });
+  await page.emulateMedia({ media: "print" });
+  assert.equal(await page.locator(".receipt-toolbar").isVisible(), false, "print hides the toolbar");
+  await page.screenshot({ path: `${outDir}/receipt-print.png` });
+  await page.emulateMedia({ media: "screen" });
   assert.deepEqual(errors, []);
   await page.setViewportSize({ width: 390, height: 360 });
   failBootstrap = true;

@@ -186,6 +186,7 @@ function CounterSale({ id, th, onSold }: { id: number; th: boolean; onSold: () =
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
+  const [sold, setSold] = useState("");
   const [busy, setBusy] = useState(false);
   const attempt = useRef<{ key: string; requestId: string } | null>(null);
   useEffect(() => {
@@ -206,12 +207,13 @@ function CounterSale({ id, th, onSold }: { id: number; th: boolean; onSold: () =
     // Keep the same request id until this sale succeeds, so a retry never sells twice.
     if (!attempt.current || attempt.current.key !== `${itemKey}:${method}`) attempt.current = { key: `${itemKey}:${method}`, requestId: crypto.randomUUID() };
     const [kind, itemId] = itemKey.split(":");
-    setBusy(true); setMessage("");
+    setBusy(true); setMessage(""); setSold("");
     try {
       const result = await request<{ paymentNo: string }>("/api/admin/sales", { method: "POST", body: JSON.stringify({ userId: id, kind, itemId: Number(itemId), method, requestId: attempt.current.requestId, expectedAmount: selected.price, note: note.trim() || undefined }) });
       attempt.current = null;
       setItemKey(""); setNote("");
       setMessage(th ? `ขายแล้ว เลขที่รายการ ${result.paymentNo}` : `Sold · ${result.paymentNo}`);
+      setSold(result.paymentNo);
       onSold();
     } catch (reason) {
       const failure = reason as Error & { body?: { code?: string; amount?: number } };
@@ -234,5 +236,6 @@ function CounterSale({ id, th, onSold }: { id: number; th: boolean; onSold: () =
       <div className="admin-form-actions"><button disabled={busy || !selected}>{selected ? (th ? `บันทึกการขาย ${money(selected.price)} ฿` : `Record sale ${money(selected.price)} ฿`) : (th ? "บันทึกการขาย" : "Record sale")}</button></div>
     </form>
     {message ? <p className="admin-message" role="status">{message}</p> : null}
+    {sold ? <a className="admin-button member-sale-receipt" href={`/AdminConsole/receipt/${encodeURIComponent(sold)}`} target="_blank" rel="noopener">{th ? "พิมพ์ใบเสร็จ" : "Print receipt"}</a> : null}
   </section>;
 }

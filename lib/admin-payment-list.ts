@@ -1,6 +1,6 @@
 // Staff payment list (Dashboard, Reports → finance, and the list returned after a decision).
 // Payments awaiting confirmation come first, so none of them drop off behind newer paid ones.
-const columns = "p.payment_no paymentNo, u.display_name displayName, p.method, p.amount, p.status, p.created_at createdAt, p.paid_at paidAt, p.slip_uploaded_at slipUploadedAt, JSON_LENGTH(p.metadata, '$.previousSlips') previousSlipCount, JSON_VALUE(p.metadata, '$.refund.status') refundStatus, JSON_VALUE(p.metadata, '$.cancelReason') cancelReason, JSON_UNQUOTE(JSON_EXTRACT(p.metadata, '$.itemName')) itemName, COALESCE(JSON_UNQUOTE(JSON_EXTRACT(p.metadata, '$.itemType')), JSON_UNQUOTE(JSON_EXTRACT(p.metadata, '$.kind'))) itemType";
+const columns = "p.payment_no paymentNo, COALESCE(JSON_VALUE(p.metadata, '$.guestName'), u.display_name) displayName, p.method, p.amount, p.status, p.created_at createdAt, p.paid_at paidAt, p.slip_uploaded_at slipUploadedAt, JSON_LENGTH(p.metadata, '$.previousSlips') previousSlipCount, JSON_VALUE(p.metadata, '$.refund.status') refundStatus, JSON_VALUE(p.metadata, '$.cancelReason') cancelReason, JSON_UNQUOTE(JSON_EXTRACT(p.metadata, '$.itemName')) itemName, COALESCE(JSON_UNQUOTE(JSON_EXTRACT(p.metadata, '$.itemType')), JSON_UNQUOTE(JSON_EXTRACT(p.metadata, '$.kind'))) itemType";
 
 export const adminPaymentListSql = `SELECT ${columns} FROM payments p JOIN users u ON u.id = p.user_id ORDER BY p.status = 'created' DESC, p.created_at DESC LIMIT 200`;
 

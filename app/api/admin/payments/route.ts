@@ -90,7 +90,10 @@ export async function PUT(req: NextRequest) {
     }
 
     if (input.status === "paid") {
-      await conn.execute("UPDATE payments SET status = ?, paid_at = IF(? = 'paid', NOW(), paid_at) WHERE id = ?", [input.status, input.status, payment.id]);
+      // Who confirmed it: the daily cash-up attributes the money to this staff member.
+      const metadata = parseMetadata(payment.metadataText);
+      metadata.confirmedBy = admin.id;
+      await conn.execute("UPDATE payments SET status = 'paid', paid_at = NOW(), metadata = ? WHERE id = ?", [JSON.stringify(metadata), payment.id]);
     } else {
       // The reason reaches the member; money already transferred (a slip exists) awaits a recorded refund.
       const metadata = parseMetadata(payment.metadataText);

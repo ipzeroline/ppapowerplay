@@ -285,6 +285,10 @@ export const packageMessages: [string, string, string, string?][] = [
   // Notifications and answers from staff actions
   ["ได้รับสิทธิ์จากเคาน์เตอร์", "Purchase recorded at the counter", "已在前台开通权益"],
   ["คืนเงินแล้ว", "Refund completed", "已退款"],
+  ["จองสนามจากเคาน์เตอร์", "Court booked at the counter", "已在前台预订场地"],
+  ["รายการชำระหมดเวลา", "Payment request expired", "付款请求已过期"],
+  ["ใกล้ถึงเวลาจองสนาม", "Your court booking starts soon", "您预订的场地即将开始"],
+  ["แพ็กเกจใกล้หมดอายุ", "Your package ends soon", "您的套餐即将到期"],
   ["คำขอนี้ถูกใช้ไปแล้ว กรุณาลองใหม่", "This request was already used. Please try again.", "该请求已被使用，请重试。"],
   ["มีคำถามเรื่องข้อมูลส่วนบุคคล ติดต่อ", "Questions about your personal data? Contact", "如对个人数据有疑问，请联系"],
 ];
