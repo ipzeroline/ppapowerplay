@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { query } from "@/lib/db";
 import { adminPaymentListSql } from "@/lib/admin-payment-list";
 import { loadDashboard } from "@/lib/admin-dashboard";
+import { adminLangCookie, adminThemeCookie, readAdminLang, readAdminTheme } from "@/lib/admin-preferences";
 
 type AdminConsolePageProps = {
   searchParams: Promise<{ key?: string | string[]; report?: string | string[] }>;
@@ -30,13 +31,16 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
   const cookieStore = await cookies();
   const adminSession = cookieStore.get(adminSessionCookieName())?.value || "";
   const currentAdmin = await getAdminIdentity(adminSession);
+  // Theme and language the staff member chose last time (see components/admin-console.tsx).
+  const theme = readAdminTheme(cookieStore.get(adminThemeCookie)?.value);
+  const lang = readAdminLang(cookieStore.get(adminLangCookie)?.value);
 
   if (!currentAdmin) {
     return (
-      <main className="admin admin-locked">
+      <main className="admin admin-locked" data-theme={theme}>
         <div className="brand">PPA<span>.</span></div>
-        <h1>Admin Access</h1>
-        <p>เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านพนักงาน</p>
+        <h1>เข้าสู่ระบบหลังบ้าน</h1>
+        <p>ใช้ชื่อผู้ใช้และรหัสผ่านพนักงาน</p>
         <AdminLogin />
       </main>
     );
@@ -46,7 +50,7 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
   if (!canAccessSection(initialTab, can)) {
     const first = adminConsoleSections.find((section) => canAccessSection(section, can));
     if (first) redirect(`/AdminConsole/${first}`);
-    return <main className="admin admin-locked"><h1>ไม่มีสิทธิ์เข้าถึง</h1><p>กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดสิทธิ์</p><AdminLogin /></main>;
+    return <main className="admin admin-locked" data-theme={theme}><div className="brand">PPA<span>.</span></div><h1>ไม่มีสิทธิ์เข้าถึง</h1><p>กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดสิทธิ์</p><AdminLogin /></main>;
   }
   const allowedQuery = <T,>(permissions: string[], sql: string) => permissions.some(can) ? query<T>(sql) : Promise.resolve([] as T[]);
   const [
@@ -265,5 +269,5 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     ],
   };
 
-  return <AdminConsole adminKey="" data={data} initialReportSection={reportSection} initialTab={initialTab} />;
+  return <AdminConsole adminKey="" data={data} initialReportSection={reportSection} initialTab={initialTab} initialTheme={theme} initialLang={lang} />;
 }

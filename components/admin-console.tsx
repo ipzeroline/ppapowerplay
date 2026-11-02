@@ -7,12 +7,17 @@ import { AdminDialog } from "@/components/admin-dialog";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  CalendarDays, ChartColumn, ChevronDown, ChevronRight, Download, Dumbbell, KeyRound, LayoutDashboard, Lightbulb, LogOut, Menu, PanelsTopLeft, RefreshCw,
+  ScanLine, ScrollText, Search, Server, ShieldCheck, Ticket, UserCog, UserRound, Users, X, type LucideIcon,
+} from "lucide-react";
 import { canAccessSection, canViewSlips } from "@/lib/admin-permissions";
 import { AdminDashboard } from "@/components/admin-dashboard";
 import type { DashboardSnapshot } from "@/lib/admin-dashboard";
+import { adminLangCookie, adminThemeCookie, type AdminLang, type AdminTheme } from "@/lib/admin-preferences";
 
-type Lang = "th" | "en";
-type Theme = "dark" | "light";
+type Lang = AdminLang;
+type Theme = AdminTheme;
 type AdminMetric = { label: string; value: number | string; hint: string };
 type AdminUser = { id: number; displayName: string; memberCode: string; phone?: string | null; email?: string | null; status: string; createdAt?: string };
 type AdminBooking = {
@@ -147,6 +152,9 @@ const copy = {
   th: {
     ops: "ระบบจัดการสปอร์ตคอมเพล็กซ์",
     eyebrow: "PPA POWER PLAY",
+    backOffice: "หลังบ้าน",
+    accountMenu: "เมนูบัญชีผู้ใช้",
+    editProfileLong: "แก้ไขโปรไฟล์และรหัสผ่าน",
     search: "ค้นหาสมาชิก / การจอง / คูปอง",
     language: "ภาษา",
     theme: "ธีม",
@@ -244,7 +252,7 @@ const copy = {
     reportTrainers: "เทรนเนอร์",
     reportCourts: "สนาม",
     reportEngagement: "การใช้งาน",
-    reportAudit: "Audit",
+    reportAudit: "บันทึกการทำงาน",
     reportKpi: "KPI สำคัญ",
     reportDetail: "รายละเอียดรายงาน",
     reportSearchRows: "ค้นหาในรายการ",
@@ -433,10 +441,10 @@ const copy = {
     },
     cols: {
       member: "สมาชิก",
-      memberId: "Member ID",
+      memberId: "รหัสสมาชิก",
       contact: "ติดต่อ",
       status: "สถานะ",
-      booking: "Booking",
+      booking: "การจอง",
       time: "เวลา",
       amount: "ยอด",
       coupon: "คูปอง",
@@ -446,13 +454,17 @@ const copy = {
       trainer: "เทรนเนอร์",
       role: "บทบาท",
       startPrice: "ราคาเริ่ม",
-      payment: "Payment",
+      payment: "รายการชำระ",
       method: "ช่องทาง",
     },
+    methods: { promptpay: "พร้อมเพย์", cash: "เงินสด", card: "บัตร", wallet: "Wallet", line_pay: "LINE Pay" },
   },
   en: {
-    ops: "SPORT COMPLEX OPS",
+    ops: "Sport complex operations",
     eyebrow: "PPA POWER PLAY",
+    backOffice: "Back office",
+    accountMenu: "Account menu",
+    editProfileLong: "Edit profile and password",
     search: "Search members / bookings / coupons",
     language: "Language",
     theme: "Theme",
@@ -462,7 +474,7 @@ const copy = {
     home: "Home",
     signedIn: "Signed in",
     editProfile: "Profile",
-    logout: "Logout",
+    logout: "Sign out",
     profileTitle: "Profile settings",
     profileSubtitle: "Edit your signed-in account details and password.",
     profileSaved: "Profile saved",
@@ -755,25 +767,26 @@ const copy = {
       payment: "Payment",
       method: "Method",
     },
+    methods: { promptpay: "PromptPay", cash: "Cash", card: "Card", wallet: "Wallet", line_pay: "LINE Pay" },
   },
 } as const;
 
 const tabs = [
-  ["dashboard", "Dashboard", "dashboard", "📊"],
-  ["members", "Members", "members", "👤"],
-  ["staff", "Staff", "staff", "🧑‍💼"],
-  ["roles", "Roles", "roles", "🛡️"],
-  ["reports", "Reports", "reports", "📈"],
-  ["content", "Content", "content", "🧩"],
-  ["coupons", "Coupons", "coupons", "🎟️"],
-  ["bookings", "Bookings", "bookings", "📅"],
-  ["scanner", "Scan QR", "scanner", "📷"],
-  ["trainers", "Trainers", "trainers", "🏋️"],
-  ["audit", "Audit", "audit", "🧾"],
-  ["security", "Security", "security", "🔐"],
-  ["system", "System", "system", "🖥️"],
-  ["analysis", "Analysis", "analysis", "🧠"],
-] as const;
+  ["dashboard", "Dashboard", "dashboard", LayoutDashboard],
+  ["members", "Members", "members", Users],
+  ["staff", "Staff", "staff", UserCog],
+  ["roles", "Roles", "roles", KeyRound],
+  ["reports", "Reports", "reports", ChartColumn],
+  ["content", "Content", "content", PanelsTopLeft],
+  ["coupons", "Coupons", "coupons", Ticket],
+  ["bookings", "Bookings", "bookings", CalendarDays],
+  ["scanner", "Scan QR", "scanner", ScanLine],
+  ["trainers", "Trainers", "trainers", Dumbbell],
+  ["audit", "Audit", "audit", ScrollText],
+  ["security", "Security", "security", ShieldCheck],
+  ["system", "System", "system", Server],
+  ["analysis", "Analysis", "analysis", Lightbulb],
+] as const satisfies readonly (readonly [string, string, string, LucideIcon])[];
 
 type AdminTab = (typeof tabs)[number][0];
 type ReportSection = "overview" | "finance" | "bookings" | "members" | "coupons" | "trainers" | "courts" | "engagement" | "audit";
@@ -921,7 +934,7 @@ const completionChecklist = {
   ],
 };
 
-export function AdminConsole({ adminKey, data, initialReportSection, initialTab = "dashboard" }: { adminKey: string; data: AdminConsoleData; initialReportSection?: string; initialTab?: string }) {
+export function AdminConsole({ adminKey, data, initialReportSection, initialTab = "dashboard", initialTheme = "light", initialLang = "th" }: { adminKey: string; data: AdminConsoleData; initialReportSection?: string; initialTab?: string; initialTheme?: Theme; initialLang?: Lang }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
@@ -953,10 +966,14 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
   const [tab, setTab] = useState<AdminTab>(isAdminTab(initialTab) ? initialTab : "dashboard");
   const initialReport = isReportSection(initialReportSection || null) ? initialReportSection as ReportSection : "overview";
   const [reportSection, setReportSection] = useState<ReportSection>(initialReport);
-  const [reportMenuOpen, setReportMenuOpen] = useState(false);
+  const [reportMenuOpen, setReportMenuOpen] = useState(initialTab === "reports");
   const [query, setQuery] = useState("");
-  const [lang, setLang] = useState<Lang>("th");
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [lang, setLangState] = useState<Lang>(initialLang);
+  const [theme, setThemeState] = useState<Theme>(initialTheme);
+  // Remembered for a year, read by the server so the next visit renders in the same theme and language.
+  const remember = (name: string, value: string) => { document.cookie = `${name}=${value}; path=/; max-age=31536000; samesite=lax`; };
+  const setLang = (value: Lang) => { setLangState(value); remember(adminLangCookie, value); };
+  const setTheme = (value: Theme) => { setThemeState(value); remember(adminThemeCookie, value); };
   const [bookingRows, setBookingRows] = useState(data.bookings);
   const [courtRows, setCourtRows] = useState(data.courts);
   const [paymentRows, setPaymentRows] = useState(data.payments);
@@ -968,17 +985,7 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
   const [permissionRows, setPermissionRows] = useState(data.permissions);
   const [adminMessage, setAdminMessage] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
-  const [clockText, setClockText] = useState("");
   const t = copy[lang];
-
-  useEffect(() => {
-    const updateClock = () => {
-      setClockText(new Date().toLocaleString(lang === "th" ? "th-TH" : "en-US", { dateStyle: "medium", timeStyle: "short" }));
-    };
-    updateClock();
-    const timer = window.setInterval(updateClock, 30_000);
-    return () => window.clearInterval(timer);
-  }, [lang]);
 
   useEffect(() => {
     const syncFromPath = () => {
@@ -1042,33 +1049,37 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
     <main className="admin admin-console" data-theme={theme} data-menu-open={menuOpen}>
       {menuOpen ? <button className="admin-menu-backdrop" tabIndex={-1} aria-label="Close menu" onClick={() => setMenuOpen(false)} /> : null}
       <aside className="admin-sidebar" id="admin-navigation" ref={sidebarRef} role={menuOpen ? "dialog" : undefined} aria-modal={menuOpen || undefined} aria-label="Admin navigation">
-        <button className="admin-menu-close" type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)}>×</button>
-        <div className="admin-logo">PPA<span>.</span></div>
-        <small>{t.ops}</small>
+        <button className="admin-menu-close" type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)}><X aria-hidden="true" /></button>
+        <div className="admin-brand">
+          <div className="admin-logo">PPA<span>.</span></div>
+          <small>{t.ops}</small>
+        </div>
         <nav>
           {adminNavGroups.filter((group) => group.items.some(canAccessTab)).map((group) => (
             <section className="admin-nav-section" key={group.labelEn}>
-              <p>{lang === "th" ? group.labelTh : group.labelEn}</p>
+              {group.items.length > 1 ? <p>{lang === "th" ? group.labelTh : group.labelEn}</p> : null}
               {group.items.filter(canAccessTab).map((itemId) => {
                 const item = tabs.find(([id]) => id === itemId);
                 if (!item) return null;
-                const [id, , key, icon] = item;
+                const [id, , key, Icon] = item;
                 return (
                   <div className="admin-nav-group" key={id}>
                     <button
+                      aria-current={tab === id && id !== "reports" ? "page" : undefined}
                       aria-expanded={id === "reports" ? reportMenuOpen : undefined}
                       className={`${tab === id ? "on" : ""} ${id === "reports" && reportMenuOpen ? "expanded" : ""}`}
                       onClick={() => (id === "reports" ? toggleReportMenu() : goTab(id))}
                       type="button"
                     >
-                      <i>{icon}</i><b>{t[key]}</b>
-                      {id === "reports" ? <em className="admin-nav-caret">⌄</em> : null}
+                      <Icon className="admin-nav-icon" aria-hidden="true" />
+                      <span className="admin-nav-label">{t[key]}</span>
+                      {id === "reports" ? <ChevronDown className="admin-nav-caret" aria-hidden="true" /> : null}
                     </button>
                     {id === "reports" && reportMenuOpen ? (
                       <div className="admin-subnav">
                         {reportTabs.map(([section, label]) => (
-                          <button className={reportSection === section ? "on" : ""} key={section} type="button" onClick={() => goReport(section)}>
-                            <span className="admin-subnav-prefix">-</span><b>{label}</b>
+                          <button aria-current={tab === "reports" && reportSection === section ? "page" : undefined} className={tab === "reports" && reportSection === section ? "on" : ""} key={section} type="button" onClick={() => goReport(section)}>
+                            <span className="admin-nav-label">{label}</span>
                           </button>
                         ))}
                       </div>
@@ -1081,18 +1092,19 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
         </nav>
       </aside>
       <section className="admin-main" inert={menuOpen}>
-        <nav className="admin-navbar">
-          <button className="admin-menu-toggle" type="button" ref={menuButtonRef} aria-label="Open menu" aria-expanded={menuOpen} aria-controls="admin-navigation" onClick={() => setMenuOpen(true)}>☰</button>
-          <button className="admin-nav-home" type="button" onClick={() => goTab("dashboard")}>
-            <span>⌂</span>{t.home}
-          </button>
-          <div className="admin-nav-tools">
-            <Segment label={t.language} value={lang} options={[["th", "ไทย"], ["en", "EN"]]} onChange={(value) => setLang(value as Lang)} />
-            <Segment label={t.theme} value={theme} options={[["dark", t.dark], ["light", t.light]]} onChange={(value) => setTheme(value as Theme)} />
-            <div className="admin-clock"><small>{t.clockLabel}</small><b>{clockText || "-"}</b></div>
-            {currentAdmin ? <AdminProfile admin={currentAdmin} lang={lang} onLogout={logout} t={t} onOpenProfile={() => setProfileOpen(true)} /> : null}
+        <header className="admin-navbar">
+          <button className="admin-menu-toggle" type="button" ref={menuButtonRef} aria-label="Open menu" aria-expanded={menuOpen} aria-controls="admin-navigation" onClick={() => setMenuOpen(true)}><Menu aria-hidden="true" /></button>
+          <p className="admin-crumbs">
+            <span>{t.backOffice}</span>
+            <ChevronRight aria-hidden="true" />
+            <b>{tab === "reports" ? reportTabs.find(([id]) => id === reportSection)?.[1] || currentTitle : currentTitle}</b>
+          </p>
+          <div className="admin-navbar-actions">
+            {currentAdmin ? (
+              <UserMenu admin={currentAdmin} lang={lang} theme={theme} t={t} onLang={setLang} onTheme={setTheme} onLogout={logout} onOpenProfile={() => setProfileOpen(true)} />
+            ) : null}
           </div>
-        </nav>
+        </header>
 
         {profileOpen && currentAdmin ? (
           <ProfileModal admin={currentAdmin} adminKey={adminKey} lang={lang} onClose={() => setProfileOpen(false)} onProfileSaved={(updated) => setStaffRows((existing) => [...existing.filter((row) => !updated.some((item) => item.id === row.id)), ...updated])} t={t} />
@@ -1101,18 +1113,18 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
         {/* The dashboard has its own header (date, last update, refresh). */}
         {tab !== "dashboard" ? <header className="admin-top">
           <div>
-            <p className="eyebrow">{t.eyebrow}</p>
             <h1>{currentTitle}</h1>
             <span>{currentDescription}</span>
           </div>
-          <div className={`admin-page-toolbar ${showHeaderSearch ? "" : "compact"}`} aria-label={t.search}>
-            <button className="admin-refresh" type="button" onClick={() => window.location.reload()}><span>↻</span>{t.refresh}</button>
+          <div className="admin-page-toolbar">
             {showHeaderSearch ? (
               <label className="admin-page-search">
-                <span>{searchScope}</span>
-                <input placeholder={t.search} value={query} onChange={(event) => setQuery(event.target.value)} />
+                <Search aria-hidden="true" />
+                <span className="admin-sr-only">{t.search} {searchScope}</span>
+                <input type="search" placeholder={t.search} value={query} onChange={(event) => setQuery(event.target.value)} />
               </label>
             ) : null}
+            <button className="admin-refresh" type="button" onClick={() => window.location.reload()}><RefreshCw aria-hidden="true" />{t.refresh}</button>
           </div>
         </header> : null}
 
@@ -1179,20 +1191,52 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
   );
 }
 
-function AdminProfile({ admin, lang, onLogout, onOpenProfile, t }: { admin: AdminStaff; lang: Lang; onLogout: () => void; onOpenProfile: () => void; t: typeof copy[Lang] }) {
+// Account menu in the top bar: a native popover (top layer, Esc and outside click close it,
+// focus returns to the trigger). Profile, language, theme and sign-out live here.
+function UserMenu({ admin, lang, theme, t, onLang, onTheme, onLogout, onOpenProfile }: {
+  admin: AdminStaff;
+  lang: Lang;
+  theme: Theme;
+  t: typeof copy[Lang];
+  onLang: (value: Lang) => void;
+  onTheme: (value: Theme) => void;
+  onLogout: () => void;
+  onOpenProfile: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const role = lang === "th" ? admin.roleNameTh : admin.roleNameEn;
+  useEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const onToggle = (event: Event) => {
+      const isOpen = (event as ToggleEvent).newState === "open";
+      setOpen(isOpen);
+      if (isOpen) menu.querySelector<HTMLElement>("button")?.focus();
+    };
+    menu.addEventListener("toggle", onToggle);
+    return () => menu.removeEventListener("toggle", onToggle);
+  }, []);
+  const close = () => menuRef.current?.hidePopover();
   return (
-    <div className="admin-profile-chip">
-      <div className="admin-avatar">{initials(admin.displayName || admin.username)}</div>
-      <div>
-        <small>{t.signedIn}</small>
-        <b>{admin.displayName}</b>
-        <span>{lang === "th" ? admin.roleNameTh : admin.roleNameEn}</span>
+    <>
+      <button className="admin-user-trigger" type="button" popoverTarget="admin-user-menu" aria-haspopup="dialog" aria-expanded={open}>
+        <span className="admin-avatar" aria-hidden="true">{initials(admin.displayName || admin.username)}</span>
+        <span><b>{admin.displayName}</b><small>{role}</small></span>
+        <ChevronDown aria-hidden="true" />
+      </button>
+      <div ref={menuRef} id="admin-user-menu" className="admin-user-menu" popover="auto" role="dialog" aria-label={t.accountMenu}>
+        <div className="admin-user-menu-head">
+          <span className="admin-avatar" aria-hidden="true">{initials(admin.displayName || admin.username)}</span>
+          <div><b>{admin.displayName}</b><small>{role} · {admin.username}</small></div>
+        </div>
+        <button type="button" className="admin-menu-item" onClick={() => { close(); onOpenProfile(); }}><UserRound aria-hidden="true" />{t.editProfileLong}</button>
+        <div className="admin-menu-row"><span>{t.language}</span><Segment label={t.language} value={lang} options={[["th", "ไทย"], ["en", "EN"]]} onChange={(value) => onLang(value as Lang)} /></div>
+        <div className="admin-menu-row"><span>{t.theme}</span><Segment label={t.theme} value={theme} options={[["light", t.light], ["dark", t.dark]]} onChange={(value) => onTheme(value as Theme)} /></div>
+        <hr className="admin-menu-separator" />
+        <button type="button" className="admin-menu-item admin-menu-signout" onClick={() => { close(); onLogout(); }}><LogOut aria-hidden="true" />{t.logout}</button>
       </div>
-      <div className="admin-profile-actions">
-        <button type="button" onClick={onOpenProfile}>{t.editProfile}</button>
-        <button className="ghost" type="button" onClick={onLogout}>{t.logout}</button>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -1298,10 +1342,9 @@ function ProfileModal({
 
 function Segment({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
   return (
-    <div className="admin-segment" aria-label={label}>
-      <small>{label}</small>
+    <div className="admin-segment" role="group" aria-label={label}>
       {options.map(([id, text]) => (
-        <button className={value === id ? "on" : ""} key={id} type="button" onClick={() => onChange(id)}>{text}</button>
+        <button aria-pressed={value === id} className={value === id ? "on" : ""} key={id} type="button" onClick={() => onChange(id)}>{text}</button>
       ))}
     </div>
   );
@@ -1316,11 +1359,11 @@ function MemberTable({ rows, lang, t }: { rows: AdminUser[]; lang: Lang; t: type
 }
 
 function BookingTable({ rows, lang, t }: { rows: AdminBooking[]; lang: Lang; t: typeof copy[Lang] }) {
-  return <table><thead><tr><th>{t.cols.booking}</th><th>{t.cols.member}</th><th>{t.cols.time}</th><th>{t.cols.amount}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.bookingNo}><td>{r.title}<small>{r.bookingNo} · {r.sportName || "-"} · {r.courtName || "-"}</small></td><td>{r.displayName}<small>{r.players || 1} players</small></td><td>{formatDate(r.startsAt, lang)}<small>{r.endsAt ? formatDate(r.endsAt, lang) : ""}</small></td><td>{money(r.amount, lang)} ฿</td><td><Badge tone={r.status === "paid" || r.status === "checked_in" ? "good" : r.status === "cancelled" || r.status === "expired" ? "bad" : "warn"}>{statusLabel(r.status, t)}</Badge></td></tr>)}</tbody></table>;
+  return <table><thead><tr><th>{t.cols.booking}</th><th>{t.cols.member}</th><th>{t.cols.time}</th><th className="num">{t.cols.amount}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.bookingNo}><td>{r.title}<small>{r.bookingNo} · {r.sportName || "-"} · {r.courtName || "-"}</small></td><td>{r.displayName}<small>{r.players || 1} players</small></td><td>{formatDate(r.startsAt, lang)}<small>{r.endsAt ? formatDate(r.endsAt, lang) : ""}</small></td><td className="num">{money(r.amount, lang)} ฿</td><td><Badge tone={r.status === "paid" || r.status === "checked_in" ? "good" : r.status === "cancelled" || r.status === "expired" ? "bad" : "warn"}>{statusLabel(r.status, t)}</Badge></td></tr>)}</tbody></table>;
 }
 
 function CouponTable({ rows, lang, t }: { rows: AdminCoupon[]; lang: Lang; t: typeof copy[Lang] }) {
-  return <table><thead><tr><th>{t.cols.coupon}</th><th>{t.cols.category}</th><th>{t.cols.price}</th><th>{t.cols.usage}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td>{r.name}<small>{r.code}</small></td><td>{r.category}</td><td>{money(r.price, lang)} ฿</td><td>{r.totalUses} / {r.validityDays}d</td><td><Badge tone={r.active ? "good" : "bad"}>{statusLabel(r.active ? "active" : "off", t)}</Badge></td></tr>)}</tbody></table>;
+  return <table><thead><tr><th>{t.cols.coupon}</th><th>{t.cols.category}</th><th className="num">{t.cols.price}</th><th>{t.cols.usage}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td>{r.name}<small>{r.code}</small></td><td>{r.category}</td><td className="num">{money(r.price, lang)} ฿</td><td>{r.totalUses} / {r.validityDays}d</td><td><Badge tone={r.active ? "good" : "bad"}>{statusLabel(r.active ? "active" : "off", t)}</Badge></td></tr>)}</tbody></table>;
 }
 
 function BookingManager({
@@ -1476,7 +1519,7 @@ function BookingManager({
 }
 
 function TrainerTable({ rows, lang, t }: { rows: AdminTrainer[]; lang: Lang; t: typeof copy[Lang] }) {
-  return <table><thead><tr><th>{t.imagePreview}</th><th>{t.cols.trainer}</th><th>{t.cols.role}</th><th>{t.experience}</th><th>{t.cols.startPrice}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td><TrainerPhoto row={r} /></td><td>{r.name}<small>{r.nickname} · {r.slug}</small></td><td>{r.role}</td><td>{r.experience}</td><td>{money(r.startPrice, lang)} ฿</td><td><Badge tone={r.active ? "good" : "bad"}>{statusLabel(r.active ? "active" : "off", t)}</Badge></td></tr>)}</tbody></table>;
+  return <table><thead><tr><th>{t.imagePreview}</th><th>{t.cols.trainer}</th><th>{t.cols.role}</th><th>{t.experience}</th><th className="num">{t.cols.startPrice}</th><th>{t.cols.status}</th></tr></thead><tbody>{rows.map((r) => <tr key={r.id}><td><TrainerPhoto row={r} /></td><td>{r.name}<small>{r.nickname} · {r.slug}</small></td><td>{r.role}</td><td>{r.experience}</td><td className="num">{money(r.startPrice, lang)} ฿</td><td><Badge tone={r.active ? "good" : "bad"}>{statusLabel(r.active ? "active" : "off", t)}</Badge></td></tr>)}</tbody></table>;
 }
 
 function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, emptyText }: { adminKey?: string; canManage: boolean; rows: AdminPayment[]; lang: Lang; onPaymentsChange?: (rows: AdminPayment[]) => void; t: typeof copy[Lang]; emptyText?: string }) {
@@ -1511,14 +1554,14 @@ function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, em
     <>
       {emptyText && !rows.length ? <p className="dash-empty">{emptyText}</p> : null}
       {!emptyText || rows.length ? <table>
-        <thead><tr><th>{t.cols.payment}</th><th>{t.cols.member}</th><th>{t.cols.method}</th><th>{t.cols.amount}</th><th>{t.cols.status}</th><th>{t.action}</th></tr></thead>
+        <thead><tr><th>{t.cols.payment}</th><th>{t.cols.member}</th><th>{t.cols.method}</th><th className="num">{t.cols.amount}</th><th>{t.cols.status}</th><th>{t.action}</th></tr></thead>
         <tbody>{rows.map((r) => (
           <Fragment key={r.paymentNo}>
             <tr>
               <td>{r.paymentNo}<small>{paymentItemLabel(r, lang)}</small><small>{formatDate(r.paidAt || r.createdAt || "", lang)}</small>{canManage && r.slipUploadedAt ? <a className="admin-slip-link" href={`/api/admin/payments/slip?paymentNo=${encodeURIComponent(r.paymentNo)}`} target="_blank" rel="noopener noreferrer">{t.viewSlip} · {formatDate(r.slipUploadedAt, lang)}</a> : null}{canManage && Number(r.previousSlipCount) > 0 ? <span className="admin-slip-previous">{Array.from({ length: Math.min(Number(r.previousSlipCount), 10) }, (_, index) => <a key={index} href={`/api/admin/payments/slip?paymentNo=${encodeURIComponent(r.paymentNo)}&previous=${index}`} target="_blank" rel="noopener noreferrer">{t.previousSlip} {index + 1}</a>)}</span> : null}</td>
               <td>{r.displayName}</td>
-              <td>{r.method}</td>
-              <td>{money(r.amount, lang)} ฿</td>
+              <td>{t.methods[r.method as keyof typeof t.methods] || r.method}</td>
+              <td className="num">{money(r.amount, lang)} ฿</td>
               <td>
                 {r.refundStatus === "pending" && r.status === "cancelled" ? <Badge tone="warn">{t.refundPending}</Badge> : <Badge tone={r.status === "paid" ? "good" : r.status === "failed" || r.status === "cancelled" ? "bad" : r.status === "refunded" ? "neutral" : "warn"}>{r.status === "created" ? t.awaitingConfirmation : statusLabel(r.status, t)}</Badge>}
                 {r.cancelReason ? <small>{r.cancelReason}</small> : null}
@@ -1627,7 +1670,7 @@ function ReportDataList<T>({
           <article><span>{t.reportFilteredRows}</span><b>{filteredRows.length}</b><small>{t.rowsShowing} {pagedRows.length}</small></article>
           <article><span>{amountLabel || t.reportSummary}</span><b>{amountLabel ? `${money(sumReportAmount(filteredRows), lang)} ฿` : filteredRows.length}</b><small>{t.total}</small></article>
         </div>
-        {renderTable(pagedRows)}
+        <div className="admin-table-scroll">{renderTable(pagedRows)}</div>
         <div className="admin-pagination">
           <button disabled={currentPage <= 1} type="button" onClick={() => setPage((value) => Math.max(value - 1, 1))}>{t.previousPage}</button>
           <span>{t.pageLabel} {currentPage} / {totalPages}</span>
@@ -2532,7 +2575,7 @@ function AuditReportTable({ lang, rows, t }: { lang: Lang; rows: AdminAuditLog[]
           <tr key={row.id}>
             <td>{formatDate(row.createdAt, lang)}</td>
             <td>{row.staffName || row.username || "System"}<small>{row.username || "-"}</small></td>
-            <td><Badge tone="good">{auditActionLabel(row.action, lang)}</Badge></td>
+            <td><Badge tone={sensitiveAuditAction(row.action) ? "warn" : "neutral"}>{auditActionLabel(row.action, lang)}</Badge></td>
             <td>{row.targetType}<small>{row.targetId || "-"}</small></td>
             <td>{compactJson(row.metadataText)}</td>
           </tr>
@@ -2563,20 +2606,20 @@ function AuditTrail({ lang, rows, t }: { lang: Lang; rows: AdminAuditLog[]; t: t
         <button type="button" onClick={() => { setAction(""); setNeedle(""); }}>{t.resetFilter}</button>
         <ExportButton label={t.exportCsv} filename="ppa-audit.csv" rows={filteredRows.map((row) => ({ ...row, action: auditActionLabel(row.action, lang), metadata: compactJson(row.metadataText) }))} />
       </div>
-      <table>
+      <div className="admin-table-scroll"><table>
         <thead><tr><th>{t.auditTime}</th><th>{t.auditActor}</th><th>{t.auditAction}</th><th>{t.auditTarget}</th><th>{t.auditMetadata}</th></tr></thead>
         <tbody>
           {filteredRows.length ? filteredRows.map((row) => (
             <tr key={row.id}>
               <td>{formatDate(row.createdAt, lang)}</td>
               <td>{row.staffName || row.username || "System"}<small>{row.username || "-"}</small></td>
-              <td><Badge tone="good">{auditActionLabel(row.action, lang)}</Badge></td>
+              <td><Badge tone={sensitiveAuditAction(row.action) ? "warn" : "neutral"}>{auditActionLabel(row.action, lang)}</Badge></td>
               <td>{row.targetType}<small>{row.targetId || "-"}</small></td>
               <td>{compactJson(row.metadataText)}</td>
             </tr>
           )) : <tr><td colSpan={5}>{t.auditEmpty}</td></tr>}
         </tbody>
-      </table>
+      </table></div>
     </Panel>
   );
 }
@@ -2611,7 +2654,7 @@ function SystemStatusPanel({ lang, rows, scoreItems, title, t }: { lang: Lang; r
 }
 
 function ExportButton({ filename, label, rows }: { filename: string; label: string; rows: Record<string, unknown>[] }) {
-  return <button className="admin-export" type="button" onClick={() => downloadCsv(filename, rows)}>{label}</button>;
+  return <button className="admin-export" type="button" onClick={() => downloadCsv(filename, rows)}><Download aria-hidden="true" />{label}</button>;
 }
 
 function Analysis({ lang, t }: { lang: Lang; t: typeof copy[Lang] }) {
@@ -2745,6 +2788,19 @@ function auditActionLabel(action: string, lang: Lang) {
     "coupon.delete": { th: "ปิดคูปอง", en: "Disable coupon" },
     "profile.update": { th: "แก้ไขโปรไฟล์", en: "Update profile" },
     "profile.password.update": { th: "เปลี่ยนรหัสผ่าน", en: "Change password" },
+    "content.create": { th: "เพิ่มคอนเทนต์", en: "Create content" },
+    "content.update": { th: "แก้ไขคอนเทนต์", en: "Update content" },
+    "content.delete": { th: "ลบคอนเทนต์", en: "Delete content" },
+    "court.create": { th: "เพิ่มสนาม", en: "Create court" },
+    "court.update": { th: "แก้ไขสนาม", en: "Update court" },
+    "court.delete": { th: "ลบสนาม", en: "Delete court" },
+    "booking.status": { th: "เปลี่ยนสถานะการจอง", en: "Change booking status" },
+    "member.update": { th: "แก้ไขข้อมูลสมาชิก", en: "Update member" },
+    "member.credit": { th: "ปรับเครดิตสมาชิก", en: "Adjust member credit" },
+    "payment.status": { th: "ยืนยัน/ยกเลิกการชำระ", en: "Confirm or cancel payment" },
+    "payment.refund": { th: "บันทึกคืนเงิน", en: "Record refund" },
+    "sale.create": { th: "ขายหน้าเคาน์เตอร์", en: "Counter sale" },
+    "qr.consume": { th: "สแกนใช้สิทธิ์", en: "Redeem QR" },
   };
   return labels[action]?.[lang] || action;
 }
@@ -2752,11 +2808,27 @@ function auditActionLabel(action: string, lang: Lang) {
 function compactJson(value: string | null) {
   if (!value) return "-";
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    return Object.entries(parsed).map(([key, item]) => `${key}: ${String(item)}`).join(" · ") || "-";
+    return describeAuditValue(JSON.parse(value)) || "-";
   } catch {
     return value;
   }
+}
+
+// Audit metadata can nest (member.update stores { before: {...}, after: {...} }): spell it out.
+function describeAuditValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "-";
+  if (Array.isArray(value)) return value.map(describeAuditValue).join(", ");
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => `${key}: ${item && typeof item === "object" && !Array.isArray(item) ? `(${describeAuditValue(item)})` : describeAuditValue(item)}`)
+      .join(" · ");
+  }
+  return String(value);
+}
+
+// Actions that change access or money stand out in the audit trail.
+function sensitiveAuditAction(action: string) {
+  return /delete|password|refund|role\.|credit|status/.test(action);
 }
 
 function trainerCertifications(trainer: Pick<AdminTrainer, "certifications">) {

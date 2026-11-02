@@ -32,25 +32,27 @@ export function AdminLogin() {
 
   return (
     <form className="admin-login-form" onSubmit={submit}>
-      <input
-        autoComplete="username"
-        aria-label="Username"
-        required
-        maxLength={80}
-        placeholder="Username"
-        value={username}
-        onChange={(event) => setUsername(event.target.value)}
-      />
-      <input
-        autoComplete="current-password"
-        aria-label="Password"
-        required
-        maxLength={200}
-        placeholder="Password"
-        type="password"
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-      />
+      <label>
+        ชื่อผู้ใช้ (Username)
+        <input
+          autoComplete="username"
+          required
+          maxLength={80}
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+        />
+      </label>
+      <label>
+        รหัสผ่าน (Password)
+        <input
+          autoComplete="current-password"
+          required
+          maxLength={200}
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+      </label>
       <button disabled={busy || username.trim().length < 3 || password.length < 8} type="submit">
         {busy ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบ"}
       </button>

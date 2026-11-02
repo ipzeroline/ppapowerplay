@@ -360,7 +360,16 @@ try {
         }
         if ([390, 768, 1440].includes(viewport.width)) await page.screenshot({ path: `${outDir}/admin-${viewport.width}.png` });
         if ([390, 1440].includes(viewport.width)) await page.locator(".dash-panel").filter({ has: page.locator("#dash-today") }).screenshot({ path: `${outDir}/admin-today-${viewport.width}.png` });
-        await page.locator(".admin-profile-actions button").first().click();
+        // Account menu (native popover): profile, language, theme and sign-out live here.
+        assert.equal(await page.locator(".admin-console").getAttribute("data-theme"), "light", "light theme by default");
+        await page.locator(".admin-user-trigger").click();
+        const userMenu = page.locator(".admin-user-menu:popover-open");
+        await userMenu.waitFor();
+        const menuBox = await userMenu.boundingBox();
+        assert.ok(menuBox.x >= 0 && menuBox.x + menuBox.width <= viewport.width + 1 && menuBox.y + menuBox.height <= viewport.height + 1, `account menu fits ${viewport.width}x${viewport.height}`);
+        // Focus moves in on the popover's toggle event (a task after the click), so wait for it.
+        await page.waitForFunction(() => Boolean(document.activeElement?.closest(".admin-user-menu")), null, { timeout: 2000 });
+        await page.getByRole("button", { name: "แก้ไขโปรไฟล์และรหัสผ่าน", exact: true }).click();
         const dialog = page.locator("dialog[open]");
         await dialog.waitFor();
         for (let i = 0; i < 18; i++) {
@@ -373,9 +382,20 @@ try {
         if (viewport.width === 390) await page.screenshot({ path: `${outDir}/profile-mobile.png` });
         await page.keyboard.press("Escape");
         await dialog.waitFor({ state: "detached" });
-        await page.getByRole("button", { name: "สว่าง", exact: true }).click();
+        await page.locator(".admin-user-trigger").click();
+        await userMenu.waitFor();
+        await userMenu.getByRole("button", { name: "มืด", exact: true }).click();
+        assert.equal(await page.locator(".admin-console").getAttribute("data-theme"), "dark");
+        assert.match(await page.evaluate(() => document.cookie), /ppa_admin_theme=dark/, "the theme choice is remembered for the next visit");
+        await page.keyboard.press("Escape");
+        await userMenu.waitFor({ state: "detached" }).catch(() => {});
+        assert.equal(await page.locator(".admin-user-menu:popover-open").count(), 0, "Esc closes the account menu");
+        if (viewport.width === 390) await page.screenshot({ path: `${outDir}/admin-dark-mobile.png` });
+        await page.locator(".admin-user-trigger").click();
+        await userMenu.getByRole("button", { name: "สว่าง", exact: true }).click();
         assert.equal(await page.locator(".admin-console").getAttribute("data-theme"), "light");
-        if (viewport.width === 390) await page.screenshot({ path: `${outDir}/admin-light-mobile.png` });
+        await page.keyboard.press("Escape");
+        await page.evaluate(() => { document.cookie = "ppa_admin_theme=; path=/; max-age=0"; });
       }
       results.push({ area: "admin", tab, viewport, metrics });
     }

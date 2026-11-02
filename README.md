@@ -249,6 +249,11 @@ It adds `users.pdpa_accepted_at` / `pdpa_version`, the `member_visits` table and
 
 **5. Back-office dashboard**
 
+Layout: the left sidebar lists only the pages the signed-in role may open (a drawer on
+screens under 1024px); the account menu at the top right holds profile and password,
+language (ไทย / EN), theme (light by default, dark available) and sign-out. Theme and
+language are remembered per browser. Back-office styles live in `app/admin.css`.
+
 The dashboard shows each staff member only what their role can act on, and refreshes
 every minute while it is open:
 

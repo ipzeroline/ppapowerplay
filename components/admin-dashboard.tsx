@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CircleAlert, CircleCheck, Info, RefreshCw, TriangleAlert } from "lucide-react";
 import type { Breakdown, DashboardSnapshot, DayTotal, QueuePayment, ScheduleRow } from "@/lib/admin-dashboard";
 
 type Lang = "th" | "en";
@@ -164,30 +165,24 @@ export function AdminDashboard({ initial, lang, systemIssues, onNavigate, render
         </div>
         <div className="dash-refresh">
           <span role="status">{failed ? c.refreshFailed : `${c.updated} ${clock(snapshot.generatedAt)}`}</span>
-          <button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? c.refreshing : c.refresh}</button>
+          <button type="button" onClick={() => void refresh()} disabled={refreshing}><RefreshCw aria-hidden="true" />{refreshing ? c.refreshing : c.refresh}</button>
         </div>
       </header>
 
       <div className="dash-top">
-        {actions.length || queue ? (
+        {actions.length ? (
           <section className="dash-panel" aria-labelledby="dash-attention">
             <h2 id="dash-attention">{c.attention}</h2>
             <ul className="dash-actions">
               {actions.map((action) => (
                 <li key={action.key} className={`dash-action ${action.tone}`}>
-                  <span className="dash-action-mark" aria-hidden="true">{action.tone === "ok" ? "✓" : action.tone === "info" ? "i" : "!"}</span>
+                  <span className="dash-action-mark" aria-hidden="true">{action.tone === "ok" ? <CircleCheck /> : action.tone === "info" ? <Info /> : action.tone === "warn" ? <TriangleAlert /> : <CircleAlert />}</span>
                   <div><b>{action.label}</b><small>{action.hint}</small></div>
                   <strong>{action.count}</strong>
                   {action.go ? <button type="button" onClick={action.go}>{action.goLabel}</button> : <span className="dash-action-spacer" />}
                 </li>
               ))}
             </ul>
-            {queue ? (
-              <div className="dash-queue" id="dash-queue">
-                <h3>{c.queue}</h3>
-                {renderQueue(queue.rows, onQueueChange)}
-              </div>
-            ) : null}
           </section>
         ) : null}
 
@@ -215,6 +210,13 @@ export function AdminDashboard({ initial, lang, systemIssues, onNavigate, render
           ) : null}
         </section>
       </div>
+
+      {queue ? (
+        <section className="dash-panel" id="dash-queue" aria-labelledby="dash-queue-title">
+          <h2 id="dash-queue-title">{c.queue}</h2>
+          <div className="dash-queue">{renderQueue(queue.rows, onQueueChange)}</div>
+        </section>
+      ) : null}
 
       {sales ? (
         <section className="dash-panel" aria-labelledby="dash-month">
@@ -306,8 +308,8 @@ function SalesColumns({ days, c, baht, dayLabel }: { days: DayTotal[]; c: (typeo
       {asTable ? (
         <div className="dash-chart-table">
           <table>
-            <thead><tr><th>{c.date}</th><th>{c.amount}</th><th>{c.count}</th></tr></thead>
-            <tbody>{[...days].reverse().map((day) => <tr key={day.day}><td>{dayLabel(day.day)}</td><td>{baht(day.total)}</td><td>{day.count}</td></tr>)}</tbody>
+            <thead><tr><th>{c.date}</th><th className="num">{c.amount}</th><th className="num">{c.count}</th></tr></thead>
+            <tbody>{[...days].reverse().map((day) => <tr key={day.day}><td>{dayLabel(day.day)}</td><td className="num">{baht(day.total)}</td><td className="num">{day.count}</td></tr>)}</tbody>
           </table>
         </div>
       ) : (
