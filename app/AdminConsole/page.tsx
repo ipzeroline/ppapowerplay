@@ -10,6 +10,7 @@ import { adminPaymentListSql } from "@/lib/admin-payment-list";
 import { loadDashboard } from "@/lib/admin-dashboard";
 import { loadReportFigures } from "@/lib/report-figures";
 import { runStalePaymentSweep } from "@/lib/scheduled-jobs";
+import { missingSchema } from "@/lib/schema-check";
 import { adminLangCookie, adminThemeCookie, readAdminLang, readAdminTheme } from "@/lib/admin-preferences";
 
 type AdminConsolePageProps = {
@@ -59,27 +60,7 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     return <main className="admin admin-locked" data-theme={theme}><div className="brand">PPA<span>.</span></div><h1>ไม่มีสิทธิ์เข้าถึง</h1><p>กรุณาติดต่อผู้ดูแลระบบเพื่อกำหนดสิทธิ์</p><AdminLogin /></main>;
   }
   const allowedQuery = <T,>(permissions: string[], sql: string) => permissions.some(can) ? query<T>(sql) : Promise.resolve([] as T[]);
-  const [
-    userCount,
-    bookingCount,
-    paymentCount,
-    revenue,
-    users,
-    bookings,
-    payments,
-    coupons,
-    trainers,
-    courts,
-    staff,
-    roles,
-    permissions,
-    auditLogs,
-    contentItems,
-    activeMemberships,
-    walletAccounts,
-    notifications,
-    groups,
-] = await Promise.all([
+  const loaded = await Promise.all([
     allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM users u WHERE u.line_user_id <> 'system:walk-in'"),
     allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM bookings"),
     allowedQuery<{ total: number }>(["dashboard.view"], "SELECT COUNT(*) total FROM payments WHERE status = 'paid'"),
@@ -114,7 +95,43 @@ export async function AdminConsolePageView({ searchParams, initialTab = "dashboa
     allowedQuery<{ total: number }>(["settings.manage"], "SELECT COUNT(*) total FROM wallet_accounts"),
     allowedQuery<{ total: number }>(["settings.manage"], "SELECT COUNT(*) total FROM notifications"),
     allowedQuery<{ total: number }>(["settings.manage"], "SELECT COUNT(*) total FROM groups_clubs WHERE status = 'active'"),
-  ]);
+  ]).then((rows) => ({ rows }), (error: unknown) => {
+    // A new build on a database whose migration has not run: say what to do instead of crashing.
+    const missing = missingSchema(error);
+    if (!missing) throw error;
+    return { missing };
+  });
+  if ("missing" in loaded) {
+    return (
+      <main className="admin admin-locked" data-theme={theme}>
+        <div className="brand">PPA<span>.</span></div>
+        <h1>{lang === "th" ? "ฐานข้อมูลยังไม่ได้อัปเดตให้ตรงกับเวอร์ชันนี้" : "The database needs updating for this version"}</h1>
+        <p>{lang === "th" ? "ให้ผู้ดูแลเซิร์ฟเวอร์รัน npm run db:init ในโฟลเดอร์แอป แล้วโหลดหน้านี้ใหม่" : "On the server, run npm run db:init in the app folder, then reload this page."}</p>
+        <p><code>{loaded.missing}</code></p>
+      </main>
+    );
+  }
+  const [
+    userCount,
+    bookingCount,
+    paymentCount,
+    revenue,
+    users,
+    bookings,
+    payments,
+    coupons,
+    trainers,
+    courts,
+    staff,
+    roles,
+    permissions,
+    auditLogs,
+    contentItems,
+    activeMemberships,
+    walletAccounts,
+    notifications,
+    groups,
+  ] = loaded.rows;
 
   const requireLine = process.env.NODE_ENV === "production" || process.env.APP_REQUIRE_LINE === "true" || process.env.NEXT_PUBLIC_REQUIRE_LINE === "true";
   const liffConfigured = Boolean(process.env.NEXT_PUBLIC_LINE_LIFF_ID);

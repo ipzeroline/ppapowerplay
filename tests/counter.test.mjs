@@ -775,3 +775,15 @@ test("a block over an existing block is refused, so every block stays visible an
   assert.equal(conn.statements.some(([sql]) => sql.startsWith("INSERT")), false);
   assert.deepEqual(conn.statements.find(([sql]) => sql.includes("FROM court_blocks"))[1], [3, "2099-02-02 21:00:00", "2099-02-02 19:00:00"]);
 });
+
+test("a database that misses this release's migration gets a clear message instead of a crash", () => {
+  const { missingSchema } = load("lib/schema-check.ts");
+  const dbError = (code, sqlMessage) => Object.assign(new Error(sqlMessage), { code, sqlMessage });
+  assert.equal(missingSchema(dbError("ER_BAD_FIELD_ERROR", "Unknown column 'b.guest_name' in 'field list'")), "Unknown column 'b.guest_name' in 'field list'");
+  assert.equal(missingSchema(dbError("ER_NO_SUCH_TABLE", "Table 'ppa.court_blocks' doesn't exist")), "Table 'ppa.court_blocks' doesn't exist");
+  assert.equal(missingSchema(dbError("ECONNREFUSED", "connect ECONNREFUSED 10.0.0.5:3306")), null, "other failures keep the normal error page");
+  assert.equal(missingSchema("boom"), null);
+  const page = readFileSync("app/AdminConsole/page.tsx", "utf8");
+  assert.match(page, /missingSchema\(/);
+  assert.match(page, /npm run db:init/);
+});
