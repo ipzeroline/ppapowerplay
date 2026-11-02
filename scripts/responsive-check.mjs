@@ -9,9 +9,15 @@ const outDir = "/private/tmp/ppa-responsive";
 const fixtureQrSvg = await QRCode.toString("https://example.invalid/qr-test-only", { type: "svg", margin: 1, width: 220 });
 const fixtureQrPng = await QRCode.toDataURL("promptpay-fixture-only", { margin: 2, width: 240 });
 await mkdir(outDir, { recursive: true });
+const stylesheetLinks = (html) => [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]*>/g)].map((match) => match[0]).join("");
 const pageHtml = await (await fetch(base)).text();
-const styles = [...pageHtml.matchAll(/<link[^>]+rel="stylesheet"[^>]*>/g)].map((match) => match[0]).join("");
-assert.ok(styles, "The local app must serve its compiled styles");
+// Member fixtures get the member page's styles only; admin and receipt fixtures get the console's.
+const styles = stylesheetLinks(pageHtml);
+const adminStyles = stylesheetLinks(await (await fetch(`${base}/AdminConsole`)).text());
+assert.ok(styles && adminStyles, "The local app must serve its compiled styles");
+for (const href of [...styles.matchAll(/href="([^"]+)"/g)].map((match) => match[1])) {
+  assert.ok(!(await (await fetch(new URL(href, base))).text()).includes(".admin-console"), `members must not download back-office CSS: ${href}`);
+}
 const fontClass = pageHtml.match(/<html[^>]+class="([^"]+)"/)?.[1] || "";
 const user = { id: 1, displayName: "สมาชิกทดสอบหน้าจอ Responsive Layout", memberCode: "PPA-TEST", phone: "0000000000", email: "test@example.invalid", status: "active" };
 const trainer = { id: 1, slug: "coach", name: "Trainer responsive test", nickname: "Coach", role: "Personal Trainer", avatar: "PPA", experience: "5 years", startPrice: 1000, active: true, sortOrder: 1, certifications: [], specialties: [], packages: [], weeklySchedule: [] };
@@ -165,7 +171,7 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/__responsive__/**", async (route) => {
     if (route.request().url().endsWith("bundle.js")) return route.fulfill({ contentType: "text/javascript", body: js });
-    return route.fulfill({ contentType: "text/html", body: `<!doctype html><html lang="th" class="${fontClass}"><head><meta name="viewport" content="width=device-width,initial-scale=1">${styles}</head><body><div id="root"></div><script src="/__responsive__/bundle.js"></script></body></html>` });
+    return route.fulfill({ contentType: "text/html", body: `<!doctype html><html lang="th" class="${fontClass}"><head><meta name="viewport" content="width=device-width,initial-scale=1">${/\/__responsive__\/(admin|receipt)/.test(route.request().url()) ? adminStyles : styles}</head><body><div id="root"></div><script src="/__responsive__/bundle.js"></script></body></html>` });
   });
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());

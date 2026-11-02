@@ -4,6 +4,7 @@ import { assertAdminRequest } from "@/lib/admin-auth";
 import { query } from "@/lib/db";
 import { parseJsonBody, validationErrorResponse } from "@/lib/security";
 import { contentProblem } from "@/lib/site-settings";
+import { clearSharedCache } from "@/lib/shared-cache";
 
 const cleanText = (max: number) => z.string().trim().max(max);
 const metadataSchema = z.record(z.string(), z.unknown()).default({});
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
     body.slug,
     body.title,
   ]);
+  clearSharedCache();
   return GET(request);
 }
 
@@ -92,6 +94,7 @@ export async function PUT(request: NextRequest) {
     body.slug,
     body.title,
   ]);
+  clearSharedCache();
   return GET(request);
 }
 
@@ -104,6 +107,7 @@ export async function DELETE(request: NextRequest) {
 
   await query("UPDATE app_content_items SET active = FALSE WHERE id = ?", [id]);
   await query("INSERT INTO admin_audit_logs (action, target_type, target_id) VALUES ('content.delete', 'app_content_items', ?)", [String(id)]);
+  clearSharedCache();
   return GET(request);
 }
 

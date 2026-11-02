@@ -27,7 +27,7 @@ import type { Booking, Bootstrap, ContentItem, Coupon, Group, Screen, Sport, Tra
 
 import liff from "@line/liff";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 
 type Slot = {
   courtId: number;
@@ -1802,7 +1802,7 @@ function HomeCarousel({ items, onOpen }: { items: ContentItem[]; onOpen: (screen
           const target = slide.targetScreen as Screen;
           const validTarget = [...richMenuScreens, ...managedPrototypeScreens, ...serviceShortcuts.map((item) => item.screen), "hyrox", "airfit", "fitness", "plans"].includes(target);
           return <button className={`ad-slide ${tone}`} key={slide.id} aria-hidden={slideIndex !== active} tabIndex={slideIndex === active ? 0 : -1} onClick={() => onOpen(validTarget ? target : "promotion")}>
-            {src && <Image className="home-slide-image" src={src} alt="" width={640} height={360} unoptimized referrerPolicy="no-referrer" />}
+            {src && <UploadImage className="home-slide-image" src={src} alt="" width={640} height={360} sizes="(max-width: 520px) 100vw, 520px" referrerPolicy="no-referrer" />}
             <span className="ad-tag">{typeof meta.tag === "string" ? t(meta.tag) : "PPA"}</span>
             <strong>{slide.icon} {t(slide.title)}</strong><small>{t(slide.subtitle) || t(slide.body)}</small>
           </button>;
@@ -1826,9 +1826,16 @@ function TrainerStrip({ trainers, onOpen }: { trainers: Trainer[]; onOpen: (trai
   );
 }
 
+// Uploaded photos (/uploads/...) go through the image optimizer: a small WebP sized for the screen
+// instead of the original file (up to 3 MB). Other images, or an optimizer failure, show the original.
+function UploadImage({ alt, src, ...props }: ComponentProps<typeof Image> & { src: string }) {
+  const [failed, setFailed] = useState(false);
+  return <Image {...props} alt={alt} src={src} unoptimized={!src.startsWith("/uploads/") || failed} onError={() => setFailed(true)} />;
+}
+
 function TrainerAvatar({ className = "", trainer }: { className?: string; trainer: Trainer }) {
   const src = safeImageSource(trainer.imageUrl);
-  if (src) return <Image unoptimized width={160} height={160} alt={trainer.name} className={`trainer-photo ${className}`} src={src} referrerPolicy="no-referrer" />;
+  if (src) return <UploadImage width={160} height={160} alt={trainer.name} className={`trainer-photo ${className}`} src={src} referrerPolicy="no-referrer" />;
   return <span className={`trainer-photo fallback ${className}`}>{trainer.avatar}</span>;
 }
 

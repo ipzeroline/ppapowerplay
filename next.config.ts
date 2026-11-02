@@ -6,6 +6,15 @@ const scriptSrc = isProd ? "'self' 'unsafe-inline' https:" : "'self' 'unsafe-inl
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  images: {
+    // Only uploaded photos are optimized (resized WebP for each screen); upload names never change.
+    localPatterns: [{ pathname: "/uploads/**", search: "" }],
+    minimumCacheTTL: 2_592_000,
+  },
+  async rewrites() {
+    // Photos uploaded after the server started are not in its public/ list: serve them from disk.
+    return { beforeFiles: [], afterFiles: [], fallback: [{ source: "/uploads/trainers/:file", destination: "/media/trainers/:file" }] };
+  },
   async headers() {
     return [
       {

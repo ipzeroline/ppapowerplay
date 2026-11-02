@@ -202,3 +202,45 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* Rules the member app used to take from admin.css (now loaded only under /AdminConsole). */
+:where(.phone) :where(div, section, article, form, label) {
+  min-width: 0;
+}
+
+/* Confirm dialogs (components/admin-dialog.tsx): a full-screen layer with the dialog centred. */
+.phone dialog.admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  background: rgb(0 0 0 / 55%);
+  color: var(--text);
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+}
+
+.phone dialog.admin-modal-backdrop:not([open]) {
+  display: none;
+}
+
+.phone dialog.admin-modal-backdrop::backdrop {
+  background: transparent;
+}
+
+@media (max-width: 700px) {
+  .phone dialog.admin-modal-backdrop {
+    align-items: end;
+    padding: 8px;
+  }
+
+  /* 16px keeps iOS from zooming into fields. */
+  :where(.phone) :where(input, select, textarea) {
+    font-size: 1rem;
+  }
+}

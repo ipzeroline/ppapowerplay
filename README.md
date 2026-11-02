@@ -390,3 +390,26 @@ no database rollback.
 - **Reports:** every figure states its period ("เดือนนี้ 1–2 พ.ย.", "ตอนนี้", "ทั้งหมด") and
   every list says how many recent rows it holds. "ควรเพิ่มอะไร" lists what is built, what
   comes next once there is real data, and what is not worth doing now.
+
+### Update 2026-11-02 (b): member app speed and many members at once
+
+Run `npm run db:init` again before deploying (index changes only; reads and writes keep working
+while it runs):
+
+- `bookings`: the old unique key on (court, start, end, status) is replaced by a plain index. It
+  made the hold-expiry update fail for everyone once a slot had a second expired or cancelled
+  booking. Double booking is still prevented by the court lock and overlap check.
+- New indexes for app opens, the dashboard, cash-up and reports: `payments (status, paid_at)`,
+  `payments (status, created_at)`, `bookings (starts_at)`, `member_visits (created_at)`,
+  `admin_audit_logs (created_at)`.
+
+What changed for members:
+- The member page no longer downloads the back-office stylesheet or preloads the unused Inter
+  font: about 90 KB less on the first visit (CSS 18 KB, JS 281 KB, fonts 56 KB, gzipped).
+- Uploaded photos (trainers, home slides under `/uploads`) are served as resized WebP for each
+  screen (a 738 KB photo becomes about 8 KB on a phone). A photo uploaded while the app runs
+  shows at once (before, it appeared only after a restart).
+- The catalog every member shares (sports, trainers, app content) is read once a minute per
+  server instead of on every app open; staff edits to content and trainers show at once.
+- Busy times: if many members open the app together, raise `DB_CONNECTION_LIMIT` (default 10)
+  to 20, provided the database allows it (MariaDB `max_connections`, default 151).

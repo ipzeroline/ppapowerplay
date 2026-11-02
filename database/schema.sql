@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS member_visits (
   KEY idx_member_visits_user (user_id, created_at),
   CONSTRAINT fk_member_visits_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+ALTER TABLE member_visits ADD INDEX IF NOT EXISTS idx_member_visits_created (created_at);
 
 CREATE TABLE IF NOT EXISTS admin_roles (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -167,6 +168,7 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
   KEY idx_admin_audit_target (target_type, target_id),
   CONSTRAINT fk_admin_audit_staff FOREIGN KEY (staff_id) REFERENCES admin_staff(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+ALTER TABLE admin_audit_logs ADD INDEX IF NOT EXISTS idx_admin_audit_created (created_at);
 
 CREATE TABLE IF NOT EXISTS sports (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -230,7 +232,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_bookings_no (booking_no),
-  UNIQUE KEY uq_booking_court_slot (court_id, starts_at, ends_at, status),
+  KEY idx_bookings_court_slot (court_id, starts_at, ends_at),
   KEY idx_bookings_user_status (user_id, status),
   KEY idx_bookings_slot (sport_id, starts_at, ends_at),
   CONSTRAINT fk_bookings_user FOREIGN KEY (user_id) REFERENCES users(id),
@@ -249,6 +251,14 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS guest_phone VARCHAR(32) NULL AFTER
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS series_key VARCHAR(64) NULL AFTER checked_in_at;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS created_by BIGINT UNSIGNED NULL AFTER series_key;
 ALTER TABLE bookings ADD INDEX IF NOT EXISTS idx_bookings_series (series_key);
+-- The old UNIQUE (court_id, starts_at, ends_at, status) rejected a second expired or cancelled
+-- booking of the same slot, which made the hold-expiry UPDATE fail for everyone. Double booking is
+-- prevented by the court-row lock and overlap check in every booking path (lib/court-schedule.ts).
+-- The plain index is added first: the court foreign key needs an index on court_id.
+ALTER TABLE bookings ADD INDEX IF NOT EXISTS idx_bookings_court_slot (court_id, starts_at, ends_at);
+ALTER TABLE bookings DROP INDEX IF EXISTS uq_booking_court_slot;
+-- Indexes for queries run on every app open, dashboard refresh, cash-up and report.
+ALTER TABLE bookings ADD INDEX IF NOT EXISTS idx_bookings_starts (starts_at);
 
 -- Court time blocks (maintenance, events, private hire): the slot is not bookable while active.
 CREATE TABLE IF NOT EXISTS court_blocks (
@@ -298,6 +308,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS pdpa_version VARCHAR(20) NULL AFTER p
 INSERT IGNORE INTO users (line_user_id, display_name, member_code, status)
 VALUES ('system:walk-in', 'ลูกค้าหน้าเคาน์เตอร์', 'WALK-IN', 'active');
 ALTER TABLE payments ADD UNIQUE KEY IF NOT EXISTS uq_payments_user_request (user_id, request_id);
+ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payments_status_paid (status, paid_at);
+ALTER TABLE payments ADD INDEX IF NOT EXISTS idx_payments_status_created (status, created_at);
 
 -- Receipts (lib/receipts.ts): one number per paid payment, RC<Buddhist year>-<6 digits>, counted per
 -- Bangkok year in receipt_sequences inside the issuing transaction (no gaps, no shared numbers).

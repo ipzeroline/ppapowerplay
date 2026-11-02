@@ -112,7 +112,7 @@
   -webkit-font-smoothing: antialiased;
 }
 
-:where(.phone, .admin-console) :where(div, section, article, form, label) {
+:where(.admin-console) :where(div, section, article, form, label) {
   min-width: 0;
 }
 
@@ -4401,7 +4401,7 @@ dialog.admin-modal-backdrop::backdrop {
   }
 
   /* 16px keeps iOS from zooming into fields. */
-  :where(.phone, .admin, .admin-locked) :where(input, select, textarea) {
+  :where(.admin, .admin-locked) :where(input, select, textarea) {
     font-size: 1rem;
   }
 }
