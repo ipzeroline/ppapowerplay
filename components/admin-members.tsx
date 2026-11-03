@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminDialog } from "@/components/admin-dialog";
+import { useAdminFeedback } from "@/components/admin-feedback";
+import { AdminNotice } from "@/components/admin-notice";
+import type { NoticeTone } from "@/lib/admin-notices";
 
 type Member = { id: number; displayName: string; memberCode: string; phone: string | null; email: string | null; status: string; balance: number | string; pdpaAcceptedAt?: string | null; pdpaVersion?: string | null };
 type Entry = { id: number; amount: number | string; kind: string; note: string | null; createdAt: string; staffName: string | null; balanceBefore: string | null; balanceAfter: string | null; refType: string | null };
 type Detail = { member: Member; history: Entry[]; nextCursor: number | null };
+type Notice = { tone: NoticeTone; text: string };
 const money = (value: number | string) => Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -14,6 +18,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!response.ok) throw Object.assign(new Error(body.message || `Request failed (${response.status})`), { status: response.status, body });
   return body;
 }
+const failureTone = (error: unknown): NoticeTone => (error && typeof error === "object" && "status" in error ? "error" : "warning");
+const failureText = (error: unknown) => (error instanceof Error ? error.message : "Request failed");
 
 export function AdminMembers({ search, lang, canSell = false, canManage = true }: { search: string; lang: "th" | "en"; canSell?: boolean; canManage?: boolean }) {
   const th = lang === "th";
@@ -40,11 +46,11 @@ export function AdminMembers({ search, lang, canSell = false, canManage = true }
   return <section className="admin-panel">
     <h2>{th ? "จัดการสมาชิกและเครดิต" : "Members and credit"}</h2>
     <div className="member-toolbar"><span>{th ? "เครดิต = ยอดเงิน Wallet (บาท)" : "Credit = wallet balance (THB)"}</span><button onClick={() => setRevision((value) => value + 1)}>{th ? "โหลดใหม่" : "Reload"}</button></div>
-    {error ? <p role="alert" className="admin-message">{error}</p> : null}
-    {loading ? <p role="status" className="admin-message">{th ? "กำลังโหลดสมาชิก…" : "Loading members…"}</p> : !error && <>
+    {error ? <AdminNotice tone="error">{error}</AdminNotice> : null}
+    {loading ? <p role="status" className="admin-state">{th ? "กำลังโหลดสมาชิก…" : "Loading members…"}</p> : !error && <>
       <div className="member-table-scroll"><table><thead><tr><th>{th ? "สมาชิก" : "Member"}</th><th>{th ? "ติดต่อ" : "Contact"}</th><th>{th ? "สถานะ" : "Status"}</th><th className="num">{th ? "เครดิต" : "Credit"}</th><th>{th ? "จัดการ" : "Manage"}</th></tr></thead>
         <tbody>{rows.map((member) => <tr key={member.id}><td>{member.displayName}<small>{member.memberCode}</small></td><td>{member.phone || "-"}<small>{member.email || "-"}</small></td><td><span className={`admin-badge ${member.status === "active" ? "good" : member.status === "suspended" ? "warn" : "neutral"}`}>{member.status === "active" ? (th ? "ใช้งาน" : "Active") : member.status === "suspended" ? (th ? "ระงับ" : "Suspended") : (th ? "ลบแล้ว" : "Deleted")}</span></td><td className="num">{money(member.balance)} ฿</td><td><button onClick={() => setSelected(member.id)}>{th ? "ข้อมูล / เครดิต / ประวัติ" : "Profile / Credit / History"}</button></td></tr>)}</tbody></table></div>
-      {!rows.length && <p className="admin-message">{th ? "ไม่พบสมาชิก" : "No members found"}</p>}
+      {!rows.length && <p className="admin-state">{th ? "ไม่พบสมาชิก" : "No members found"}</p>}
       <div className="member-toolbar"><button disabled={page <= 1} onClick={() => setPage(page - 1)}>{th ? "ก่อนหน้า" : "Previous"}</button><span>{th ? "หน้า" : "Page"} {page}</span><button disabled={!hasMore} onClick={() => setPage(page + 1)}>{th ? "ถัดไป" : "Next"}</button></div>
     </>}
     {selected !== null && <MemberEditor key={selected} id={selected} th={th} canSell={canSell} canManage={canManage} onClose={() => setSelected(null)} onChange={() => setRevision((value) => value + 1)} />}
@@ -57,7 +63,8 @@ function MemberEditor({ id, th, canSell, canManage, onClose, onChange }: { id: n
   const [direction, setDirection] = useState("add");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
-  const [message, setMessage] = useState("");
+  const { confirm } = useAdminFeedback();
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const pending = useRef(false);
@@ -70,35 +77,61 @@ function MemberEditor({ id, th, canSell, canManage, onClose, onChange }: { id: n
   }, [id]);
   // Fetch the selected member whenever the dialog opens or the selected ID changes.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void reload().catch((error) => setMessage(error.message)); }, [reload]);
+  useEffect(() => { void reload().catch((error) => setNotice({ tone: "error", text: failureText(error) })); }, [reload]);
 
   async function saveProfile(event: React.FormEvent) {
     event.preventDefault();
-    if (pending.current) return;
-    pending.current = true; setBusy(true); setMessage("");
+    if (pending.current || !detail) return;
+    // Suspending stops the member opening the app: ask first.
+    const suspending = form.status === "suspended" && detail.member.status !== "suspended";
+    if (suspending && !(await confirm({
+      title: th ? "ระงับสมาชิกนี้?" : "Suspend this member?",
+      message: th ? "สมาชิกจะเข้าแอปไม่ได้จนกว่าจะเปลี่ยนสถานะกลับเป็นใช้งาน" : "The member cannot open the app until they are set back to active.",
+      details: [[th ? "สมาชิก" : "Member", `${form.displayName} · ${detail.member.memberCode}`]],
+      confirmLabel: th ? "ระงับสมาชิก" : "Suspend member",
+      danger: true,
+    }))) return;
+    pending.current = true; setBusy(true); setNotice(null);
     try {
       await request("/api/admin/members", { method: "PUT", body: JSON.stringify({ id, ...form }) });
-      setMessage(th ? "บันทึกข้อมูลสมาชิกแล้ว" : "Member profile saved");
+      setNotice({ tone: "success", text: th ? "บันทึกข้อมูลสมาชิกแล้ว" : "Member profile saved" });
       onChange();
       await reload();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Request failed"); }
+    } catch (error) { setNotice({ tone: failureTone(error), text: failureText(error) }); }
     finally { pending.current = false; setBusy(false); }
   }
   async function adjustCredit(event: React.FormEvent) {
     event.preventDefault();
-    if (pending.current) return;
-    pending.current = true; setBusy(true); setMessage("");
+    if (pending.current || !detail) return;
+    // Money typed by hand: show the balance before and after, so a slip of a digit is caught.
+    const change = Number(amount);
+    const before = Number(detail.member.balance);
+    const after = direction === "add" ? before + change : before - change;
+    const confirmed = await confirm({
+      title: th ? "ยืนยันปรับเครดิต?" : "Confirm this credit adjustment?",
+      message: th ? "ตรวจจำนวนเงินให้ถูกต้อง รายการนี้บันทึกในประวัติเครดิตของสมาชิก" : "Check the amount. It is recorded in the member's credit history.",
+      details: [
+        [th ? "สมาชิก" : "Member", `${detail.member.displayName} · ${detail.member.memberCode}`],
+        [direction === "add" ? (th ? "เพิ่มเครดิต" : "Add credit") : (th ? "ลดเครดิต" : "Deduct credit"), `${direction === "add" ? "+" : "-"}${money(change)} ฿`],
+        [th ? "เครดิต ก่อน → หลัง" : "Credit before → after", `${money(before)} → ${money(after)} ฿`],
+        [th ? "เหตุผล" : "Reason", reason.trim()],
+      ],
+      confirmLabel: direction === "add" ? (th ? `เพิ่มเครดิต ${money(change)} ฿` : `Add ${money(change)} ฿`) : (th ? `ลดเครดิต ${money(change)} ฿` : `Deduct ${money(change)} ฿`),
+      danger: direction === "deduct",
+    });
+    if (!confirmed) return;
+    pending.current = true; setBusy(true); setNotice(null);
     attempt.current ||= { memberId: id, direction, amount, reason, requestId: crypto.randomUUID() };
     try {
       await request("/api/admin/members/credit", { method: "POST", body: JSON.stringify(attempt.current) });
       attempt.current = null; setUncertain(false); setAmount(""); setReason("");
-      setMessage(th ? "บันทึกการปรับเครดิตแล้ว" : "Credit adjustment recorded");
+      setNotice({ tone: "success", text: th ? "บันทึกการปรับเครดิตแล้ว" : "Credit adjustment recorded" });
       onChange();
       await reload();
     } catch (error) {
       // Preserve the request ID after an uncertain result so retry cannot apply twice.
       setUncertain(Boolean(attempt.current));
-      setMessage((error instanceof Error ? error.message : "Request failed") + (attempt.current ? (th ? " — ลองรายการเดิมซ้ำได้โดยไม่ปรับเครดิตซ้ำ" : " — Retry the same request safely") : ""));
+      setNotice({ tone: failureTone(error), text: failureText(error) + (attempt.current ? (th ? " · ลองรายการเดิมซ้ำได้โดยไม่ปรับเครดิตซ้ำ" : " · Retrying the same request is safe") : "") });
     } finally { pending.current = false; setBusy(false); }
   }
   async function moreHistory() {
@@ -107,7 +140,7 @@ function MemberEditor({ id, th, canSell, canManage, onClose, onChange }: { id: n
     try {
       const data = await request<Detail>(`/api/admin/members?id=${id}&before=${detail.nextCursor}`);
       setDetail({ ...detail, history: [...detail.history, ...data.history], nextCursor: data.nextCursor });
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Request failed"); }
+    } catch (error) { setNotice({ tone: failureTone(error), text: failureText(error) }); }
     finally { pending.current = false; setBusy(false); }
   }
   // Counter staff with sales.manage only can look a member up and sell, but not edit them.
@@ -115,8 +148,8 @@ function MemberEditor({ id, th, canSell, canManage, onClose, onChange }: { id: n
   const editable = canManage && notDeleted;
   return <AdminDialog onClose={() => { if (!busy) onClose(); }}><section className="admin-modal member-editor">
     <header><div><small>{detail?.member.memberCode}</small><h2>{th ? "จัดการสมาชิก" : "Manage member"}</h2></div><button disabled={busy} onClick={onClose} aria-label={th ? "ปิด" : "Close"}>×</button></header>
-    {message && <p className="admin-message" role="status">{message}</p>}
-    {!detail ? <div className="member-toolbar"><button onClick={() => void reload().catch((error) => setMessage(error.message))}>{th ? "โหลดข้อมูล / ลองใหม่" : "Load / Retry"}</button></div> : <>
+    {notice && <AdminNotice tone={notice.tone}>{notice.text}</AdminNotice>}
+    {!detail ? <div className="member-toolbar"><button onClick={() => void reload().catch((error) => setNotice({ tone: "error", text: failureText(error) }))}>{th ? "โหลดข้อมูล / ลองใหม่" : "Load / Retry"}</button></div> : <>
       <form onSubmit={saveProfile} className="admin-form">
         <label>{th ? "ชื่อสมาชิก" : "Member name"}<input required maxLength={160} value={form.displayName} disabled={busy || !editable} onChange={(event) => setForm({ ...form, displayName: event.target.value })} /></label>
         <label>{th ? "เบอร์โทร" : "Phone"}<input type="tel" maxLength={32} value={form.phone} disabled={busy || !editable} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
@@ -131,11 +164,11 @@ function MemberEditor({ id, th, canSell, canManage, onClose, onChange }: { id: n
           <label>{th ? "ประเภทการปรับ" : "Adjustment"}<select value={direction} disabled={busy || uncertain || !editable} onChange={(event) => setDirection(event.target.value)}><option value="add">{th ? "เพิ่มเครดิต" : "Add credit"}</option><option value="deduct">{th ? "ลดเครดิต" : "Deduct credit"}</option></select></label>
           <label>{th ? "จำนวนเงิน (บาท)" : "Amount (THB)"}<input required type="number" min="0.01" max="50000" step="0.01" value={amount} disabled={busy || uncertain || !editable} onChange={(event) => setAmount(event.target.value)} /></label>
           <label className="wide">{th ? "เหตุผลการปรับเครดิต" : "Adjustment reason"}<textarea required minLength={3} maxLength={255} value={reason} disabled={busy || uncertain || !editable} onChange={(event) => setReason(event.target.value)} /></label>
-          <div className="admin-form-actions"><button disabled={busy || !editable}>{uncertain ? (th ? "ลองรายการเดิมอีกครั้ง" : "Retry same adjustment") : (th ? "ยืนยันปรับเครดิต" : "Confirm adjustment")}</button>{uncertain && <button type="button" disabled={busy} onClick={() => { attempt.current = null; setUncertain(false); void reload().catch((error) => setMessage(error.message)); }}>{th ? "ตรวจประวัติก่อนเริ่มรายการใหม่" : "Check history before a new adjustment"}</button>}</div>
+          <div className="admin-form-actions"><button disabled={busy || !editable}>{uncertain ? (th ? "ลองรายการเดิมอีกครั้ง" : "Retry same adjustment") : (th ? "ยืนยันปรับเครดิต" : "Confirm adjustment")}</button>{uncertain && <button type="button" disabled={busy} onClick={() => { attempt.current = null; setUncertain(false); void reload().catch((error) => setNotice({ tone: "error", text: failureText(error) })); }}>{th ? "ตรวจประวัติก่อนเริ่มรายการใหม่" : "Check history before a new adjustment"}</button>}</div>
         </form>
       </section> : null}
       <MemberRights id={id} th={th} revision={rightsRevision} />
-      {canSell && notDeleted ? <CounterSale id={id} th={th} onSold={() => { setRightsRevision((value) => value + 1); onChange(); }} /> : null}
+      {canSell && notDeleted ? <CounterSale id={id} member={`${detail.member.displayName} · ${detail.member.memberCode}`} th={th} onSold={() => { setRightsRevision((value) => value + 1); onChange(); }} /> : null}
       <section className="member-history"><h3>{th ? "ประวัติเพิ่ม–ลดเครดิต" : "Credit history"}</h3><div className="member-table-scroll"><table><thead><tr>{(th ? ["วันเวลา", "เพิ่ม / ลด", "ก่อน → หลัง", "เหตุผล", "เจ้าหน้าที่"] : ["Date", "Change", "Before → After", "Reason", "Staff"]).map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>{detail.history.map((entry) => <tr key={entry.id}><td>{new Date(entry.createdAt).toLocaleString(th ? "th-TH" : "en-GB", { timeZone: "Asia/Bangkok" })}<small>#{entry.id}</small></td><td>{Number(entry.amount) > 0 ? "+" : ""}{money(entry.amount)} ฿</td><td>{entry.balanceBefore !== null && entry.balanceAfter !== null ? `${money(entry.balanceBefore)} → ${money(entry.balanceAfter)}` : "—"}</td><td>{entry.note || entry.kind}<small>{entry.refType === "admin_credit" ? (th ? "ปรับโดยเจ้าหน้าที่" : "Staff adjustment") : entry.kind}</small></td><td>{entry.staffName || "—"}</td></tr>)}</tbody></table></div>{!detail.history.length && <p>{th ? "ยังไม่มีประวัติ" : "No history yet"}</p>}{detail.nextCursor && <button disabled={busy} onClick={moreHistory}>{th ? "โหลดประวัติเพิ่ม" : "More history"}</button>}</section>
     </>}
   </section></AdminDialog>;
@@ -160,8 +193,8 @@ function MemberRights({ id, th, revision }: { id: number; th: boolean; revision:
     request<Rights>(`/api/admin/members/rights?userId=${id}`, { signal: controller.signal }).then((data) => { setRights(data); setLoadedAt(Date.now()); }).catch((reason) => { if (!controller.signal.aborted) setError(reason.message); });
     return () => controller.abort();
   }, [id, revision]);
-  if (error) return <p className="admin-message" role="alert">{error}</p>;
-  if (!rights) return <p className="admin-message" role="status">{th ? "กำลังโหลดสิทธิ์…" : "Loading rights…"}</p>;
+  if (error) return <AdminNotice tone="error">{error}</AdminNotice>;
+  if (!rights) return <p className="admin-state" role="status">{th ? "กำลังโหลดสิทธิ์…" : "Loading rights…"}</p>;
   const now = loadedAt;
   return <section className="member-rights"><h3>{th ? "สิทธิ์ของสมาชิก" : "Member rights"}</h3>
     <ul>
@@ -173,46 +206,59 @@ function MemberRights({ id, th, revision }: { id: number; th: boolean; revision:
       {rights.entitlements.map((item) => <li key={`e${item.id}`}><b>{item.title}</b><span>{item.remainingUses === null ? (th ? "ไม่จำกัดครั้ง" : "unlimited") : `${th ? "เหลือ" : "left"} ${item.remainingUses}`} · {th ? "ถึง" : "until"} {shortDate(item.endsAt)} · {item.status}</span></li>)}
       {rights.pending.map((item) => <li key={`p${item.paymentNo}`} className="pending"><b>{th ? "รอยืนยันชำระ" : "Awaiting payment"}: {item.itemName || item.paymentNo}</b><span>{money(item.amount)} ฿ · {item.paymentNo}{item.slipUploadedAt ? (th ? " · มีสลิป" : " · slip attached") : ""}</span></li>)}
     </ul>
-    {!rights.memberships.length && !rights.coupons.length && !rights.entitlements.length && !rights.pending.length ? <p className="admin-message">{th ? "ยังไม่มีสิทธิ์หรือแพ็กเกจ" : "No packages or rights yet"}</p> : null}
+    {!rights.memberships.length && !rights.coupons.length && !rights.entitlements.length && !rights.pending.length ? <p className="admin-state">{th ? "ยังไม่มีสิทธิ์หรือแพ็กเกจ" : "No packages or rights yet"}</p> : null}
   </section>;
 }
 
 type Catalog = { content: { id: number; contentType: string; title: string; price: number }[]; coupons: { id: number; name: string; price: number; totalUses: number; validityDays: number }[] };
 
 // Front-desk sale for walk-in payments (cash, card or bank transfer checked by staff).
-function CounterSale({ id, th, onSold }: { id: number; th: boolean; onSold: () => void }) {
+function CounterSale({ id, member, th, onSold }: { id: number; member: string; th: boolean; onSold: () => void }) {
+  const { confirm } = useAdminFeedback();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [itemKey, setItemKey] = useState("");
   const [method, setMethod] = useState("cash");
   const [note, setNote] = useState("");
-  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [sold, setSold] = useState("");
   const [busy, setBusy] = useState(false);
   const attempt = useRef<{ key: string; requestId: string } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    request<Catalog>("/api/admin/sales", { signal: controller.signal }).then(setCatalog).catch((reason) => { if (!controller.signal.aborted) setMessage(reason.message); });
+    request<Catalog>("/api/admin/sales", { signal: controller.signal }).then(setCatalog).catch((reason) => { if (!controller.signal.aborted) setNotice({ tone: "error", text: failureText(reason) }); });
     return () => controller.abort();
   }, []);
   const options = catalog ? [
-    ...catalog.content.map((item) => ({ key: `content:${item.id}`, label: `${item.title} · ${money(item.price)} ฿`, price: Number(item.price) })),
-    ...catalog.coupons.map((item) => ({ key: `coupon:${item.id}`, label: `${item.name} · ${money(item.price)} ฿`, price: Number(item.price) })),
+    ...catalog.content.map((item) => ({ key: `content:${item.id}`, title: item.title, label: `${item.title} · ${money(item.price)} ฿`, price: Number(item.price) })),
+    ...catalog.coupons.map((item) => ({ key: `coupon:${item.id}`, title: item.name, label: `${item.name} · ${money(item.price)} ฿`, price: Number(item.price) })),
   ] : [];
   const selected = options.find((option) => option.key === itemKey);
   async function sell(event: React.FormEvent) {
     event.preventDefault();
     if (!selected || busy) return;
-    const label = selected.label;
-    if (!window.confirm(th ? `ยืนยันขาย ${label} (${method === "cash" ? "เงินสด" : method === "card" ? "บัตร" : "โอน/พร้อมเพย์"})?` : `Confirm sale: ${label} (${method})?`)) return;
+    const paidBy = method === "cash" ? (th ? "เงินสด" : "Cash") : method === "card" ? (th ? "บัตร" : "Card") : (th ? "โอน / พร้อมเพย์" : "Transfer / PromptPay");
+    const confirmed = await confirm({
+      title: th ? "ยืนยันการขาย?" : "Confirm this sale?",
+      message: th ? "รับเงินจากลูกค้าแล้ว ระบบจะเปิดสิทธิ์และแจ้งสมาชิกทันที" : "Take the money first. Rights open and the member is notified at once.",
+      details: [
+        [th ? "สมาชิก" : "Member", member],
+        [th ? "รายการ" : "Item", selected.title],
+        [th ? "ราคา" : "Price", `${money(selected.price)} ฿`],
+        [th ? "ชำระโดย" : "Paid by", paidBy],
+        ...(note.trim() ? [[th ? "หมายเหตุ" : "Note", note.trim()] as [string, string]] : []),
+      ],
+      confirmLabel: th ? `บันทึกการขาย ${money(selected.price)} ฿` : `Record sale ${money(selected.price)} ฿`,
+    });
+    if (!confirmed) return;
     // Keep the same request id until this sale succeeds, so a retry never sells twice.
     if (!attempt.current || attempt.current.key !== `${itemKey}:${method}`) attempt.current = { key: `${itemKey}:${method}`, requestId: crypto.randomUUID() };
     const [kind, itemId] = itemKey.split(":");
-    setBusy(true); setMessage(""); setSold("");
+    setBusy(true); setNotice(null); setSold("");
     try {
       const result = await request<{ paymentNo: string }>("/api/admin/sales", { method: "POST", body: JSON.stringify({ userId: id, kind, itemId: Number(itemId), method, requestId: attempt.current.requestId, expectedAmount: selected.price, note: note.trim() || undefined }) });
       attempt.current = null;
       setItemKey(""); setNote("");
-      setMessage(th ? `ขายแล้ว เลขที่รายการ ${result.paymentNo}` : `Sold · ${result.paymentNo}`);
+      setNotice({ tone: "success", text: th ? `บันทึกการขายแล้ว เลขที่รายการ ${result.paymentNo}` : `Sale recorded · ${result.paymentNo}` });
       setSold(result.paymentNo);
       onSold();
     } catch (reason) {
@@ -220,11 +266,11 @@ function CounterSale({ id, th, onSold }: { id: number; th: boolean; onSold: () =
       if (failure.body?.code === "PRICE_CHANGED") {
         // Nothing was sold: reload the catalog so the staff member sees and confirms the current price.
         attempt.current = null;
-        setMessage(th ? `ราคาเปลี่ยนเป็น ${money(Number(failure.body.amount))} ฿ ตรวจสอบกับลูกค้าแล้วกดบันทึกอีกครั้ง` : `The price is now ${money(Number(failure.body.amount))} ฿. Check with the customer, then record the sale again.`);
+        setNotice({ tone: "warning", text: th ? `ราคาเปลี่ยนเป็น ${money(Number(failure.body.amount))} ฿ ตรวจสอบกับลูกค้าแล้วกดบันทึกอีกครั้ง` : `The price is now ${money(Number(failure.body.amount))} ฿. Check with the customer, then record the sale again.` });
         request<Catalog>("/api/admin/sales").then(setCatalog).catch(() => {});
         return;
       }
-      setMessage((reason instanceof Error ? reason.message : "Request failed") + (th ? " · กดขายซ้ำได้โดยไม่ขายซ้ำ" : " · retrying is safe"));
+      setNotice({ tone: failureTone(reason), text: failureText(reason) + (th ? " · กดขายซ้ำได้โดยไม่ขายซ้ำ" : " · retrying is safe") });
     } finally { setBusy(false); }
   }
   return <section className="member-sale"><h3>{th ? "ขายหน้าเคาน์เตอร์" : "Counter sale"}</h3>
@@ -235,7 +281,7 @@ function CounterSale({ id, th, onSold }: { id: number; th: boolean; onSold: () =
       <label>{th ? "หมายเหตุ (ไม่บังคับ)" : "Note (optional)"}<input maxLength={200} value={note} disabled={busy} onChange={(event) => setNote(event.target.value)} /></label>
       <div className="admin-form-actions"><button disabled={busy || !selected}>{selected ? (th ? `บันทึกการขาย ${money(selected.price)} ฿` : `Record sale ${money(selected.price)} ฿`) : (th ? "บันทึกการขาย" : "Record sale")}</button></div>
     </form>
-    {message ? <p className="admin-message" role="status">{message}</p> : null}
+    {notice ? <AdminNotice tone={notice.tone}>{notice.text}</AdminNotice> : null}
     {sold ? <a className="admin-button member-sale-receipt" href={`/AdminConsole/receipt/${encodeURIComponent(sold)}`} target="_blank" rel="noopener">{th ? "พิมพ์ใบเสร็จ" : "Print receipt"}</a> : null}
   </section>;
 }

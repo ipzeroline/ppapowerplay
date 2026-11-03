@@ -2,6 +2,8 @@
 
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import jsQR from "jsqr";
+import { AdminNotice } from "@/components/admin-notice";
+import type { NoticeTone } from "@/lib/admin-notices";
 
 type Purpose = "member" | "booking" | "coupon" | "entitlement" | "payment";
 type Detail = { title?: string; startsAt?: string; endsAt?: string; checkInOpen?: boolean; remainingUses?: number | null; expiresAt?: string | null; amount?: number; status?: string };
@@ -27,7 +29,7 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
   const say = ([thai, english]: [string, string]) => (th ? thai : english);
   const [token, setToken] = useState("");
   const [result, setResult] = useState<Result | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [camera, setCamera] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
@@ -68,7 +70,7 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
-    setMessage("");
+    setMessage(null);
     setResult(null);
     stopCamera();
     let done = false;
@@ -82,10 +84,11 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
       setResult(data);
       if (data.consumed) {
         done = true;
-        setMessage(th ? "บันทึกการใช้สิทธิ์เรียบร้อยแล้ว" : "Redemption recorded successfully");
+        setMessage({ tone: "success", text: th ? "บันทึกการใช้สิทธิ์เรียบร้อยแล้ว" : "Redemption recorded successfully" });
       }
     } catch (error) {
-      setMessage(error instanceof Error && error.name === "Error" ? error.message : th ? "เชื่อมต่อไม่สำเร็จ หากกดยืนยันแล้ว กรุณาตรวจประวัติก่อนลองใหม่" : "Connection failed. If you confirmed redemption, check the audit log before retrying.");
+      // A refusal from the server is an error; no answer at all leaves the result unknown.
+      setMessage(error instanceof Error && error.name === "Error" ? { tone: "error", text: error.message } : { tone: "warning", text: th ? "เชื่อมต่อไม่สำเร็จ หากกดยืนยันแล้ว กรุณาตรวจประวัติก่อนลองใหม่" : "Connection failed. If you confirmed redemption, check the audit log before retrying." });
     } finally {
       lock.current = false;
       setBusy(false);
@@ -114,7 +117,7 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
     stopCamera();
     const current = generation.current;
     setResult(null);
-    setMessage("");
+    setMessage(null);
     setCamera(true);
     try {
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error("Camera unavailable");
@@ -144,7 +147,7 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
     } catch {
       if (current !== generation.current) return;
       stopCamera();
-      setMessage(th ? "เปิดกล้องไม่ได้ กรุณาอนุญาตกล้องและใช้ HTTPS หรือกรอกรหัสจากเครื่องอ่าน" : "Cannot open camera. Allow camera access over HTTPS, or enter a scanner code.");
+      setMessage({ tone: "error", text: th ? "เปิดกล้องไม่ได้ กรุณาอนุญาตกล้องและใช้ HTTPS หรือกรอกรหัสจากเครื่องอ่าน" : "Cannot open camera. Allow camera access over HTTPS, or enter a scanner code." });
     }
   }
 
@@ -162,10 +165,10 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
     <video ref={video} hidden={!camera} muted playsInline aria-label={th ? "ภาพจากกล้อง" : "Camera preview"} />
     <form onSubmit={(event) => { event.preventDefault(); void verify(token); }}>
       <label htmlFor="scan-token">{th ? "QR URL หรือรหัสจากเครื่องอ่าน" : "QR URL or scanner code"}</label>
-      <input id="scan-token" ref={field} autoComplete="off" maxLength={500} value={token} disabled={busy || camera} onChange={(event) => { setToken(event.target.value); setResult(null); setMessage(""); }} />
+      <input id="scan-token" ref={field} autoComplete="off" maxLength={500} value={token} disabled={busy || camera} onChange={(event) => { setToken(event.target.value); setResult(null); setMessage(null); }} />
       <button className="primary" disabled={busy || camera || !token.trim()}>{busy ? (th ? "กำลังตรวจสอบ…" : "Checking…") : (th ? "ตรวจสอบ QR" : "Verify QR")}</button>
     </form>
-    {message && <p role="status">{message}</p>}
+    {message ? <AdminNotice tone={message.tone}>{message.text}</AdminNotice> : null}
     {result && purpose && <div className="qr-scanner-result">
       <span className="admin-badge neutral">{say(purposeLabels[purpose] || [purpose, purpose])}</span>
       <h3>{result.qr.displayName}</h3>
@@ -174,9 +177,9 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
       {purpose === "booking" && detail?.startsAt ? <p>{th ? "เวลา" : "Time"} {detail.startsAt}{detail.endsAt ? `–${detail.endsAt}` : ""} {th ? "น." : ""}</p> : null}
       {usesLeft !== null ? <p>{th ? `เหลือ ${usesLeft} ครั้ง` : `${usesLeft} uses left`}</p> : null}
       {detail?.expiresAt && purpose !== "booking" ? <p>{th ? "ใช้ได้ถึง" : "Valid until"} {detail.expiresAt}</p> : null}
-      {notToday ? <p className="qr-scanner-warning" role="alert">{th ? "เช็คอินได้ในวันที่จอง" : "Check-in opens on the booking day"}</p> : null}
+      {notToday ? <AdminNotice tone="warning">{th ? "เช็คอินได้ในวันที่จอง" : "Check-in opens on the booking day"}</AdminNotice> : null}
       {result.valid && !result.consumed && purpose !== "payment" && !notToday && <button className="primary" disabled={busy} onClick={() => void verify(token, true)}>{say(confirmLabels[purpose])}</button>}
-      {purpose === "payment" && <p>{th ? "QR การชำระเงินไม่ใช่สิทธิ์เข้าใช้บริการ กรุณาตรวจรายการในระบบการเงิน" : "Payment QR is not an access pass. Review it in payments."}</p>}
+      {purpose === "payment" && <AdminNotice tone="info">{th ? "QR การชำระเงินไม่ใช่สิทธิ์เข้าใช้บริการ กรุณาตรวจรายการในระบบการเงิน" : "Payment QR is not an access pass. Review it in payments."}</AdminNotice>}
     </div>}
   </section>;
 }

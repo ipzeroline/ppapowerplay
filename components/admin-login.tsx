@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { AdminNotice } from "@/components/admin-notice";
 
 export function AdminLogin() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export function AdminLogin() {
       <button disabled={busy || username.trim().length < 3 || password.length < 8} type="submit">
         {busy ? "กำลังตรวจสอบ..." : "เข้าสู่ระบบ"}
       </button>
-      {message ? <p role="alert">{message}</p> : null}
+      {message ? <AdminNotice tone="error" lang="th">{message}</AdminNotice> : null}
     </form>
   );
 }

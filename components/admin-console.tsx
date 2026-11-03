@@ -6,6 +6,9 @@ import { safeImageSource } from "@/lib/media";
 import { AdminDialog } from "@/components/admin-dialog";
 import { AdminCourtCalendar, CounterPaymentDialog } from "@/components/admin-court-calendar";
 import { AdminCashup } from "@/components/admin-cashup";
+import { AdminFeedbackProvider, useAdminFeedback } from "@/components/admin-feedback";
+import { AdminNotice } from "@/components/admin-notice";
+import type { NoticeTone } from "@/lib/admin-notices";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -230,7 +233,6 @@ const copy = {
     recordRefund: "บันทึกคืนเงินแล้ว",
     refundNote: "หมายเหตุการโอนคืน (ไม่บังคับ)",
     confirmRefund: "ยืนยันว่าโอนคืนแล้ว",
-    paymentUpdated: "อัปเดต payment แล้ว",
     bookingExpire: "หมดอายุ",
     cancelReason: "เหตุผลยกเลิก",
     courtManager: "จัดการสนาม",
@@ -363,6 +365,52 @@ const copy = {
     noPermissions: "ยังไม่มีสิทธิ์",
     saveFailed: "บันทึกไม่สำเร็จ",
     deleteFailed: "ลบไม่สำเร็จ",
+    networkFailed: "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่",
+    metadataInvalid: "Metadata JSON ไม่ถูกต้อง",
+    uploading: "กำลังอัปโหลดรูป…",
+    reasonLabel: "เหตุผล",
+    noReason: "ไม่ระบุ",
+    detailItem: "รายการ",
+    bookingCheckedIn: "เช็คอินการจองแล้ว",
+    bookingExpired: "ให้การจองหมดอายุแล้ว",
+    confirmCheckinTitle: "เช็คอินการจองนี้?",
+    confirmCheckinMessage: "บันทึกว่าลูกค้ามาใช้สนามแล้ว ทำย้อนกลับไม่ได้",
+    confirmExpireTitle: "ให้การจองนี้หมดอายุ?",
+    confirmExpireMessage: "สนามช่วงเวลานี้จะกลับมาว่างให้จองใหม่ ทำย้อนกลับไม่ได้",
+    expireAction: "ให้หมดอายุ",
+    confirmCancelBookingTitle: "ยกเลิกการจองนี้?",
+    confirmCancelBookingMessage: "สนามช่วงเวลานี้จะกลับมาว่างให้จองใหม่ ทำย้อนกลับไม่ได้",
+    cancelBookingAction: "ยกเลิกการจอง",
+    paidNoRefund: "การจองนี้ชำระเงินแล้ว ระบบไม่คืนเงินให้อัตโนมัติ หากต้องคืนเงินให้ดำเนินการแยกต่างหาก",
+    confirmHideCourtTitle: "ซ่อนสนามนี้?",
+    confirmHideCourtMessage: "สนามนี้จะไม่เปิดให้จองทั้งในแอปและที่เคาน์เตอร์ การจองเดิมยังอยู่ครบ เปิดกลับได้จากปุ่มแก้ไข",
+    hideCourtAction: "ซ่อนสนาม",
+    confirmOffCouponTitle: "ปิดใช้งานคูปองนี้?",
+    confirmOffCouponMessage: "สมาชิกจะซื้อคูปองนี้ในแอปไม่ได้ เปิดใช้งานกลับได้จากปุ่มแก้ไข",
+    offCouponAction: "ปิดใช้งานคูปอง",
+    confirmOffContentTitle: "ปิดใช้งานคอนเทนต์นี้?",
+    confirmOffContentMessage: "รายการนี้จะไม่แสดงในแอปสมาชิก เปิดใช้งานกลับได้จากปุ่มแก้ไข",
+    offContentAction: "ปิดใช้งานคอนเทนต์",
+    confirmOffTrainerTitle: "ปิดใช้งานเทรนเนอร์นี้?",
+    confirmOffTrainerMessage: "เทรนเนอร์คนนี้จะไม่แสดงในแอปสมาชิก เปิดใช้งานกลับได้จากปุ่มแก้ไข",
+    offTrainerAction: "ปิดใช้งานเทรนเนอร์",
+    confirmDeleteStaffTitle: "ลบบัญชีพนักงานนี้?",
+    confirmDeleteStaffMessage: "บัญชีนี้จะเข้าสู่ระบบหลังบ้านไม่ได้อีก",
+    deleteStaffAction: "ลบบัญชีพนักงาน",
+    confirmSuspendStaffTitle: "ระงับบัญชีพนักงานนี้?",
+    confirmSuspendStaffMessage: "บัญชีนี้จะเข้าสู่ระบบหลังบ้านไม่ได้จนกว่าจะเปลี่ยนสถานะกลับเป็นใช้งาน",
+    suspendStaffAction: "ระงับบัญชี",
+    confirmDeleteRoleTitle: "ลบบทบาทนี้?",
+    confirmDeleteRoleMessage: "ลบถาวร ทำย้อนกลับไม่ได้ ลบได้เฉพาะบทบาทที่ไม่มีพนักงานใช้อยู่",
+    deleteRoleAction: "ลบบทบาท",
+    confirmPaidTitle: "ยืนยันว่าได้รับเงินแล้ว?",
+    confirmPaidMessage: "ตรวจยอดเงินและบัญชีปลายทางในสลิปให้ตรงก่อนยืนยัน ระบบจะบันทึกว่าชำระแล้วและให้สิทธิ์ตามรายการทันที",
+    confirmPaidAction: "ยืนยันได้รับเงินแล้ว",
+    noSlipYet: "รายการนี้ยังไม่มีสลิป ยืนยันเฉพาะเมื่อตรวจพบเงินเข้าบัญชีแล้วจริง",
+    paymentPaidDone: "ยืนยันการชำระเงินแล้ว",
+    paymentCancelledDone: "ยกเลิกรายการชำระเงินแล้ว",
+    refundRecordedDone: "บันทึกการคืนเงินแล้ว",
+    paymentUnknown: "ไม่ทราบผลการยืนยัน กรุณารีเฟรชตรวจสถานะก่อนลองใหม่",
     addRole: "เพิ่มบทบาท",
     editRole: "แก้ไขบทบาทและสิทธิ์",
     allRoles: "บทบาททั้งหมด",
@@ -393,7 +441,7 @@ const copy = {
     trainerList: "รายชื่อเทรนเนอร์",
     trainerCreated: "เพิ่มเทรนเนอร์แล้ว",
     trainerUpdated: "อัปเดตเทรนเนอร์แล้ว",
-    trainerDeleted: "ลบเทรนเนอร์แล้ว",
+    trainerDeleted: "ปิดใช้งานเทรนเนอร์แล้ว",
     trainerSearch: "ค้นหาเทรนเนอร์ / role / เกียรติบัตร",
     previousPage: "ก่อนหน้า",
     nextPage: "ถัดไป",
@@ -549,7 +597,6 @@ const copy = {
     recordRefund: "Record refund",
     refundNote: "Refund note (optional)",
     confirmRefund: "Confirm refund sent",
-    paymentUpdated: "Payment updated",
     bookingExpire: "Expire",
     cancelReason: "Cancel reason",
     courtManager: "Court manager",
@@ -682,6 +729,52 @@ const copy = {
     noPermissions: "No permissions",
     saveFailed: "Save failed",
     deleteFailed: "Delete failed",
+    networkFailed: "Could not reach the server. Check the connection and try again.",
+    metadataInvalid: "Metadata JSON is invalid",
+    uploading: "Uploading the photo…",
+    reasonLabel: "Reason",
+    noReason: "Not given",
+    detailItem: "Item",
+    bookingCheckedIn: "Booking checked in",
+    bookingExpired: "Booking expired",
+    confirmCheckinTitle: "Check in this booking?",
+    confirmCheckinMessage: "Records that the customer has arrived. This cannot be undone.",
+    confirmExpireTitle: "Expire this booking?",
+    confirmExpireMessage: "The court time becomes free to book again. This cannot be undone.",
+    expireAction: "Expire booking",
+    confirmCancelBookingTitle: "Cancel this booking?",
+    confirmCancelBookingMessage: "The court time becomes free to book again. This cannot be undone.",
+    cancelBookingAction: "Cancel booking",
+    paidNoRefund: "This booking is paid. No money is refunded automatically; arrange any refund separately.",
+    confirmHideCourtTitle: "Hide this court?",
+    confirmHideCourtMessage: "It can no longer be booked in the app or at the counter. Existing bookings stay. Open it again with Edit.",
+    hideCourtAction: "Hide court",
+    confirmOffCouponTitle: "Turn off this coupon?",
+    confirmOffCouponMessage: "Members can no longer buy it in the app. Turn it on again with Edit.",
+    offCouponAction: "Turn off coupon",
+    confirmOffContentTitle: "Turn off this content?",
+    confirmOffContentMessage: "It no longer shows in the member app. Turn it on again with Edit.",
+    offContentAction: "Turn off content",
+    confirmOffTrainerTitle: "Turn off this trainer?",
+    confirmOffTrainerMessage: "The trainer no longer shows in the member app. Turn them on again with Edit.",
+    offTrainerAction: "Turn off trainer",
+    confirmDeleteStaffTitle: "Delete this staff account?",
+    confirmDeleteStaffMessage: "This account can no longer sign in to the back office.",
+    deleteStaffAction: "Delete staff account",
+    confirmSuspendStaffTitle: "Suspend this staff account?",
+    confirmSuspendStaffMessage: "This account cannot sign in to the back office until it is set back to active.",
+    suspendStaffAction: "Suspend account",
+    confirmDeleteRoleTitle: "Delete this role?",
+    confirmDeleteRoleMessage: "Deleted permanently. Only a role that no active staff member has can be deleted.",
+    deleteRoleAction: "Delete role",
+    confirmPaidTitle: "Confirm the money was received?",
+    confirmPaidMessage: "Check the amount and the receiving account on the slip first. The payment is recorded as paid and the member gets what they bought at once.",
+    confirmPaidAction: "Confirm money received",
+    noSlipYet: "No slip has been sent for this payment. Confirm only after you have seen the money arrive.",
+    paymentPaidDone: "Payment confirmed",
+    paymentCancelledDone: "Payment cancelled",
+    refundRecordedDone: "Refund recorded",
+    paymentUnknown: "Confirmation result is unknown. Refresh and check the status before retrying.",
     addRole: "Add role",
     editRole: "Edit role and permissions",
     allRoles: "All roles",
@@ -712,7 +805,7 @@ const copy = {
     trainerList: "Trainer list",
     trainerCreated: "Trainer created",
     trainerUpdated: "Trainer updated",
-    trainerDeleted: "Trainer deleted",
+    trainerDeleted: "Trainer turned off",
     trainerSearch: "Search trainer / role / certification",
     previousPage: "Previous",
     nextPage: "Next",
@@ -928,7 +1021,6 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
   const [contentRows, setContentRows] = useState(data.contentItems);
   const [roleRows, setRoleRows] = useState(data.roles);
   const [permissionRows, setPermissionRows] = useState(data.permissions);
-  const [adminMessage, setAdminMessage] = useState("");
   const [profileOpen, setProfileOpen] = useState(false);
   const t = copy[lang];
 
@@ -992,146 +1084,142 @@ export function AdminConsole({ adminKey, data, initialReportSection, initialTab 
 
   return (
     <main className="admin admin-console" data-theme={theme} data-menu-open={menuOpen}>
-      {menuOpen ? <button className="admin-menu-backdrop" tabIndex={-1} aria-label="Close menu" onClick={() => setMenuOpen(false)} /> : null}
-      <aside className="admin-sidebar" id="admin-navigation" ref={sidebarRef} role={menuOpen ? "dialog" : undefined} aria-modal={menuOpen || undefined} aria-label="Admin navigation">
-        <button className="admin-menu-close" type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)}><X aria-hidden="true" /></button>
-        <div className="admin-brand">
-          <div className="admin-logo">PPA<span>.</span></div>
-          <small>{t.ops}</small>
-        </div>
-        <nav>
-          {adminNavGroups.filter((group) => group.items.some(canAccessTab)).map((group) => (
-            <section className="admin-nav-section" key={group.labelEn}>
-              {group.items.length > 1 ? <p>{lang === "th" ? group.labelTh : group.labelEn}</p> : null}
-              {group.items.filter(canAccessTab).map((itemId) => {
-                const item = tabs.find(([id]) => id === itemId);
-                if (!item) return null;
-                const [id, , key, Icon] = item;
-                return (
-                  <div className="admin-nav-group" key={id}>
-                    <button
-                      aria-current={tab === id && id !== "reports" ? "page" : undefined}
-                      aria-expanded={id === "reports" ? reportMenuOpen : undefined}
-                      className={`${tab === id ? "on" : ""} ${id === "reports" && reportMenuOpen ? "expanded" : ""}`}
-                      onClick={() => (id === "reports" ? toggleReportMenu() : goTab(id))}
-                      type="button"
-                    >
-                      <Icon className="admin-nav-icon" aria-hidden="true" />
-                      <span className="admin-nav-label">{t[key]}</span>
-                      {id === "reports" ? <ChevronDown className="admin-nav-caret" aria-hidden="true" /> : null}
-                    </button>
-                    {id === "reports" && reportMenuOpen ? (
-                      <div className="admin-subnav">
-                        {reportTabs.map(([section, label]) => (
-                          <button aria-current={tab === "reports" && reportSection === section ? "page" : undefined} className={tab === "reports" && reportSection === section ? "on" : ""} key={section} type="button" onClick={() => goReport(section)}>
-                            <span className="admin-nav-label">{label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </section>
-          ))}
-        </nav>
-      </aside>
-      <section className="admin-main" inert={menuOpen}>
-        <header className="admin-navbar">
-          <button className="admin-menu-toggle" type="button" ref={menuButtonRef} aria-label="Open menu" aria-expanded={menuOpen} aria-controls="admin-navigation" onClick={() => setMenuOpen(true)}><Menu aria-hidden="true" /></button>
-          <p className="admin-crumbs">
-            <span>{t.backOffice}</span>
-            <ChevronRight aria-hidden="true" />
-            <b>{tab === "reports" ? reportTabs.find(([id]) => id === reportSection)?.[1] || currentTitle : currentTitle}</b>
-          </p>
-          <div className="admin-navbar-actions">
-            {currentAdmin ? (
-              <UserMenu admin={currentAdmin} lang={lang} theme={theme} t={t} onLang={setLang} onTheme={setTheme} onLogout={logout} onOpenProfile={() => setProfileOpen(true)} />
-            ) : null}
+      <AdminFeedbackProvider lang={lang}>
+        {menuOpen ? <button className="admin-menu-backdrop" tabIndex={-1} aria-label="Close menu" onClick={() => setMenuOpen(false)} /> : null}
+        <aside className="admin-sidebar" id="admin-navigation" ref={sidebarRef} role={menuOpen ? "dialog" : undefined} aria-modal={menuOpen || undefined} aria-label="Admin navigation">
+          <button className="admin-menu-close" type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)}><X aria-hidden="true" /></button>
+          <div className="admin-brand">
+            <div className="admin-logo">PPA<span>.</span></div>
+            <small>{t.ops}</small>
           </div>
-        </header>
+          <nav>
+            {adminNavGroups.filter((group) => group.items.some(canAccessTab)).map((group) => (
+              <section className="admin-nav-section" key={group.labelEn}>
+                {group.items.length > 1 ? <p>{lang === "th" ? group.labelTh : group.labelEn}</p> : null}
+                {group.items.filter(canAccessTab).map((itemId) => {
+                  const item = tabs.find(([id]) => id === itemId);
+                  if (!item) return null;
+                  const [id, , key, Icon] = item;
+                  return (
+                    <div className="admin-nav-group" key={id}>
+                      <button
+                        aria-current={tab === id && id !== "reports" ? "page" : undefined}
+                        aria-expanded={id === "reports" ? reportMenuOpen : undefined}
+                        className={`${tab === id ? "on" : ""} ${id === "reports" && reportMenuOpen ? "expanded" : ""}`}
+                        onClick={() => (id === "reports" ? toggleReportMenu() : goTab(id))}
+                        type="button"
+                      >
+                        <Icon className="admin-nav-icon" aria-hidden="true" />
+                        <span className="admin-nav-label">{t[key]}</span>
+                        {id === "reports" ? <ChevronDown className="admin-nav-caret" aria-hidden="true" /> : null}
+                      </button>
+                      {id === "reports" && reportMenuOpen ? (
+                        <div className="admin-subnav">
+                          {reportTabs.map(([section, label]) => (
+                            <button aria-current={tab === "reports" && reportSection === section ? "page" : undefined} className={tab === "reports" && reportSection === section ? "on" : ""} key={section} type="button" onClick={() => goReport(section)}>
+                              <span className="admin-nav-label">{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </section>
+            ))}
+          </nav>
+        </aside>
+        <section className="admin-main" inert={menuOpen}>
+          <header className="admin-navbar">
+            <button className="admin-menu-toggle" type="button" ref={menuButtonRef} aria-label="Open menu" aria-expanded={menuOpen} aria-controls="admin-navigation" onClick={() => setMenuOpen(true)}><Menu aria-hidden="true" /></button>
+            <p className="admin-crumbs">
+              <span>{t.backOffice}</span>
+              <ChevronRight aria-hidden="true" />
+              <b>{tab === "reports" ? reportTabs.find(([id]) => id === reportSection)?.[1] || currentTitle : currentTitle}</b>
+            </p>
+            <div className="admin-navbar-actions">
+              {currentAdmin ? (
+                <UserMenu admin={currentAdmin} lang={lang} theme={theme} t={t} onLang={setLang} onTheme={setTheme} onLogout={logout} onOpenProfile={() => setProfileOpen(true)} />
+              ) : null}
+            </div>
+          </header>
 
-        {profileOpen && currentAdmin ? (
-          <ProfileModal admin={currentAdmin} adminKey={adminKey} lang={lang} onClose={() => setProfileOpen(false)} onProfileSaved={(updated) => setStaffRows((existing) => [...existing.filter((row) => !updated.some((item) => item.id === row.id)), ...updated])} t={t} />
-        ) : null}
+          {profileOpen && currentAdmin ? (
+            <ProfileModal admin={currentAdmin} adminKey={adminKey} lang={lang} onClose={() => setProfileOpen(false)} onProfileSaved={(updated) => setStaffRows((existing) => [...existing.filter((row) => !updated.some((item) => item.id === row.id)), ...updated])} t={t} />
+          ) : null}
 
-        {/* The dashboard has its own header (date, last update, refresh). */}
-        {tab !== "dashboard" ? <header className="admin-top">
-          <div>
-            <h1>{currentTitle}</h1>
-            <span>{currentDescription}</span>
-          </div>
-          <div className="admin-page-toolbar">
-            {showHeaderSearch ? (
-              <label className="admin-page-search">
-                <Search aria-hidden="true" />
-                <span className="admin-sr-only">{t.search} {searchScope}</span>
-                <input type="search" placeholder={t.search} value={query} onChange={(event) => setQuery(event.target.value)} />
-              </label>
-            ) : null}
-            <button className="admin-refresh" type="button" onClick={() => window.location.reload()}><RefreshCw aria-hidden="true" />{t.refresh}</button>
-          </div>
-        </header> : null}
+          {/* The dashboard has its own header (date, last update, refresh). */}
+          {tab !== "dashboard" ? <header className="admin-top">
+            <div>
+              <h1>{currentTitle}</h1>
+              <span>{currentDescription}</span>
+            </div>
+            <div className="admin-page-toolbar">
+              {showHeaderSearch ? (
+                <label className="admin-page-search">
+                  <Search aria-hidden="true" />
+                  <span className="admin-sr-only">{t.search} {searchScope}</span>
+                  <input type="search" placeholder={t.search} value={query} onChange={(event) => setQuery(event.target.value)} />
+                </label>
+              ) : null}
+              <button className="admin-refresh" type="button" onClick={() => window.location.reload()}><RefreshCw aria-hidden="true" />{t.refresh}</button>
+            </div>
+          </header> : null}
 
-        {tab === "dashboard" && (
-          <AdminDashboard
-            initial={data.dashboard}
-            lang={lang}
-            systemIssues={canAccessTab("system") ? [...data.securityItems, ...data.systemHealth].filter((item) => item.status !== "good").length : null}
-            onNavigate={goTab}
-            renderQueue={(rows, onChange) => (
-              <PaymentTable canManage={canViewSlips(data.currentAdmin)} adminKey={adminKey} rows={rows} lang={lang} t={t} emptyText={t.queueEmpty} onPaymentsChange={(payments) => { setPaymentRows(payments); onChange(payments); }} />
-            )}
-          />
-        )}
-        {tab === "members" && <AdminMembers search={query} lang={lang} canSell={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("sales.manage"))} canManage={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("members.manage"))} />}
-        {tab === "staff" && (
-          <StaffManager
-            adminKey={adminKey}
-            lang={lang}
-            message={adminMessage}
-            permissions={permissionRows}
-            roles={roleRows}
-            rows={staffRows}
-            setMessage={setAdminMessage}
-            setRows={setStaffRows}
-            t={t}
-          />
-        )}
-        {tab === "roles" && (
-          <RoleManager
-            adminKey={adminKey}
-            lang={lang}
-            message={adminMessage}
-            permissions={permissionRows}
-            rows={roleRows}
-            setMessage={setAdminMessage}
-            setPermissions={setPermissionRows}
-            setRows={setRoleRows}
-            t={t}
-          />
-        )}
-        {tab === "reports" && <Reports adminKey={adminKey} data={{ ...data, payments: paymentRows }} lang={lang} onPaymentsChange={setPaymentRows} section={reportSection} t={t} />}
-        {tab === "content" && <ContentManager adminKey={adminKey} lang={lang} message={adminMessage} rows={contentRows} setMessage={setAdminMessage} setRows={setContentRows} t={t} />}
-        {tab === "coupons" && <CouponManager adminKey={adminKey} lang={lang} message={adminMessage} rows={couponRows} setMessage={setAdminMessage} setRows={setCouponRows} t={t} />}
-        {tab === "scanner" && <AdminQrScanner lang={lang} />}
-        {tab === "bookings" && <BookingManager adminKey={adminKey} courts={courtRows} lang={lang} message={adminMessage} rows={bookingRows} setCourts={setCourtRows} setMessage={setAdminMessage} setRows={setBookingRows} t={t} />}
-        {tab === "trainers" && (
-          <TrainerManager
-            adminKey={adminKey}
-            lang={lang}
-            message={adminMessage}
-            rows={trainerRows}
-            setMessage={setAdminMessage}
-            setRows={setTrainerRows}
-            t={t}
-          />
-        )}
-        {tab === "audit" && <AuditTrail lang={lang} rows={data.auditLogs} t={t} />}
-        {tab === "security" && <SystemStatusPanel lang={lang} rows={data.securityItems} scoreItems={[...data.securityItems, ...data.systemHealth]} title={t.securityTitle} t={t} />}
-        {tab === "system" && <SystemStatusPanel lang={lang} rows={data.systemHealth} scoreItems={[...data.securityItems, ...data.systemHealth]} title={t.systemTitle} t={t} />}
-        {tab === "analysis" && <Analysis lang={lang} t={t} />}
-      </section>
+          {tab === "dashboard" && (
+            <AdminDashboard
+              initial={data.dashboard}
+              lang={lang}
+              systemIssues={canAccessTab("system") ? [...data.securityItems, ...data.systemHealth].filter((item) => item.status !== "good").length : null}
+              onNavigate={goTab}
+              renderQueue={(rows, onChange) => (
+                <PaymentTable canManage={canViewSlips(data.currentAdmin)} adminKey={adminKey} rows={rows} lang={lang} t={t} emptyText={t.queueEmpty} onPaymentsChange={(payments) => { setPaymentRows(payments); onChange(payments); }} />
+              )}
+            />
+          )}
+          {tab === "members" && <AdminMembers search={query} lang={lang} canSell={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("sales.manage"))} canManage={data.currentAdmin?.roleCode === "super_admin" || Boolean(data.currentAdmin?.permissionCodes.includes("members.manage"))} />}
+          {tab === "staff" && (
+            <StaffManager
+              adminKey={adminKey}
+              lang={lang}
+              permissions={permissionRows}
+              roles={roleRows}
+              rows={staffRows}
+              setRows={setStaffRows}
+              t={t}
+            />
+          )}
+          {tab === "roles" && (
+            <RoleManager
+              adminKey={adminKey}
+              lang={lang}
+              permissions={permissionRows}
+              rows={roleRows}
+              setPermissions={setPermissionRows}
+              setRows={setRoleRows}
+              t={t}
+            />
+          )}
+          {tab === "reports" && <Reports adminKey={adminKey} data={{ ...data, payments: paymentRows }} lang={lang} onPaymentsChange={setPaymentRows} section={reportSection} t={t} />}
+          {tab === "content" && <ContentManager adminKey={adminKey} lang={lang} rows={contentRows} setRows={setContentRows} t={t} />}
+          {tab === "coupons" && <CouponManager adminKey={adminKey} lang={lang} rows={couponRows} setRows={setCouponRows} t={t} />}
+          {tab === "scanner" && <AdminQrScanner lang={lang} />}
+          {tab === "bookings" && <BookingManager adminKey={adminKey} courts={courtRows} lang={lang} rows={bookingRows} setCourts={setCourtRows} setRows={setBookingRows} t={t} />}
+          {tab === "trainers" && (
+            <TrainerManager
+              adminKey={adminKey}
+              lang={lang}
+              rows={trainerRows}
+              setRows={setTrainerRows}
+              t={t}
+            />
+          )}
+          {tab === "audit" && <AuditTrail lang={lang} rows={data.auditLogs} t={t} />}
+          {tab === "security" && <SystemStatusPanel lang={lang} rows={data.securityItems} scoreItems={[...data.securityItems, ...data.systemHealth]} title={t.securityTitle} t={t} />}
+          {tab === "system" && <SystemStatusPanel lang={lang} rows={data.systemHealth} scoreItems={[...data.securityItems, ...data.systemHealth]} title={t.systemTitle} t={t} />}
+          {tab === "analysis" && <Analysis lang={lang} t={t} />}
+        </section>
+      </AdminFeedbackProvider>
     </main>
   );
 }
@@ -1209,13 +1297,13 @@ function ProfileModal({
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState<{ tone: NoticeTone; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const saveAll = async () => {
-    setMessage("");
+    setNotice(null);
     const wantsPasswordChange = Boolean(currentPassword || newPassword || confirmPassword);
-    if (wantsPasswordChange && newPassword !== confirmPassword) return setMessage(t.passwordMismatch);
+    if (wantsPasswordChange && newPassword !== confirmPassword) return setNotice({ tone: "error", text: t.passwordMismatch });
     setBusy(true);
     try {
       const profileResponse = await adminFetch(adminKey, "/api/admin/profile", {
@@ -1223,7 +1311,7 @@ function ProfileModal({
         body: JSON.stringify({ staffId: admin.id, ...profileForm }),
       });
       const profileResult = await profileResponse.json();
-      if (!profileResponse.ok) return setMessage(profileErrorMessage(profileResult.message, t));
+      if (!profileResponse.ok) return setNotice({ tone: "error", text: profileErrorMessage(profileResult.message, t) });
       onProfileSaved(profileResult.staff);
 
       if (wantsPasswordChange) {
@@ -1232,12 +1320,14 @@ function ProfileModal({
           body: JSON.stringify({ staffId: admin.id, currentPassword, newPassword }),
         });
         const passwordResult = await passwordResponse.json();
-        if (!passwordResponse.ok) return setMessage(passwordErrorMessage(passwordResult.message, t));
+        if (!passwordResponse.ok) return setNotice({ tone: "error", text: passwordErrorMessage(passwordResult.message, t) });
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
       }
-      setMessage(wantsPasswordChange ? `${t.profileSaved} · ${t.passwordChanged}` : t.profileSaved);
+      setNotice({ tone: "success", text: wantsPasswordChange ? `${t.profileSaved} · ${t.passwordChanged}` : t.profileSaved });
+    } catch {
+      setNotice({ tone: "error", text: t.networkFailed });
     } finally {
       setBusy(false);
     }
@@ -1274,7 +1364,7 @@ function ProfileModal({
               <label>{t.confirmPassword}<input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>
             </div>
           </section>
-          {message ? <p className="admin-message wide">{message}</p> : null}
+          {notice ? <AdminNotice tone={notice.tone}>{notice.text}</AdminNotice> : null}
           <div className="admin-profile-modal-actions">
             <button disabled={busy} type="button" onClick={saveAll}>{t.save}</button>
             <button className="ghost" type="button" onClick={onClose}>{t.cancel}</button>
@@ -1315,23 +1405,20 @@ function BookingManager({
   adminKey,
   courts,
   lang,
-  message,
   rows,
   setCourts,
-  setMessage,
   setRows,
   t,
 }: {
   adminKey: string;
   courts: AdminCourt[];
   lang: Lang;
-  message: string;
   rows: AdminBooking[];
   setCourts: (rows: AdminCourt[]) => void;
-  setMessage: (message: string) => void;
   setRows: (rows: AdminBooking[]) => void;
   t: typeof copy[Lang];
 }) {
+  const { notify, confirm } = useAdminFeedback();
   const [bookingSearch, setBookingSearch] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   // The calendar and the list show the same bookings: a change in one reloads the other.
@@ -1343,6 +1430,7 @@ function BookingManager({
   }, [adminKey, setRows]);
   const [courtModalOpen, setCourtModalOpen] = useState(false);
   const [editingCourtId, setEditingCourtId] = useState<number | null>(null);
+  const [courtError, setCourtError] = useState("");
   const [courtSearch, setCourtSearch] = useState("");
   const sportOptions = useMemo(() => uniqueSports(courts), [courts]);
   const [courtForm, setCourtForm] = useState({
@@ -1367,45 +1455,54 @@ function BookingManager({
     return courts.filter((row) => `${row.sportName} ${row.name} ${row.zone || ""} ${row.status}`.toLowerCase().includes(needle));
   }, [courtSearch, courts]);
 
-  const updateBooking = async (booking: AdminBooking, status: string) => {
-    setMessage("");
-    const response = await adminFetch(adminKey, "/api/admin/bookings", {
-      method: "PUT",
-      body: JSON.stringify({ bookingNo: booking.bookingNo, status, reason: cancelReason }),
-    });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.saveFailed);
-    setRows(result.bookings);
+  // One tap in a long list changes a booking for good: show which booking first.
+  const updateBooking = async (booking: AdminBooking, status: "checked_in" | "expired" | "cancelled") => {
+    const reason = cancelReason.trim();
+    const details: [string, string][] = [
+      [t.cols.booking, `${booking.bookingNo} · ${booking.title}`],
+      [t.cols.member, booking.displayName],
+      [t.cols.time, `${formatDate(booking.startsAt, lang)}${booking.courtName ? ` · ${booking.courtName}` : ""}`],
+      [t.cols.amount, `${money(booking.amount, lang)} ฿`],
+    ];
+    const question = status === "checked_in"
+      ? { title: t.confirmCheckinTitle, message: t.confirmCheckinMessage, confirmLabel: t.bookingCheckin, details }
+      : status === "expired"
+        ? { title: t.confirmExpireTitle, message: t.confirmExpireMessage, confirmLabel: t.expireAction, danger: true, details }
+        : { title: t.confirmCancelBookingTitle, message: t.confirmCancelBookingMessage, confirmLabel: t.cancelBookingAction, danger: true, details: [...details, [t.reasonLabel, reason || t.noReason] as [string, string]], warning: booking.status === "paid" ? t.paidNoRefund : undefined };
+    if (!(await confirm(question))) return;
+    const sent = await adminSend<{ bookings: AdminBooking[] }>(adminKey, "/api/admin/bookings", { method: "PUT", body: JSON.stringify({ bookingNo: booking.bookingNo, status, reason }) }, t, t.saveFailed);
+    if (!sent.ok) return notify("error", sent.message);
+    setRows(sent.data.bookings);
     setCancelReason("");
     setCalendarKey((value) => value + 1);
-    setMessage(status === "cancelled" ? t.bookingCancelled : t.bookingUpdated);
+    notify("success", status === "cancelled" ? t.bookingCancelled : status === "expired" ? t.bookingExpired : t.bookingCheckedIn);
   };
   const resetCourt = () => {
     setEditingCourtId(null);
+    setCourtError("");
     setCourtForm({ sportId: sportOptions[0]?.id || 1, name: "", zone: "Main", capacity: 4, surface: "", hourlyRate: 0, sortOrder: 0, notes: "", status: "available" });
   };
   const editCourt = (court: AdminCourt) => {
     setEditingCourtId(court.id);
+    setCourtError("");
     setCourtForm({ sportId: court.sportId || sportOptions[0]?.id || 1, name: court.name, zone: court.zone || "Main", capacity: Number(court.capacity || 4), surface: court.surface || "", hourlyRate: Number(court.hourlyRate || 0), sortOrder: Number(court.sortOrder || 0), notes: court.notes || "", status: court.status });
     setCourtModalOpen(true);
   };
   const submitCourt = async () => {
-    setMessage("");
-    const response = await adminFetch(adminKey, "/api/admin/courts", { method: editingCourtId ? "PUT" : "POST", body: JSON.stringify({ ...courtForm, id: editingCourtId || undefined }) });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.saveFailed);
-    setCourts(result.courts);
-    setMessage(editingCourtId ? t.courtUpdated : t.courtCreated);
+    setCourtError("");
+    const sent = await adminSend<{ courts: AdminCourt[] }>(adminKey, "/api/admin/courts", { method: editingCourtId ? "PUT" : "POST", body: JSON.stringify({ ...courtForm, id: editingCourtId || undefined }) }, t, t.saveFailed);
+    if (!sent.ok) return setCourtError(sent.message);
+    setCourts(sent.data.courts);
+    notify("success", editingCourtId ? t.courtUpdated : t.courtCreated);
     resetCourt();
     setCourtModalOpen(false);
   };
   const removeCourt = async (court: AdminCourt) => {
-    setMessage("");
-    const response = await adminFetch(adminKey, `/api/admin/courts?id=${court.id}`, { method: "DELETE" });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.deleteFailed);
-    setCourts(result.courts);
-    setMessage(t.courtDeleted);
+    if (!(await confirm({ title: t.confirmHideCourtTitle, message: t.confirmHideCourtMessage, details: [[t.courtName, `${court.sportName} · ${court.name}`]], confirmLabel: t.hideCourtAction, danger: true }))) return;
+    const sent = await adminSend<{ courts: AdminCourt[] }>(adminKey, `/api/admin/courts?id=${court.id}`, { method: "DELETE" }, t, t.deleteFailed);
+    if (!sent.ok) return notify("error", sent.message);
+    setCourts(sent.data.courts);
+    notify("success", t.courtDeleted);
   };
 
   return (
@@ -1423,7 +1520,7 @@ function BookingManager({
               <div><b>{booking.title}</b><span>{booking.bookingNo} · {booking.displayName}</span><small>{booking.sportName || "-"} · {booking.courtName || "-"} · {formatDate(booking.startsAt, lang)}</small><small>{booking.cancelReason || ""}</small></div>
               <Badge tone={booking.status === "paid" || booking.status === "checked_in" ? "good" : booking.status === "cancelled" || booking.status === "expired" ? "bad" : "warn"}>{statusLabel(booking.status, t)}</Badge>
               <div className="admin-row-actions">
-                <button type="button" disabled={!["hold", "pending_payment"].includes(booking.status)} onClick={() => { setMessage(""); setPaying(booking); }}>{t.bookingMarkPaid}</button>
+                <button type="button" disabled={!["hold", "pending_payment"].includes(booking.status)} onClick={() => setPaying(booking)}>{t.bookingMarkPaid}</button>
                 <button type="button" disabled={booking.status !== "paid"} onClick={() => updateBooking(booking, "checked_in")}>{t.bookingCheckin}</button>
                 <button type="button" disabled={["checked_in", "cancelled", "expired"].includes(booking.status)} onClick={() => updateBooking(booking, "expired")}>{t.bookingExpire}</button>
                 <button type="button" className="danger" disabled={["checked_in", "cancelled", "expired"].includes(booking.status)} onClick={() => updateBooking(booking, "cancelled")}>{t.cancel}</button>
@@ -1431,7 +1528,6 @@ function BookingManager({
             </article>
           ))}
         </div>
-        {message ? <p className="admin-message">{message}</p> : null}
       </Panel>
       <Panel title={t.courtManager}>
         <div className="admin-list-toolbar">
@@ -1450,7 +1546,7 @@ function BookingManager({
         </div>
       </Panel>
       {paying ? (
-        <CounterPaymentDialog lang={lang} booking={paying} onClose={() => setPaying(null)} onDone={(text) => { setPaying(null); setMessage(text); setCalendarKey((value) => value + 1); void reloadBookings(); }} />
+        <CounterPaymentDialog lang={lang} booking={paying} onClose={() => setPaying(null)} onDone={(text) => { setPaying(null); notify("success", text); setCalendarKey((value) => value + 1); void reloadBookings(); }} />
       ) : null}
       {courtModalOpen ? (
         <AdminDialog onClose={() => { resetCourt(); setCourtModalOpen(false); }}>
@@ -1466,6 +1562,7 @@ function BookingManager({
               <label>{t.sortOrder}<input type="number" value={courtForm.sortOrder} onChange={(event) => setCourtForm({ ...courtForm, sortOrder: Number(event.target.value) })} /></label>
               <label>{t.status}<select value={courtForm.status} onChange={(event) => setCourtForm({ ...courtForm, status: event.target.value })}><option value="available">{t.statuses.available}</option><option value="maintenance">{t.statuses.maintenance}</option><option value="hidden">{t.statuses.hidden}</option></select></label>
               <label className="wide">{t.notes}<textarea value={courtForm.notes} onChange={(event) => setCourtForm({ ...courtForm, notes: event.target.value })} /></label>
+              {courtError ? <AdminNotice tone="error">{courtError}</AdminNotice> : null}
               <div className="admin-form-actions"><button type="button" onClick={submitCourt}>{t.save}</button><button type="button" className="ghost" onClick={() => { resetCourt(); setCourtModalOpen(false); }}>{t.cancel}</button></div>
             </div>
           </section>
@@ -1480,7 +1577,7 @@ function TrainerTable({ rows, lang, t }: { rows: AdminTrainer[]; lang: Lang; t: 
 }
 
 function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, emptyText }: { adminKey?: string; canManage: boolean; rows: AdminPayment[]; lang: Lang; onPaymentsChange?: (rows: AdminPayment[]) => void; t: typeof copy[Lang]; emptyText?: string }) {
-  const [message, setMessage] = useState("");
+  const { notify, confirm } = useAdminFeedback();
   const [busy, setBusy] = useState(false);
   // One inline form at a time: cancel a waiting payment (with a reason) or record a refund.
   const [form, setForm] = useState<{ paymentNo: string; mode: "cancel" | "refund"; preset: string; text: string } | null>(null);
@@ -1490,20 +1587,37 @@ function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, em
     if (!actionable || !onPaymentsChange || pending.current) return;
     pending.current = true;
     setBusy(true);
-    setMessage("");
     try {
       const response = await adminFetch(adminKey || "", "/api/admin/payments", { method: "PUT", body: JSON.stringify({ paymentNo, status, ...(reason ? { reason } : {}) }) });
       const result = await response.json();
-      if (!response.ok) return setMessage(result.message || t.saveFailed);
+      if (!response.ok) return notify("error", result.message || t.saveFailed);
       onPaymentsChange(result.payments);
       setForm(null);
-      setMessage(t.paymentUpdated);
+      notify("success", status === "paid" ? t.paymentPaidDone : status === "cancelled" ? t.paymentCancelledDone : t.refundRecordedDone);
     } catch {
-      setMessage(lang === "th" ? "ไม่ทราบผลการยืนยัน กรุณารีเฟรชตรวจสถานะก่อนลองใหม่" : "Confirmation result is unknown. Refresh and check the status before retrying.");
+      notify("warning", t.paymentUnknown);
     } finally {
       pending.current = false;
       setBusy(false);
     }
+  };
+  // Confirming money received opens the member's purchase at once: show what is being confirmed first.
+  const approve = async (payment: AdminPayment) => {
+    if (!actionable || pending.current) return;
+    const confirmed = await confirm({
+      title: t.confirmPaidTitle,
+      message: t.confirmPaidMessage,
+      details: [
+        [t.cols.payment, payment.paymentNo],
+        [t.cols.member, payment.displayName],
+        [t.detailItem, paymentItemLabel(payment, lang)],
+        [t.cols.method, t.methods[payment.method as keyof typeof t.methods] || payment.method],
+        [t.cols.amount, `${money(payment.amount, lang)} ฿`],
+      ],
+      warning: payment.slipUploadedAt ? undefined : t.noSlipYet,
+      confirmLabel: t.confirmPaidAction,
+    });
+    if (confirmed) await updatePayment(payment.paymentNo, "paid");
   };
   const other = t.cancelReasons[t.cancelReasons.length - 1];
   const formReason = form ? (form.mode === "cancel" && form.preset !== other ? form.preset : form.text.trim()) : "";
@@ -1524,7 +1638,7 @@ function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, em
                 {r.cancelReason ? <small>{r.cancelReason}</small> : null}
               </td>
               <td>
-                {r.status === "created" ? <button type="button" disabled={!actionable || busy} onClick={() => updatePayment(r.paymentNo, "paid")}>{t.paymentMarkPaid}</button> : null}
+                {r.status === "created" ? <button type="button" disabled={!actionable || busy} onClick={() => approve(r)}>{t.paymentMarkPaid}</button> : null}
                 {r.status === "created" && actionable ? <button type="button" className="danger" disabled={busy} aria-expanded={form?.paymentNo === r.paymentNo} onClick={() => setForm({ paymentNo: r.paymentNo, mode: "cancel", preset: t.cancelReasons[0], text: "" })}>{t.paymentCancel}</button> : null}
                 {r.status === "cancelled" && r.refundStatus === "pending" && actionable ? <button type="button" disabled={busy} aria-expanded={form?.paymentNo === r.paymentNo} onClick={() => setForm({ paymentNo: r.paymentNo, mode: "refund", preset: "", text: "" })}>{t.recordRefund}</button> : null}
                 {r.status === "paid" ? <a className="admin-button" href={`/AdminConsole/receipt/${encodeURIComponent(r.paymentNo)}`} target="_blank" rel="noopener">{t.receipt}</a> : null}
@@ -1538,7 +1652,7 @@ function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, em
                       <>
                         <label>{t.cancelReasonLabel}<select value={form.preset} disabled={busy} onChange={(event) => setForm({ ...form, preset: event.target.value })}>{t.cancelReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}</select></label>
                         {form.preset === other ? <label>{t.cancelOther}<input required pattern={".*\\S.*"} maxLength={200} value={form.text} disabled={busy} onChange={(event) => setForm({ ...form, text: event.target.value })} /></label> : null}
-                        {r.slipUploadedAt ? <p className="payment-action-note" role="note">{t.cancelSlipWarning}</p> : null}
+                        {r.slipUploadedAt ? <AdminNotice tone="warning" className="payment-action-note">{t.cancelSlipWarning}</AdminNotice> : null}
                       </>
                     ) : (
                       <label>{t.refundNote}<input maxLength={200} value={form.text} disabled={busy} onChange={(event) => setForm({ ...form, text: event.target.value })} /></label>
@@ -1554,7 +1668,6 @@ function PaymentTable({ adminKey, canManage, rows, lang, onPaymentsChange, t, em
           </Fragment>
         ))}</tbody>
       </table> : null}
-      {message ? <p className="admin-message" role="status">{message}</p> : null}
     </>
   );
 }
@@ -1650,20 +1763,18 @@ function sumReportAmount<T>(rows: T[]) {
 function CouponManager({
   adminKey,
   lang,
-  message,
   rows,
-  setMessage,
   setRows,
   t,
 }: {
   adminKey: string;
   lang: Lang;
-  message: string;
   rows: AdminCoupon[];
-  setMessage: (message: string) => void;
   setRows: (rows: AdminCoupon[]) => void;
   t: typeof copy[Lang];
 }) {
+  const { notify, confirm } = useAdminFeedback();
+  const [formError, setFormError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [couponSearch, setCouponSearch] = useState("");
@@ -1695,42 +1806,40 @@ function CouponManager({
   };
   const openCreate = () => {
     reset();
-    setMessage("");
+    setFormError("");
     setModalOpen(true);
   };
   const edit = (row: AdminCoupon) => {
     setEditingId(row.id);
     setForm({ code: row.code, name: row.name, category: row.category, price: Number(row.price || 0), totalUses: Number(row.totalUses || 1), validityDays: Number(row.validityDays || 30), active: Boolean(row.active), sortOrder: Number(row.sortOrder || 0), metadataText: formatMetadata(row.metadata) });
-    setMessage("");
+    setFormError("");
     setModalOpen(true);
   };
   const submit = async () => {
-    setMessage("");
+    setFormError("");
     let metadata: Record<string, unknown>;
     try {
       const parsed = JSON.parse(form.metadataText || "{}") as unknown;
       metadata = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
     } catch {
-      setMessage(`${t.metadata} ${lang === "th" ? "ไม่ถูกต้อง" : "is invalid"}`);
+      setFormError(t.metadataInvalid);
       return;
     }
     const { metadataText: _metadataText, ...fields } = form;
     void _metadataText;
-    const response = await adminFetch(adminKey, "/api/admin/coupons", { method: editingId ? "PUT" : "POST", body: JSON.stringify({ ...fields, metadata, id: editingId || undefined }) });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.saveFailed);
-    setRows(result.coupons);
-    setMessage(editingId ? t.couponUpdated : t.couponCreated);
+    const sent = await adminSend<{ coupons: AdminCoupon[] }>(adminKey, "/api/admin/coupons", { method: editingId ? "PUT" : "POST", body: JSON.stringify({ ...fields, metadata, id: editingId || undefined }) }, t, t.saveFailed);
+    if (!sent.ok) return setFormError(sent.message);
+    setRows(sent.data.coupons);
+    notify("success", editingId ? t.couponUpdated : t.couponCreated);
     reset();
     setModalOpen(false);
   };
   const remove = async (row: AdminCoupon) => {
-    setMessage("");
-    const response = await adminFetch(adminKey, `/api/admin/coupons?id=${row.id}`, { method: "DELETE" });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.deleteFailed);
-    setRows(result.coupons);
-    setMessage(t.couponDeleted);
+    if (!(await confirm({ title: t.confirmOffCouponTitle, message: t.confirmOffCouponMessage, details: [[t.cols.coupon, `${row.name} · ${row.code}`]], confirmLabel: t.offCouponAction, danger: true }))) return;
+    const sent = await adminSend<{ coupons: AdminCoupon[] }>(adminKey, `/api/admin/coupons?id=${row.id}`, { method: "DELETE" }, t, t.deleteFailed);
+    if (!sent.ok) return notify("error", sent.message);
+    setRows(sent.data.coupons);
+    notify("success", t.couponDeleted);
   };
 
   return (
@@ -1756,7 +1865,6 @@ function CouponManager({
           <span>{t.pageLabel} {currentPage} / {totalPages}</span>
           <button disabled={currentPage >= totalPages} type="button" onClick={() => setPage((value) => Math.min(value + 1, totalPages))}>{t.nextPage}</button>
         </div>
-        {message ? <p className="admin-message">{message}</p> : null}
       </Panel>
       {modalOpen ? (
         <AdminDialog onClose={() => { reset(); setModalOpen(false); }}>
@@ -1773,8 +1881,8 @@ function CouponManager({
               <label>{t.status}<select value={form.active ? "active" : "off"} onChange={(event) => setForm({ ...form, active: event.target.value === "active" })}><option value="active">{t.active}</option><option value="off">{t.inactive}</option></select></label>
               <label>{t.sortOrder}<input type="number" value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) })} /></label>
               <label className="wide">{t.metadata}<textarea placeholder='{"tab":"coupon","group":"c10","variant":"base","badge":"BEST SELLER"}' value={form.metadataText} onChange={(event) => setForm({ ...form, metadataText: event.target.value })} /></label>
+              {formError ? <AdminNotice tone="error">{formError}</AdminNotice> : null}
               <div className="admin-form-actions"><button type="button" onClick={submit}>{t.save}</button><button type="button" className="ghost" onClick={() => { reset(); setModalOpen(false); }}>{t.cancel}</button></div>
-              {message ? <p className="admin-message">{message}</p> : null}
             </div>
           </section>
         </AdminDialog>
@@ -1786,20 +1894,18 @@ function CouponManager({
 function ContentManager({
   adminKey,
   lang,
-  message,
   rows,
-  setMessage,
   setRows,
   t,
 }: {
   adminKey: string;
   lang: Lang;
-  message: string;
   rows: AdminContentItem[];
-  setMessage: (message: string) => void;
   setRows: (rows: AdminContentItem[]) => void;
   t: typeof copy[Lang];
 }) {
+  const { notify, confirm } = useAdminFeedback();
+  const [formError, setFormError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [contentSearch, setContentSearch] = useState("");
@@ -1835,7 +1941,7 @@ function ContentManager({
   };
   const openCreate = () => {
     reset();
-    setMessage("");
+    setFormError("");
     setModalOpen(true);
   };
   const edit = (row: AdminContentItem) => {
@@ -1855,34 +1961,32 @@ function ContentManager({
       active: Boolean(row.active),
       sortOrder: Number(row.sortOrder || 0),
     });
-    setMessage("");
+    setFormError("");
     setModalOpen(true);
   };
   const submit = async () => {
-    setMessage("");
+    setFormError("");
     let metadata: Record<string, unknown>;
     try {
       const parsed = JSON.parse(form.metadataText || "{}") as unknown;
       metadata = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
     } catch {
-      setMessage(`${t.metadata} ไม่ถูกต้อง`);
+      setFormError(t.metadataInvalid);
       return;
     }
-    const response = await adminFetch(adminKey, "/api/admin/content", { method: editingId ? "PUT" : "POST", body: JSON.stringify({ ...form, metadata, id: editingId || undefined }) });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.saveFailed);
-    setRows(result.contentItems);
-    setMessage(editingId ? t.contentUpdated : t.contentCreated);
+    const sent = await adminSend<{ contentItems: AdminContentItem[] }>(adminKey, "/api/admin/content", { method: editingId ? "PUT" : "POST", body: JSON.stringify({ ...form, metadata, id: editingId || undefined }) }, t, t.saveFailed);
+    if (!sent.ok) return setFormError(sent.message);
+    setRows(sent.data.contentItems);
+    notify("success", editingId ? t.contentUpdated : t.contentCreated);
     reset();
     setModalOpen(false);
   };
   const remove = async (row: AdminContentItem) => {
-    setMessage("");
-    const response = await adminFetch(adminKey, `/api/admin/content?id=${row.id}`, { method: "DELETE" });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.deleteFailed);
-    setRows(result.contentItems);
-    setMessage(t.contentDeleted);
+    if (!(await confirm({ title: t.confirmOffContentTitle, message: t.confirmOffContentMessage, details: [[t.title, row.title], [t.contentType, `${row.contentType} · ${row.slug}`]], confirmLabel: t.offContentAction, danger: true }))) return;
+    const sent = await adminSend<{ contentItems: AdminContentItem[] }>(adminKey, `/api/admin/content?id=${row.id}`, { method: "DELETE" }, t, t.deleteFailed);
+    if (!sent.ok) return notify("error", sent.message);
+    setRows(sent.data.contentItems);
+    notify("success", t.contentDeleted);
   };
 
   return (
@@ -1908,7 +2012,6 @@ function ContentManager({
           <span>{t.pageLabel} {currentPage} / {totalPages}</span>
           <button disabled={currentPage >= totalPages} type="button" onClick={() => setPage((value) => Math.min(value + 1, totalPages))}>{t.nextPage}</button>
         </div>
-        {message ? <p className="admin-message">{message}</p> : null}
       </Panel>
       {modalOpen ? (
         <AdminDialog onClose={() => { reset(); setModalOpen(false); }}>
@@ -1928,8 +2031,8 @@ function ContentManager({
               <label>{t.status}<select value={form.active ? "active" : "off"} onChange={(event) => setForm({ ...form, active: event.target.value === "active" })}><option value="active">{t.active}</option><option value="off">{t.inactive}</option></select></label>
               <label className="wide">{t.body}<textarea value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} /></label>
               <label className="wide">{t.metadata}<textarea value={form.metadataText} onChange={(event) => setForm({ ...form, metadataText: event.target.value })} /></label>
+              {formError ? <AdminNotice tone="error">{formError}</AdminNotice> : null}
               <div className="admin-form-actions"><button type="button" onClick={submit}>{t.save}</button><button type="button" className="ghost" onClick={() => { reset(); setModalOpen(false); }}>{t.cancel}</button></div>
-              {message ? <p className="admin-message">{message}</p> : null}
             </div>
           </section>
         </AdminDialog>
@@ -1967,20 +2070,18 @@ function couponIcon(category: string) {
 
 function TrainerManager({
   adminKey,
-  message,
   rows,
-  setMessage,
   setRows,
   t,
 }: {
   adminKey: string;
   lang: Lang;
-  message: string;
   rows: AdminTrainer[];
-  setMessage: (message: string) => void;
   setRows: (rows: AdminTrainer[]) => void;
   t: typeof copy[Lang];
 }) {
+  const { notify, confirm } = useAdminFeedback();
+  const [formError, setFormError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState({
@@ -2025,7 +2126,7 @@ function TrainerManager({
 
   const openCreate = () => {
     reset();
-    setMessage("");
+    setFormError("");
     setModalOpen(true);
   };
 
@@ -2053,14 +2154,14 @@ function TrainerManager({
       sortOrder: Number(row.sortOrder || 0),
       active: Boolean(row.active),
     });
-    setMessage("");
+    setFormError("");
     setModalOpen(true);
   };
 
   const submit = async () => {
-    setMessage("");
+    setFormError("");
     const method = editingId ? "PUT" : "POST";
-    const response = await adminFetch(adminKey, "/api/admin/trainers", {
+    const sent = await adminSend<{ trainers: AdminTrainer[] }>(adminKey, "/api/admin/trainers", {
       method,
       body: JSON.stringify({
         ...form,
@@ -2071,36 +2172,36 @@ function TrainerManager({
         certifications: form.certificationsText.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
         id: editingId || undefined,
       }),
-    });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.saveFailed);
-    setRows(result.trainers);
-    setMessage(editingId ? t.trainerUpdated : t.trainerCreated);
+    }, t, t.saveFailed);
+    if (!sent.ok) return setFormError(sent.message);
+    setRows(sent.data.trainers);
+    notify("success", editingId ? t.trainerUpdated : t.trainerCreated);
     reset();
     setModalOpen(false);
   };
 
   const remove = async (row: AdminTrainer) => {
-    setMessage("");
-    const response = await adminFetch(adminKey, `/api/admin/trainers?id=${row.id}`, { method: "DELETE" });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.deleteFailed);
-    setRows(result.trainers);
-    setMessage(t.trainerDeleted);
+    if (!(await confirm({ title: t.confirmOffTrainerTitle, message: t.confirmOffTrainerMessage, details: [[t.cols.trainer, `${row.name} (${row.nickname})`], [t.role, row.role]], confirmLabel: t.offTrainerAction, danger: true }))) return;
+    const sent = await adminSend<{ trainers: AdminTrainer[] }>(adminKey, `/api/admin/trainers?id=${row.id}`, { method: "DELETE" }, t, t.deleteFailed);
+    if (!sent.ok) return notify("error", sent.message);
+    setRows(sent.data.trainers);
+    notify("success", t.trainerDeleted);
     if (editingId === row.id) reset();
   };
 
   const upload = async (file: File | null) => {
     if (!file) return;
     setUploading(true);
-    setMessage("");
+    setFormError("");
     try {
       const body = new FormData();
       body.append("file", file);
       const response = await fetch("/api/admin/uploads/trainers", { method: "POST", headers: { "x-admin-key": adminKey }, body });
-      const result = await response.json();
-      if (!response.ok) return setMessage(result.message || t.saveFailed);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) return setFormError(result.message || t.saveFailed);
       setForm((current) => ({ ...current, imageUrl: result.imageUrl || "" }));
+    } catch {
+      setFormError(t.networkFailed);
     } finally {
       setUploading(false);
     }
@@ -2156,9 +2257,9 @@ function TrainerManager({
               <label className="wide">{t.packages}<textarea placeholder={t.packagesHint} value={form.packagesText} onChange={(event) => setForm({ ...form, packagesText: event.target.value })} /></label>
               <label className="wide">{t.weeklySchedule}<textarea placeholder={t.weeklyScheduleHint} value={form.weeklyScheduleText} onChange={(event) => setForm({ ...form, weeklyScheduleText: event.target.value })} /></label>
               <label className="wide">{t.certifications}<textarea placeholder={t.certificationsHint} value={form.certificationsText} onChange={(event) => setForm({ ...form, certificationsText: event.target.value })} /></label>
+              {uploading ? <AdminNotice tone="info">{t.uploading}</AdminNotice> : null}
+              {formError ? <AdminNotice tone="error">{formError}</AdminNotice> : null}
               <div className="admin-form-actions"><button type="button" onClick={submit}>{editingId ? t.save : t.add}</button><button type="button" className="ghost" onClick={() => { reset(); setModalOpen(false); }}>{t.cancel}</button></div>
-              {uploading ? <p className="admin-message">{t.uploadImage}...</p> : null}
-              {message ? <p className="admin-message">{message}</p> : null}
             </div>
           </section>
         </AdminDialog>
@@ -2176,24 +2277,22 @@ function TrainerPhoto({ row }: { row: Pick<AdminTrainer, "avatar" | "imageUrl" |
 function StaffManager({
   adminKey,
   lang,
-  message,
   permissions,
   roles,
   rows,
-  setMessage,
   setRows,
   t,
 }: {
   adminKey: string;
   lang: Lang;
-  message: string;
   permissions: AdminPermission[];
   roles: AdminRole[];
   rows: AdminStaff[];
-  setMessage: (message: string) => void;
   setRows: (rows: AdminStaff[]) => void;
   t: typeof copy[Lang];
 }) {
+  const { notify, confirm } = useAdminFeedback();
+  const [formError, setFormError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [staffSearch, setStaffSearch] = useState("");
@@ -2225,19 +2324,21 @@ function StaffManager({
 
   const openCreate = () => {
     reset();
-    setMessage("");
+    setFormError("");
     setModalOpen(true);
   };
 
   const submit = async () => {
-    setMessage("");
+    setFormError("");
+    const previous = editingId ? rows.find((row) => row.id === editingId) : undefined;
+    // A suspended account can no longer sign in: ask before saving that.
+    if (form.status === "suspended" && previous?.status !== "suspended" && !(await confirm({ title: t.confirmSuspendStaffTitle, message: t.confirmSuspendStaffMessage, details: [[t.displayName, form.displayName || form.username], [t.username, form.username]], confirmLabel: t.suspendStaffAction, danger: true }))) return;
     const method = editingId ? "PUT" : "POST";
     const payload = { ...form, id: editingId || undefined };
-    const response = await adminFetch(adminKey, "/api/admin/staff", { method, body: JSON.stringify(payload) });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.saveFailed);
-    setRows(result.staff);
-    setMessage(editingId ? t.staffUpdated : t.staffCreated);
+    const sent = await adminSend<{ staff: AdminStaff[] }>(adminKey, "/api/admin/staff", { method, body: JSON.stringify(payload) }, t, t.saveFailed);
+    if (!sent.ok) return setFormError(sent.message);
+    setRows(sent.data.staff);
+    notify("success", editingId ? t.staffUpdated : t.staffCreated);
     reset();
     setModalOpen(false);
   };
@@ -2253,17 +2354,16 @@ function StaffManager({
       status: row.status,
       roleId: row.roleId,
     });
-    setMessage("");
+    setFormError("");
     setModalOpen(true);
   };
 
   const remove = async (row: AdminStaff) => {
-    setMessage("");
-    const response = await adminFetch(adminKey, `/api/admin/staff?id=${row.id}`, { method: "DELETE" });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.deleteFailed);
-    setRows(result.staff);
-    setMessage(t.staffDeleted);
+    if (!(await confirm({ title: t.confirmDeleteStaffTitle, message: t.confirmDeleteStaffMessage, details: [[t.displayName, row.displayName], [t.username, row.username], [t.role, lang === "th" ? row.roleNameTh : row.roleNameEn]], confirmLabel: t.deleteStaffAction, danger: true }))) return;
+    const sent = await adminSend<{ staff: AdminStaff[] }>(adminKey, `/api/admin/staff?id=${row.id}`, { method: "DELETE" }, t, t.deleteFailed);
+    if (!sent.ok) return notify("error", sent.message);
+    setRows(sent.data.staff);
+    notify("success", t.staffDeleted);
     if (editingId === row.id) reset();
   };
 
@@ -2313,8 +2413,8 @@ function StaffManager({
               <label>{t.phone}<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
               <label>{t.role}<select value={form.roleId} onChange={(event) => setForm({ ...form, roleId: Number(event.target.value) })}>{roles.map((role) => <option key={role.id} value={role.id}>{lang === "th" ? role.nameTh : role.nameEn}</option>)}</select></label>
               <label>{t.status}<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as AdminStaff["status"] })}><option value="active">{statusLabel("active", t)}</option><option value="suspended">{statusLabel("suspended", t)}</option></select></label>
+              {formError ? <AdminNotice tone="error">{formError}</AdminNotice> : null}
               <div className="admin-form-actions"><button type="button" onClick={submit}>{editingId ? t.save : t.add}</button><button type="button" className="ghost" onClick={() => { reset(); setModalOpen(false); }}>{t.cancel}</button></div>
-              {message ? <p className="admin-message">{message}</p> : null}
             </div>
           </section>
         </AdminDialog>
@@ -2326,24 +2426,22 @@ function StaffManager({
 function RoleManager({
   adminKey,
   lang,
-  message,
   permissions,
   rows,
-  setMessage,
   setPermissions,
   setRows,
   t,
 }: {
   adminKey: string;
   lang: Lang;
-  message: string;
   permissions: AdminPermission[];
   rows: AdminRole[];
-  setMessage: (message: string) => void;
   setPermissions: (rows: AdminPermission[]) => void;
   setRows: (rows: AdminRole[]) => void;
   t: typeof copy[Lang];
 }) {
+  const { notify, confirm } = useAdminFeedback();
+  const [formError, setFormError] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ code: "", nameTh: "", nameEn: "", description: "", level: 50, permissionCodes: [] as string[] });
 
@@ -2370,25 +2468,23 @@ function RoleManager({
   };
 
   const submit = async () => {
-    setMessage("");
+    setFormError("");
     const method = editingId ? "PUT" : "POST";
-    const response = await adminFetch(adminKey, "/api/admin/roles", { method, body: JSON.stringify({ ...form, id: editingId || undefined }) });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.saveFailed);
-    setRows(result.roles);
-    setPermissions(result.permissions);
-    setMessage(editingId ? t.roleUpdated : t.roleCreated);
+    const sent = await adminSend<{ roles: AdminRole[]; permissions: AdminPermission[] }>(adminKey, "/api/admin/roles", { method, body: JSON.stringify({ ...form, id: editingId || undefined }) }, t, t.saveFailed);
+    if (!sent.ok) return setFormError(sent.message);
+    setRows(sent.data.roles);
+    setPermissions(sent.data.permissions);
+    notify("success", editingId ? t.roleUpdated : t.roleCreated);
     reset();
   };
 
   const remove = async (role: AdminRole) => {
-    setMessage("");
-    const response = await adminFetch(adminKey, `/api/admin/roles?id=${role.id}`, { method: "DELETE" });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.message || t.deleteFailed);
-    setRows(result.roles);
-    setPermissions(result.permissions);
-    setMessage(t.roleDeleted);
+    if (!(await confirm({ title: t.confirmDeleteRoleTitle, message: t.confirmDeleteRoleMessage, details: [[t.role, `${lang === "th" ? role.nameTh : role.nameEn} · ${role.code}`], [t.permissionsCount, String(role.permissionCodes.length)]], confirmLabel: t.deleteRoleAction, danger: true }))) return;
+    const sent = await adminSend<{ roles: AdminRole[]; permissions: AdminPermission[] }>(adminKey, `/api/admin/roles?id=${role.id}`, { method: "DELETE" }, t, t.deleteFailed);
+    if (!sent.ok) return notify("error", sent.message);
+    setRows(sent.data.roles);
+    setPermissions(sent.data.permissions);
+    notify("success", t.roleDeleted);
     if (editingId === role.id) reset();
   };
 
@@ -2402,8 +2498,8 @@ function RoleManager({
           <label>{t.level}<input type="number" value={form.level} onChange={(event) => setForm({ ...form, level: Number(event.target.value) })} /></label>
           <label className="wide">{t.description}<input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
           <div className="admin-permission-grid">{permissions.map((permission) => <label key={permission.code}><input checked={form.permissionCodes.includes(permission.code)} type="checkbox" onChange={() => togglePermission(permission.code)} /><span>{lang === "th" ? permission.nameTh : permission.nameEn}<small>{permission.code}</small></span></label>)}</div>
+          {formError ? <AdminNotice tone="error">{formError}</AdminNotice> : null}
           <div className="admin-form-actions"><button type="button" onClick={submit}>{editingId ? t.savePermissions : t.addRole}</button><button type="button" className="ghost" onClick={reset}>{t.clear}</button></div>
-          {message ? <p className="admin-message">{message}</p> : null}
         </div>
       </Panel>
       <Panel title={t.allRoles}>
@@ -2411,6 +2507,20 @@ function RoleManager({
       </Panel>
     </div>
   );
+}
+
+type Sent<T> = { ok: true; data: T } | { ok: false; message: string };
+
+// Sends an admin request and reads its reply. A refusal gives the server's reason; a lost connection
+// gives a message staff can act on, instead of an error nobody sees.
+async function adminSend<T>(adminKey: string, input: string, init: RequestInit, t: typeof copy[Lang], failed: string): Promise<Sent<T>> {
+  try {
+    const response = await adminFetch(adminKey, input, init);
+    const data = await response.json().catch(() => ({}));
+    return response.ok ? { ok: true, data: data as T } : { ok: false, message: (data as { message?: string }).message || failed };
+  } catch {
+    return { ok: false, message: t.networkFailed };
+  }
 }
 
 function adminFetch(adminKey: string, input: string, init: RequestInit) {

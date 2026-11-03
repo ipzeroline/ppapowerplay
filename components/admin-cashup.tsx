@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Printer, RefreshCw } from "lucide-react";
+import { AdminNotice } from "@/components/admin-notice";
 import type { Cashup } from "@/lib/cashup";
 
 // Reports → ปิดยอดประจำวัน: count the drawer against what the system recorded, then print and sign.
@@ -96,7 +97,7 @@ export function AdminCashup({ lang }: { lang: Lang }) {
       </header>
       <p className="cashup-day">{dayLabel(date, lang)}{printedAt ? <span className="cashup-print-only"> · {t.printedAt} {printedAt}</span> : null}</p>
       {error ? (
-        <div className="cashup-state" role="alert"><p>{t.failed}: {error}</p><button className="admin-button" type="button" onClick={() => setRevision((value) => value + 1)}>{t.retry}</button></div>
+        <AdminNotice tone="error" lang={lang} className="cashup-notice" action={<button className="admin-button" type="button" onClick={() => setRevision((value) => value + 1)}>{t.retry}</button>}>{t.failed}: {error}</AdminNotice>
       ) : !data ? (
         <p className="cashup-state" role="status">{t.loading}</p>
       ) : (

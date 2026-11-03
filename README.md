@@ -478,3 +478,28 @@ PromptPay QR were checked; these changes make them dependable at a busy counter:
 
 On the server, `npm run test:qr:integration` checks issuing and redeeming QR codes against the real
 database inside a transaction that is rolled back; run it on staging first.
+
+### Update 2026-11-03 (d): back-office notices in clear colours, confirmations for important actions
+
+No migration.
+
+- **One notice style, four kinds:** green "สำเร็จ", red "ไม่สำเร็จ", amber "โปรดตรวจสอบ" and blue
+  "แจ้งให้ทราบ", each with an icon and the word, so the kind never depends on colour alone. Text reads
+  at 4.5:1 or more in the light and dark themes. Before, a success and a failure looked the same grey box.
+- **Results show where staff are looking:** saving, deleting, payments, booking changes and calendar
+  changes show a notice in the corner of the screen, even when the page is scrolled. Successes fade
+  after 6 seconds; errors and warnings stay until closed. Before, saving or deleting staff and trainers
+  showed nothing, and booking results appeared below the list.
+- **Errors inside a form stay in that form** (court, coupon, content, trainer, staff, role, profile,
+  member and calendar dialogs), next to the buttons.
+- **Asked first, in the app (not the browser box):** check-in, expiry and cancelling from the booking
+  list (cancelling a paid booking warns that no money is refunded automatically); confirming that a
+  payment was received (with a warning when there is no slip); hiding a court; turning off a coupon,
+  content or trainer; deleting a staff account or role; suspending a staff account or a member;
+  adjusting credit (balance before and after); a counter sale; check-in and removing a block from the
+  court calendar. "กลับ" comes first and has the focus, so a stray Enter never confirms; actions that
+  cannot be undone are red.
+- **Not asked again:** steps that finish a form filled in for that purpose (taking payment with a chosen
+  method, cancelling with a reason, saving a booking or a block).
+- **Lost connection:** back-office requests that cannot reach the server now say so, instead of
+  showing nothing.

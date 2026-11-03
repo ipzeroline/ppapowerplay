@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleAlert, CircleCheck, Info, RefreshCw, TriangleAlert } from "lucide-react";
+import { AdminNotice } from "@/components/admin-notice";
 import type { Breakdown, DashboardSnapshot, DayTotal, QueuePayment, ScheduleRow } from "@/lib/admin-dashboard";
 
 type Lang = "th" | "en";
@@ -119,8 +120,9 @@ export function AdminDashboard({ initial, lang, systemIssues, onNavigate, render
         <header className="dash-head">
           <div><h1>{c.title}</h1></div>
           <div className="dash-refresh">
-            <span role="status">{failed ? c.loadFailed : c.loading}</span>
-            {failed ? <button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? c.refreshing : c.retry}</button> : null}
+            {failed
+              ? <AdminNotice tone="error" lang={lang} action={<button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? c.refreshing : c.retry}</button>}>{c.loadFailed}</AdminNotice>
+              : <span role="status">{c.loading}</span>}
           </div>
         </header>
       </div>
@@ -164,7 +166,7 @@ export function AdminDashboard({ initial, lang, systemIssues, onNavigate, render
           <p>{dayLabel(snapshot.today, true)}</p>
         </div>
         <div className="dash-refresh">
-          <span role="status">{failed ? c.refreshFailed : `${c.updated} ${clock(snapshot.generatedAt)}`}</span>
+          {failed ? <AdminNotice tone="warning" lang={lang} className="dash-stale">{c.refreshFailed}</AdminNotice> : <span role="status">{`${c.updated} ${clock(snapshot.generatedAt)}`}</span>}
           <button type="button" onClick={() => void refresh()} disabled={refreshing}><RefreshCw aria-hidden="true" />{refreshing ? c.refreshing : c.refresh}</button>
         </div>
       </header>

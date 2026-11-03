@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Printer, X } from "lucide-react";
+import { AdminNotice } from "@/components/admin-notice";
 import type { ReceiptInfo } from "@/lib/site-settings";
 
 type Lang = "th" | "en";
@@ -76,10 +77,7 @@ export function AdminReceipt({ paymentNo, lang }: { paymentNo: string; lang: Lan
   if (!current) return <p className="receipt-state" role="status">{t.loading}</p>;
   if (current.error || !current.receipt) {
     return (
-      <div className="receipt-state" role="alert">
-        <p>{t.failed}: {current.error}</p>
-        <button type="button" onClick={() => setAttempt((value) => value + 1)}>{t.retry}</button>
-      </div>
+      <AdminNotice tone="error" lang={lang} className="receipt-notice" action={<button type="button" onClick={() => setAttempt((value) => value + 1)}>{t.retry}</button>}>{t.failed}: {current.error}</AdminNotice>
     );
   }
   const { receipt } = current;

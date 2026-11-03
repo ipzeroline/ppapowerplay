@@ -7,7 +7,7 @@
 
 /* ---------- Tokens ---------- */
 
-:is(.admin-console, .admin-locked) {
+:is(.admin-console, .admin-locked, .receipt-page) {
   color-scheme: light;
   --admin-bg: oklch(0.975 0.003 150);
   --admin-surface: oklch(1 0 0);
@@ -33,6 +33,16 @@
   --admin-bad-soft: oklch(0.965 0.025 25);
   --admin-info: oklch(0.5 0.12 250);
   --admin-info-soft: oklch(0.965 0.02 250);
+  /* Notices (success / error / warning / note): a clearer tint than badges, and darker ink for the
+     kind's word and icon, so the four kinds stay apart at a glance and read at 4.5:1 or more. */
+  --admin-good-tint: oklch(0.94 0.055 150);
+  --admin-good-ink: oklch(0.42 0.11 150);
+  --admin-bad-tint: oklch(0.945 0.04 25);
+  --admin-bad-ink: oklch(0.47 0.18 27);
+  --admin-warn-tint: oklch(0.955 0.07 88);
+  --admin-warn-ink: oklch(0.45 0.1 62);
+  --admin-info-tint: oklch(0.945 0.035 250);
+  --admin-info-ink: oklch(0.45 0.13 252);
   --admin-chart: oklch(0.655 0.1 150);
   --admin-table-hover: oklch(0.982 0.004 150);
   --admin-overlay: oklch(0.2 0.01 150 / 0.45);
@@ -83,6 +93,14 @@
   --admin-bad-soft: oklch(0.29 0.05 25);
   --admin-info: oklch(0.79 0.1 250);
   --admin-info-soft: oklch(0.28 0.04 250);
+  --admin-good-tint: oklch(0.3 0.055 150);
+  --admin-good-ink: var(--admin-good);
+  --admin-bad-tint: oklch(0.31 0.065 25);
+  --admin-bad-ink: var(--admin-bad);
+  --admin-warn-tint: oklch(0.31 0.055 80);
+  --admin-warn-ink: var(--admin-warn);
+  --admin-info-tint: oklch(0.3 0.05 250);
+  --admin-info-ink: var(--admin-info);
   --admin-chart: oklch(0.52 0.09 150);
   --admin-table-hover: oklch(0.225 0.006 150);
   --admin-overlay: oklch(0.08 0.005 150 / 0.6);
@@ -975,19 +993,296 @@
   color: var(--admin-muted);
 }
 
-.admin-message {
-  margin: 12px 16px;
+/* ---------- Notices, toasts and confirmations (admin-notice / admin-feedback / admin-confirm) ----------
+   One look for every message: a tint and a full border in the kind's colour, an icon, and the kind
+   in words. Toasts (results of an action) stay on screen in the corner while staff scroll; errors and
+   warnings stay until closed. */
+
+.admin-notice {
+  --notice-tint: var(--admin-info-tint);
+  --notice-ink: var(--admin-info-ink);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  border: 1px solid color-mix(in oklch, var(--notice-ink) 40%, transparent);
+  border-radius: var(--admin-radius);
+  background: var(--notice-tint);
+  padding: 10px 12px;
+  color: var(--admin-heading);
+  font-size: var(--admin-text-md);
+  line-height: 1.5;
+  text-align: start;
+}
+
+.admin-notice.success {
+  --notice-tint: var(--admin-good-tint);
+  --notice-ink: var(--admin-good-ink);
+}
+
+.admin-notice.error {
+  --notice-tint: var(--admin-bad-tint);
+  --notice-ink: var(--admin-bad-ink);
+}
+
+.admin-notice.warning {
+  --notice-tint: var(--admin-warn-tint);
+  --notice-ink: var(--admin-warn-ink);
+}
+
+.admin-notice-icon {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  color: var(--notice-ink);
+}
+
+/* The kind's word sits beside the message when there is room, above it on a narrow screen. */
+.admin-notice-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.admin-notice-label {
+  flex: 0 0 auto;
+  color: var(--notice-ink);
+  font-weight: 700;
+}
+
+.admin-notice-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-notice-text ul {
+  margin: 4px 0 0;
+  padding-inline-start: 18px;
+}
+
+.admin-notice-action {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.admin-notice-close {
+  display: grid;
+  flex: 0 0 28px;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px -6px -4px 0;
+  border: 0;
+  border-radius: var(--admin-radius-sm);
+  background: transparent;
+  color: var(--admin-heading);
+  cursor: pointer;
+}
+
+.admin-notice-close:hover {
+  background: color-mix(in oklch, var(--notice-ink) 14%, transparent);
+}
+
+.admin-notice-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Above the sticky page header (20) and the phone menu (40/41); dialogs use the top layer. */
+.admin-toasts {
+  position: fixed;
+  right: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  pointer-events: none;
+}
+
+.admin-toast {
+  pointer-events: auto;
+  border-radius: var(--admin-radius);
+  box-shadow: var(--admin-shadow-lg);
+  animation: admin-toast-in 0.22s var(--admin-ease);
+}
+
+.admin-toast .admin-notice {
+  padding: 12px 14px;
+}
+
+@keyframes admin-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-toast {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-toasts {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px;
+    width: auto;
+  }
+}
+
+@media print {
+  .admin-toasts {
+    display: none;
+  }
+}
+
+.admin-confirm {
+  width: min(480px, 100%);
+}
+
+/* .admin-modal.admin-confirm: the general dialog header rules come later in this file. */
+.admin-modal.admin-confirm > header {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+
+.admin-modal.admin-confirm > header span {
+  margin-top: 6px;
+  color: var(--admin-text);
+  font-size: var(--admin-text-md);
+  line-height: 1.5;
+}
+
+.admin-modal.admin-confirm .admin-confirm-icon {
+  display: grid;
+  flex: 0 0 40px;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--admin-bad-tint);
+  color: var(--admin-bad-ink);
+}
+
+.admin-confirm-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.admin-confirm-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px 20px 4px;
+}
+
+.admin-confirm-details {
+  display: grid;
+  gap: 6px;
+  margin: 0;
   border: 1px solid var(--admin-line);
   border-radius: var(--admin-radius);
   background: var(--admin-surface-2);
-  color: var(--admin-text);
   padding: 10px 12px;
+}
+
+.admin-confirm-details div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-confirm-details dt {
+  flex: 0 0 auto;
+  color: var(--admin-muted);
+}
+
+.admin-confirm-details dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--admin-heading);
+  font-weight: 600;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+.admin-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px 20px;
+}
+
+/* The confirm button of a destructive action is solid red: it is the one thing this dialog is for. */
+.admin-console .admin-confirm-actions button.danger {
+  border-color: var(--admin-bad-ink);
+  background: var(--admin-bad-ink);
+  color: var(--admin-action-text);
+  font-weight: 600;
+}
+
+.admin-console .admin-confirm-actions button.danger:hover:not(:disabled),
+.admin-console .admin-confirm-actions button.danger:active:not(:disabled) {
+  border-color: color-mix(in oklch, var(--admin-bad-ink) 85%, var(--admin-heading));
+  background: color-mix(in oklch, var(--admin-bad-ink) 85%, var(--admin-heading));
+}
+
+@media (max-width: 640px) {
+  .admin-confirm-actions > button {
+    flex: 1 1 0;
+  }
+}
+
+/* Loading and empty lines inside a panel: calm text, not a notice. */
+.admin-state {
+  margin: 12px 16px;
+  color: var(--admin-muted);
   font-size: var(--admin-text-md);
 }
 
-.admin-message[role="alert"] {
-  border-color: color-mix(in oklch, var(--admin-bad) 30%, var(--admin-line));
-  background: var(--admin-bad-soft);
+.member-editor > .admin-state {
+  margin-inline: 20px;
+}
+
+.admin-profile-modal-grid > .admin-notice {
+  grid-column: 1 / -1;
+}
+
+/* More specific than .admin-panel > .admin-notice (below): the cash-up pads its content 20px. */
+.admin-panel.cashup > .cashup-notice {
+  margin: 0 20px 20px;
+}
+
+.receipt-notice {
+  max-width: 480px;
+  margin: 48px auto;
+}
+
+.receipt-notice .admin-notice-action button {
+  min-height: 34px;
+}
+
+/* A failed refresh sits in the dashboard header: compact, but in the warning colours. */
+.dash-stale {
+  padding: 6px 10px;
+  font-size: var(--admin-text-sm);
+}
+
+/* A notice inside a panel or dialog keeps the panel's side margins. */
+.admin-panel > .admin-notice,
+.admin-modal > .admin-notice {
+  margin: 12px 16px;
 }
 
 .admin-slip-link {
@@ -1030,12 +1325,8 @@
 .admin-form .wide,
 .admin-form .admin-permission-grid,
 .admin-form .admin-form-actions,
-.admin-form .admin-message {
+.admin-form .admin-notice {
   grid-column: 1 / -1;
-}
-
-.admin-form .admin-message {
-  margin: 0;
 }
 
 .admin-form-actions,
@@ -2043,12 +2334,8 @@ dialog.admin-modal-backdrop::backdrop {
   justify-self: start;
 }
 
-.qr-scanner > p[role="status"] {
+.qr-scanner > .admin-notice {
   margin: 0 20px;
-  border: 1px solid var(--admin-line);
-  border-radius: var(--admin-radius);
-  background: var(--admin-surface-2);
-  padding: 10px 12px;
 }
 
 .qr-scanner-result {
@@ -2086,13 +2373,8 @@ dialog.admin-modal-backdrop::backdrop {
   font-weight: 600;
 }
 
-.qr-scanner-result p.qr-scanner-warning {
+.qr-scanner-result .admin-notice {
   margin-top: 10px;
-  border: 1px solid color-mix(in oklch, var(--admin-warn) 45%, transparent);
-  border-radius: var(--admin-radius);
-  background: var(--admin-warn-soft);
-  padding: 8px 12px;
-  color: var(--admin-heading);
 }
 
 /* ---------- Members (components/admin-members.tsx) ---------- */
@@ -2133,7 +2415,7 @@ dialog.admin-modal-backdrop::backdrop {
   overflow: visible;
 }
 
-.member-editor > .admin-message {
+.member-editor > .admin-notice {
   margin: 12px 20px 0;
 }
 
@@ -2222,8 +2504,8 @@ dialog.admin-modal-backdrop::backdrop {
   color: var(--admin-warn);
 }
 
-.member-editor .admin-message {
-  margin-inline: 20px;
+.member-editor :is(.member-rights, .member-sale) > .admin-notice {
+  margin-top: 10px;
 }
 
 /* ---------- Payment actions (PaymentTable) ---------- */
@@ -2250,11 +2532,6 @@ dialog.admin-modal-backdrop::backdrop {
 
 .payment-action-note {
   flex-basis: 100%;
-  margin: 0;
-  border-radius: var(--admin-radius);
-  background: var(--admin-warn-soft);
-  color: var(--admin-warn);
-  padding: 8px 12px;
   font-size: var(--admin-text-sm);
 }
 
@@ -2335,14 +2612,6 @@ dialog.admin-modal-backdrop::backdrop {
   margin-top: 4px;
 }
 
-.admin-login-form p {
-  margin: 0;
-  border-radius: var(--admin-radius);
-  background: var(--admin-bad-soft);
-  color: var(--admin-bad);
-  padding: 8px 12px;
-  font-size: var(--admin-text-sm);
-}
 
 /* ---------- Dashboard (components/admin-dashboard.tsx) ---------- */
 
@@ -3039,7 +3308,7 @@ dialog.admin-modal-backdrop::backdrop {
   border-radius: 3px;
 }
 
-.cal-notice {
+.admin-panel > .cal-notice {
   margin: 0 20px 12px;
 }
 
@@ -3363,15 +3632,6 @@ dialog.admin-modal-backdrop::backdrop {
   font-size: var(--admin-text-xs);
 }
 
-.cal-warning {
-  margin: 0;
-  border: 1px solid color-mix(in oklch, var(--admin-warn) 45%, transparent);
-  border-radius: var(--admin-radius);
-  background: var(--admin-warn-soft);
-  padding: 8px 12px;
-  color: var(--admin-heading);
-  font-size: var(--admin-text-sm);
-}
 
 .cal-member {
   display: flex;
@@ -3552,7 +3812,7 @@ dialog.admin-modal-backdrop::backdrop {
     padding-inline: 14px;
   }
 
-  .cal-notice {
+  .admin-panel > .cal-notice {
     margin-inline: 14px;
   }
 

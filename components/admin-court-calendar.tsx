@@ -3,6 +3,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Lock, Plus, Receipt } from "lucide-react";
 import { AdminDialog } from "@/components/admin-dialog";
+import { useAdminFeedback } from "@/components/admin-feedback";
+import { AdminNotice } from "@/components/admin-notice";
+import type { NoticeTone } from "@/lib/admin-notices";
 import { rateForSlot } from "@/lib/court-pricing";
 
 // Court calendar for the counter (Bookings tab): one day, courts × opening hours. Staff book a free
@@ -71,6 +74,8 @@ const th = {
   from: "ตั้งแต่", to: "ถึง", reason: "เหตุผล", reasons: ["ซ่อมบำรุง", "จัดกิจกรรม", "เช่าเหมา"],
   saveBlock: "บันทึกการบล็อก", blockSaved: "บล็อกสนามแล้ว", blockConflicts: "การจองที่ทับช่วงนี้ (ย้ายหรือยกเลิกก่อน)",
   blockDetail: "การบล็อกสนาม", liftBlock: "ยกเลิกการบล็อก", blockLifted: "ยกเลิกการบล็อกแล้ว",
+  confirmCheckIn: "เช็คอินการจองนี้?", confirmCheckInHint: "บันทึกว่าลูกค้ามาใช้สนามแล้ว ทำย้อนกลับไม่ได้",
+  confirmLift: "ยกเลิกการบล็อกนี้?", confirmLiftHint: "ช่วงเวลานี้จะเปิดให้จองได้ทันที ทั้งในแอปและที่เคาน์เตอร์",
 };
 type Copy = typeof th;
 const en: Copy = {
@@ -111,6 +116,8 @@ const en: Copy = {
   from: "From", to: "To", reason: "Reason", reasons: ["Maintenance", "Event", "Private hire"],
   saveBlock: "Save block", blockSaved: "Court blocked", blockConflicts: "Bookings in this time (move or cancel them first)",
   blockDetail: "Court block", liftBlock: "Remove block", blockLifted: "Block removed",
+  confirmCheckIn: "Check in this booking?", confirmCheckInHint: "Records that the customer has arrived. This cannot be undone.",
+  confirmLift: "Remove this block?", confirmLiftHint: "This time opens for booking at once, in the app and at the counter.",
 };
 const copy: Record<Lang, Copy> = { th, en };
 
@@ -226,7 +233,7 @@ export function AdminCourtCalendar({ lang, onBookingsChange, refreshKey = 0 }: {
   const [revision, setRevision] = useState(0);
   const [result, setResult] = useState<{ key: string; day?: CalendarDay; error?: string } | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [notice, setNotice] = useState("");
+  const { notify } = useAdminFeedback();
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrolledFor = useRef("");
   const key = `${date}|${revision}|${refreshKey}`;
@@ -270,11 +277,10 @@ export function AdminCourtCalendar({ lang, onBookingsChange, refreshKey = 0 }: {
   const go = (next: string) => {
     if (!isDate(next)) return;
     setDate(next);
-    setNotice("");
   };
-  const changed = (message: string) => {
+  const changed = (message: string, tone: NoticeTone = "success") => {
     setDialog(null);
-    setNotice(message);
+    notify(tone, message);
     setRevision((value) => value + 1);
     onBookingsChange?.();
   };
@@ -319,9 +325,8 @@ export function AdminCourtCalendar({ lang, onBookingsChange, refreshKey = 0 }: {
         </ul>
         {counts ? <span>{t.summary(counts.bookings, counts.waiting, counts.blocks)}</span> : null}
       </div>
-      {notice ? <p className="admin-message cal-notice" role="status">{notice}</p> : null}
       {error ? (
-        <div className="cal-state" role="alert"><p>{t.loadFailed}: {error}</p><button className="admin-button" type="button" onClick={() => setRevision((value) => value + 1)}>{t.retry}</button></div>
+        <AdminNotice tone="error" className="cal-notice" action={<button className="admin-button" type="button" onClick={() => setRevision((value) => value + 1)}>{t.retry}</button>}>{t.loadFailed}: {error}</AdminNotice>
       ) : !day ? (
         <p className="cal-state" role="status">{t.loading}</p>
       ) : !courts.length ? (
@@ -398,7 +403,7 @@ function CourtRow({ court, day, lang, now, t, onFree, onBooking, onBlock }: { co
   );
 }
 
-function BookingDialog({ t, lang, day, courts, courtId, time, now, onClose, onDone }: { t: Copy; lang: Lang; day: CalendarDay; courts: CalendarCourt[]; courtId: number; time: string; now: number; onClose: () => void; onDone: (message: string) => void }) {
+function BookingDialog({ t, lang, day, courts, courtId, time, now, onClose, onDone }: { t: Copy; lang: Lang; day: CalendarDay; courts: CalendarCourt[]; courtId: number; time: string; now: number; onClose: () => void; onDone: (message: string, tone?: NoticeTone) => void }) {
   const [form, setForm] = useState(() => {
     const court = courts.find((item) => item.id === courtId) ?? courts[0];
     return { courtId: court?.id ?? 0, date: day.date, time, durationHours: 1, players: Math.min(2, capacityOf(court)), repeatWeeks: 1, kind: "member" as "member" | "guest", guestName: "", guestPhone: "", payNow: false, method: "cash" as Method, note: "" };
@@ -458,7 +463,8 @@ function BookingDialog({ t, lang, day, courts, courtId, time, now, onClose, onDo
       const parts = [t.booked(result.created.length)];
       if (result.skipped.length) parts.push(`${t.skipped} ${result.skipped.map((item) => `${dayLabel(item.date, lang, false)} (${t.skipReasons[item.reason] || item.reason})`).join(", ")}`);
       parts.push(form.payNow ? t.paidWith(t.methods[form.method]) : t.awaiting);
-      onDone(parts.join(" · "));
+      // Weeks that could not be booked need telling to the customer: a warning, not a plain success.
+      onDone(parts.join(" · "), result.skipped.length ? "warning" : "success");
     } catch (problem) {
       setError(failure(problem).message);
       setSkipped(failure(problem).body?.skipped ?? []);
@@ -489,7 +495,7 @@ function BookingDialog({ t, lang, day, courts, courtId, time, now, onClose, onDo
             {[1, 2, 3, 4].filter((hours) => startHour + hours <= CLOSES).map((hours) => <option key={hours} value={hours}>{t.hours(hours)} ({hh(startHour)}–{hh(startHour + hours)})</option>)}
           </select>
         </label>
-        {taken ? <p className="cal-warning wide" role="note">{t.slotTaken}</p> : null}
+        {taken ? <AdminNotice tone="warning" className="wide">{t.slotTaken}</AdminNotice> : null}
         <div className="cal-field wide">
           <span className="cal-label">{t.customer}</span>
           <Choice label={t.customer} value={form.kind} options={[["member", t.member], ["guest", t.guest]]} onChange={(kind) => update({ kind })} />
@@ -504,7 +510,7 @@ function BookingDialog({ t, lang, day, courts, courtId, time, now, onClose, onDo
             <div className="cal-search wide">
               <label>{t.searchMember}<input type="search" value={search} placeholder={t.searchHint} autoComplete="off" onChange={(event) => setSearch(event.target.value)} /></label>
               {needle.length >= 2 ? (
-                shownHits?.error ? <p className="admin-message" role="alert">{shownHits.error}</p>
+                shownHits?.error ? <AdminNotice tone="error">{shownHits.error}</AdminNotice>
                 : !shownHits ? <p className="cal-hint" role="status">{t.searching}</p>
                 : !shownHits.members.length ? <p className="cal-hint" role="status">{t.noMembers}</p>
                 : (
@@ -553,10 +559,10 @@ function BookingDialog({ t, lang, day, courts, courtId, time, now, onClose, onDo
           <small>{t.priceNote}</small>
         </div>
         {error ? (
-          <div className="admin-message wide" role="alert">
+          <AdminNotice tone="error" className="wide">
             {error}
             {skipped.length ? <ul className="cal-skips">{skipped.map((item) => <li key={item.date}>{dayLabel(item.date, lang, false)}: {t.skipReasons[item.reason] || item.reason}</li>)}</ul> : null}
-          </div>
+          </AdminNotice>
         ) : null}
       </div>
     </Modal>
@@ -564,6 +570,7 @@ function BookingDialog({ t, lang, day, courts, courtId, time, now, onClose, onDo
 }
 
 function BookingDetail({ t, lang, booking, court, onClose, onDone }: { t: Copy; lang: Lang; booking: CalendarBooking; court?: CalendarCourt; onClose: () => void; onDone: (message: string) => void }) {
+  const { confirm } = useAdminFeedback();
   const { method, setMethod, pay } = usePayment(booking.bookingNo, t);
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
@@ -588,6 +595,11 @@ function BookingDetail({ t, lang, booking, court, onClose, onDone }: { t: Copy; 
     await request("/api/admin/bookings", { method: "PUT", body: JSON.stringify({ bookingNo: booking.bookingNo, status: next, ...(next === "cancelled" ? { reason: reason.trim() } : {}) }) });
     return next === "cancelled" ? t.cancelledDone : t.checkedInDone;
   });
+  const checkIn = async () => {
+    const day = dayLabel(booking.startsAt.slice(0, 10), lang, false);
+    if (!(await confirm({ title: t.confirmCheckIn, message: t.confirmCheckInHint, details: [[t.customer, booking.name], [t.court, court?.name ?? booking.title], [t.time, `${day} ${time}`]], confirmLabel: t.checkIn }))) return;
+    await setStatus("checked_in");
+  };
 
   return (
     <Modal kicker={`${t.bookingNo} ${booking.bookingNo}`} title={booking.name} subtitle={`${court?.name ?? booking.title} · ${dayLabel(booking.startsAt.slice(0, 10), lang, false)} ${time}`} onClose={onClose} closeLabel={t.close} footer={<>
@@ -595,7 +607,7 @@ function BookingDetail({ t, lang, booking, court, onClose, onDone }: { t: Copy; 
       {!cancelling && booking.status !== "checked_in" ? <button className="admin-button danger" type="button" disabled={busy} onClick={() => setCancelling(true)}>{t.cancelBooking}</button> : null}
       <span className="cal-spacer" aria-hidden="true" />
       <button className="admin-button" type="button" onClick={onClose}>{t.close}</button>
-      {booking.status === "paid" ? <button className="primary" type="button" disabled={busy} onClick={() => setStatus("checked_in")}>{t.checkIn}</button> : null}
+      {booking.status === "paid" ? <button className="primary" type="button" disabled={busy} onClick={() => void checkIn()}>{t.checkIn}</button> : null}
     </>}>
       <dl className="cal-facts">
         <div><dt>{t.customer}</dt><dd>{booking.guest ? t.guest : t.member}</dd></div>
@@ -623,7 +635,7 @@ function BookingDetail({ t, lang, booking, court, onClose, onDone }: { t: Copy; 
           </div>
         </div>
       ) : null}
-      {error ? <p className="admin-message" role="alert">{error}</p> : null}
+      {error ? <AdminNotice tone="error">{error}</AdminNotice> : null}
     </Modal>
   );
 }
@@ -676,10 +688,10 @@ function BlockDialog({ t, lang, date, courts, courtId, onClose, onDone }: { t: C
           {t.reasons.map((reason) => <button className="admin-button" key={reason} type="button" aria-pressed={form.reason === reason} onClick={() => setForm({ ...form, reason })}>{reason}</button>)}
         </div>
         {error ? (
-          <div className="admin-message wide" role="alert">
+          <AdminNotice tone="error" className="wide">
             {error}
             {conflicts.length ? <><b className="cal-conflict-title">{t.blockConflicts}</b><ul className="cal-skips">{conflicts.map((row) => <li key={row.bookingNo}>{clock(row.startsAt)} · {row.name} · {row.bookingNo}</li>)}</ul></> : null}
-          </div>
+          </AdminNotice>
         ) : null}
         <p className="cal-hint wide">{dayLabel(form.date, lang)}</p>
       </div>
@@ -688,9 +700,12 @@ function BlockDialog({ t, lang, date, courts, courtId, onClose, onDone }: { t: C
 }
 
 function BlockDetail({ t, lang, block, court, onClose, onDone }: { t: Copy; lang: Lang; block: CalendarBlock; court?: CalendarCourt; onClose: () => void; onDone: (message: string) => void }) {
+  const { confirm } = useAdminFeedback();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const when = `${dayLabel(block.startsAt.slice(0, 10), lang, false)} ${clock(block.startsAt)}–${clock(block.endsAt)}`;
   const lift = async () => {
+    if (!(await confirm({ title: t.confirmLift, message: t.confirmLiftHint, details: [[t.court, court?.name ?? "-"], [t.time, when], [t.reason, block.reason]], confirmLabel: t.liftBlock, danger: true }))) return;
     setBusy(true);
     setError("");
     try {
@@ -703,13 +718,13 @@ function BlockDetail({ t, lang, block, court, onClose, onDone }: { t: Copy; lang
     }
   };
   return (
-    <Modal kicker={t.blockDetail} title={block.reason} subtitle={`${court?.name ?? ""} · ${dayLabel(block.startsAt.slice(0, 10), lang, false)} ${clock(block.startsAt)}–${clock(block.endsAt)}`} onClose={onClose} closeLabel={t.close} footer={<>
+    <Modal kicker={t.blockDetail} title={block.reason} subtitle={`${court?.name ?? ""} · ${when}`} onClose={onClose} closeLabel={t.close} footer={<>
       <button className="admin-button danger" type="button" disabled={busy} onClick={lift}>{t.liftBlock}</button>
       <span className="cal-spacer" aria-hidden="true" />
       <button className="admin-button" type="button" onClick={onClose}>{t.close}</button>
     </>}>
       <p className="cal-hint">{t.blockHint}</p>
-      {error ? <p className="admin-message" role="alert">{error}</p> : null}
+      {error ? <AdminNotice tone="error">{error}</AdminNotice> : null}
     </Modal>
   );
 }
@@ -744,7 +759,7 @@ export function CounterPaymentDialog({ lang, booking, onClose, onDone }: { lang:
           </select>
         </label>
       </div>
-      {error ? <p className="admin-message" role="alert">{error}</p> : null}
+      {error ? <AdminNotice tone="error">{error}</AdminNotice> : null}
     </Modal>
   );
 }

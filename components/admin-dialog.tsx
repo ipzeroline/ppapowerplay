@@ -2,7 +2,8 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
-export function AdminDialog({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+// role="alertdialog" for confirmations; describedBy points at the text that explains the question.
+export function AdminDialog({ children, onClose, role, describedBy }: { children: ReactNode; onClose: () => void; role?: "alertdialog"; describedBy?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -14,7 +15,7 @@ export function AdminDialog({ children, onClose }: { children: ReactNode; onClos
     return () => dialog.close();
   }, [titleId]);
   return (
-    <dialog ref={ref} className="admin-modal-backdrop" aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); onClose(); }} onKeyDown={(event) => {
+    <dialog ref={ref} className="admin-modal-backdrop" role={role} aria-labelledby={titleId} aria-describedby={describedBy} onCancel={(event) => { event.preventDefault(); onClose(); }} onKeyDown={(event) => {
       if (event.key !== "Tab") return;
       const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]')).filter((node) => node.getClientRects().length);
       const first = controls[0];

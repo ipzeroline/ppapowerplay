@@ -133,7 +133,7 @@ const calendarDay = (date) => ({
   blocks: [{ id: 4, courtId: 3, startsAt: `${date} 08:00:00`, endsAt: `${date} 11:00:00`, reason: "ซ่อมพื้น" }],
 });
 // ?nodash renders the console as if the server could not load the first dashboard snapshot.
-const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {PpaApp} from './components/ppa-app'; import {AdminConsole} from './components/admin-console'; import {AdminReceipt} from './components/admin-receipt'; const params=new URLSearchParams(location.search); const tab=params.get('tab')||'dashboard'; const data=${JSON.stringify(adminData)}; if (params.has('nodash')) delete data.dashboard; createRoot(document.getElementById('root')).render(location.pathname.includes('receipt') ? <main className="receipt-page"><AdminReceipt paymentNo="PAY-CAL-1" lang="th"/></main> : location.pathname.includes('admin') ? <AdminConsole adminKey="" data={data} initialTab={tab} initialReportSection={params.get('report') || undefined}/> : <PpaApp/>);`;
+const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {PpaApp} from './components/ppa-app'; import {AdminConsole} from './components/admin-console'; import {AdminReceipt} from './components/admin-receipt'; import {AdminNotice} from './components/admin-notice'; import {AdminConfirmDialog} from './components/admin-confirm'; const gallery = (theme) => <main className="admin admin-console" data-theme={theme}><div style={{ display: 'grid', alignContent: 'start', gap: 10, width: 560, padding: 24 }} className="notice-gallery"><AdminNotice tone="success">ยกเลิกรายการจองแล้ว</AdminNotice><AdminNotice tone="error" onClose={() => {}}>ช่วงเวลานี้ถูกจองแล้ว</AdminNotice><AdminNotice tone="warning">ไม่ทราบผลการยืนยัน กรุณารีเฟรชตรวจสถานะก่อนลองใหม่</AdminNotice><AdminNotice tone="info">QR การชำระเงินไม่ใช่สิทธิ์เข้าใช้บริการ กรุณาตรวจรายการในระบบการเงิน</AdminNotice></div>{params.has('confirm') ? <AdminConfirmDialog lang="th" onAnswer={() => {}} options={{ title: 'ยกเลิกการจองนี้?', message: 'สนามช่วงเวลานี้จะกลับมาว่างให้จองใหม่ ทำย้อนกลับไม่ได้', details: [['การจอง', 'BK-TEST-11 · แบดมินตัน - Court A'], ['สมาชิก', 'สมาชิกทดสอบ'], ['เหตุผล', 'ไม่ระบุ']], warning: 'การจองนี้ชำระเงินแล้ว ระบบไม่คืนเงินให้อัตโนมัติ หากต้องคืนเงินให้ดำเนินการแยกต่างหาก', confirmLabel: 'ยกเลิกการจอง', danger: true }}/> : null}</main>; const params=new URLSearchParams(location.search); const tab=params.get('tab')||'dashboard'; const data=${JSON.stringify(adminData)}; if (params.has('nodash')) delete data.dashboard; createRoot(document.getElementById('root')).render(location.pathname.includes('notices') ? gallery(params.get('theme') || 'light') : location.pathname.includes('receipt') ? <main className="receipt-page"><AdminReceipt paymentNo="PAY-CAL-1" lang="th"/></main> : location.pathname.includes('admin') ? <AdminConsole adminKey="" data={data} initialTab={tab} initialReportSection={params.get('report') || undefined}/> : <PpaApp/>);`;
 const bundle = await build({
   stdin: { contents: entry, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife",
   define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_REQUIRE_LINE": '"false"', "process.env.NEXT_PUBLIC_LINE_LIFF_ID": '""' },
@@ -171,14 +171,19 @@ try {
   let failDashboard = false;
   const rewardRequests = [];
   const bookingRequests = [];
-  const calendarRequests = { bookings: [], blocks: [] };
+  const calendarRequests = { bookings: [], blocks: [], lifts: [] };
   const topupRequests = [];
   const receiptRequests = [];
+  const bookingStatusRequests = [];
+  const deleteRequests = [];
+  const saleRequests = [];
+  const nativeDialogs = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  page.on("dialog", (dialog) => { nativeDialogs.push(dialog.message()); void dialog.dismiss(); });
   await page.route("**/__responsive__/**", async (route) => {
     if (route.request().url().endsWith("bundle.js")) return route.fulfill({ contentType: "text/javascript", body: js });
-    return route.fulfill({ contentType: "text/html", body: `<!doctype html><html lang="th" class="${fontClass}"><head><meta name="viewport" content="width=device-width,initial-scale=1">${/\/__responsive__\/(admin|receipt)/.test(route.request().url()) ? adminStyles : styles}</head><body><div id="root"></div><script src="/__responsive__/bundle.js"></script></body></html>` });
+    return route.fulfill({ contentType: "text/html", body: `<!doctype html><html lang="th" class="${fontClass}"><head><meta name="viewport" content="width=device-width,initial-scale=1">${/\/__responsive__\/(admin|receipt|notices)/.test(route.request().url()) ? adminStyles : styles}</head><body><div id="root"></div><script src="/__responsive__/bundle.js"></script></body></html>` });
   });
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
@@ -202,6 +207,22 @@ try {
       return route.fulfill({ status: 201, json: { created, skipped: [], bookings } });
     }
     if (url.pathname === "/api/admin/bookings" && route.request().method() === "GET") return route.fulfill({ json: { bookings } });
+    if (url.pathname === "/api/admin/bookings" && route.request().method() === "PUT") {
+      bookingStatusRequests.push(route.request().postDataJSON());
+      return route.fulfill({ json: { bookings } });
+    }
+    if (url.pathname === "/api/admin/courts/blocks" && route.request().method() === "DELETE") {
+      calendarRequests.lifts.push(url.searchParams.get("id"));
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (url.pathname === "/api/admin/sales") {
+      if (route.request().method() === "POST") {
+        saleRequests.push(route.request().postDataJSON());
+        return route.fulfill({ status: 201, json: { paymentNo: "PAY-SALE-UI" } });
+      }
+      return route.fulfill({ json: { content: [{ id: 5, contentType: "membership_plan", title: "Fitness 1 เดือน", price: 1500 }], coupons: [] } });
+    }
+    if (route.request().method() === "DELETE") deleteRequests.push(url.pathname);
     if (url.pathname === "/api/admin/courts/blocks" && route.request().method() === "POST") {
       calendarRequests.blocks.push(route.request().postDataJSON());
       return route.fulfill({ status: 201, json: { id: 9 } });
@@ -399,7 +420,24 @@ try {
         await page.getByLabel("จำนวนเงิน (บาท)", { exact: true }).fill("10");
         await page.getByLabel("เหตุผลการปรับเครดิต", { exact: true }).fill("ทดสอบปรับเครดิต");
         await page.getByRole("button", { name: "ยืนยันปรับเครดิต", exact: true }).click();
-        await page.getByText("บันทึกการปรับเครดิตแล้ว", { exact: true }).waitFor();
+        // Money typed by hand: the in-app confirmation shows the balance before and after.
+        const creditConfirm = page.getByRole("alertdialog", { name: "ยืนยันปรับเครดิต?" });
+        await creditConfirm.waitFor();
+        assert.match(await creditConfirm.innerText(), /\+10\.00 ฿[\s\S]*2,500\.00 → 2,510\.00 ฿[\s\S]*ทดสอบปรับเครดิต/);
+        await creditConfirm.getByRole("button", { name: "เพิ่มเครดิต 10.00 ฿", exact: true }).click();
+        await page.locator(".member-editor > .admin-notice.success").filter({ hasText: "บันทึกการปรับเครดิตแล้ว" }).waitFor();
+        if (viewport.width === 1440) {
+          // Counter sale: the in-app confirmation replaces the browser's confirm box.
+          await page.getByRole("combobox", { name: "แพ็กเกจ / คูปอง", exact: true }).selectOption("content:5");
+          await page.getByRole("button", { name: "บันทึกการขาย 1,500.00 ฿", exact: true }).click();
+          const saleConfirm = page.getByRole("alertdialog", { name: "ยืนยันการขาย?" });
+          await saleConfirm.waitFor();
+          assert.match(await saleConfirm.innerText(), /PPA-TEST[\s\S]*Fitness 1 เดือน[\s\S]*1,500\.00 ฿[\s\S]*เงินสด/);
+          await saleConfirm.getByRole("button", { name: "บันทึกการขาย 1,500.00 ฿", exact: true }).click();
+          await page.locator(".member-sale .admin-notice.success").filter({ hasText: "PAY-SALE-UI" }).waitFor();
+          assert.equal(saleRequests.length, 1);
+          assert.deepEqual(nativeDialogs, [], "no browser confirm box");
+        }
         await page.getByText("ประวัติเพิ่ม–ลดเครดิต", { exact: true }).waitFor();
         await page.getByRole("button", { name: "ปิด", exact: true }).click();
       }
@@ -511,7 +549,117 @@ try {
           await blockDialog.getByRole("button", { name: "บันทึกการบล็อก", exact: true }).click();
           await page.getByText("บล็อกสนามแล้ว", { exact: true }).waitFor();
           assert.deepEqual(calendarRequests.blocks.at(-1), { courtId: 3, date: bangkokDay(1), from: "19:00", to: "21:00", reason: "จัดแข่งขัน" });
+          // Check-in from the calendar asks first; going back changes nothing.
+          await page.locator(".cal-event").filter({ hasText: "สมาชิกจองประจำ" }).click();
+          const bookingDetail = page.getByRole("dialog", { name: "สมาชิกจองประจำ" });
+          await bookingDetail.waitFor();
+          await bookingDetail.getByRole("button", { name: "เช็คอิน", exact: true }).click();
+          const checkInConfirm = page.getByRole("alertdialog", { name: "เช็คอินการจองนี้?" });
+          await checkInConfirm.waitFor();
+          assert.match(await checkInConfirm.innerText(), /สมาชิกจองประจำ[\s\S]*Court A[\s\S]*18:00–20:00/);
+          assert.equal(await page.evaluate(() => document.activeElement?.textContent), "กลับ", "the way back has the focus");
+          await checkInConfirm.getByRole("button", { name: "กลับ", exact: true }).click();
+          await checkInConfirm.waitFor({ state: "detached" });
+          assert.equal(bookingStatusRequests.length, 0, "going back changes nothing");
+          assert.ok(await bookingDetail.isVisible(), "the booking stays open after going back");
+          await bookingDetail.getByRole("button", { name: "เช็คอิน", exact: true }).click();
+          await checkInConfirm.getByRole("button", { name: "เช็คอิน", exact: true }).click();
+          await page.locator(".admin-toasts .admin-notice.success").filter({ hasText: "เช็คอินแล้ว" }).waitFor();
+          assert.deepEqual(bookingStatusRequests.at(-1), { bookingNo: "BK-CAL-1", status: "checked_in" });
+          // Removing a court block asks first, in red.
+          await page.locator(".cal-block").first().click();
+          const blockDetail = page.getByRole("dialog", { name: "ซ่อมพื้น" });
+          await blockDetail.waitFor();
+          await blockDetail.getByRole("button", { name: "ยกเลิกการบล็อก", exact: true }).click();
+          const liftConfirm = page.getByRole("alertdialog", { name: "ยกเลิกการบล็อกนี้?" });
+          await liftConfirm.waitFor();
+          assert.match(await liftConfirm.innerText(), /Tennis 1[\s\S]*08:00–11:00[\s\S]*ซ่อมพื้น/);
+          assert.match(await liftConfirm.getByRole("button", { name: "ยกเลิกการบล็อก", exact: true }).getAttribute("class"), /danger/);
+          await liftConfirm.getByRole("button", { name: "ยกเลิกการบล็อก", exact: true }).click();
+          await page.locator(".admin-toasts .admin-notice.success").filter({ hasText: "ยกเลิกการบล็อกแล้ว" }).waitFor();
+          assert.deepEqual(calendarRequests.lifts, ["4"]);
+          // Booking list: one tap in a long list asks first, and the result stays in view while scrolled.
+          const lastCard = page.locator(".admin-booking-cards article").last();
+          await lastCard.scrollIntoViewIfNeeded();
+          await lastCard.getByRole("button", { name: "ยกเลิก", exact: true }).click();
+          const cancelConfirm = page.getByRole("alertdialog", { name: "ยกเลิกการจองนี้?" });
+          await cancelConfirm.waitFor();
+          assert.match(await cancelConfirm.innerText(), /BK-TEST-11[\s\S]*เหตุผล[\s\S]*ไม่ระบุ/);
+          assert.match(await cancelConfirm.innerText(), /ชำระเงินแล้ว ระบบไม่คืนเงินให้อัตโนมัติ/, "a paid booking warns that no money is refunded");
+          await cancelConfirm.getByRole("button", { name: "ยกเลิกการจอง", exact: true }).click();
+          const cancelToast = page.locator(".admin-toasts .admin-notice.success").filter({ hasText: "ยกเลิกรายการจองแล้ว" });
+          await cancelToast.waitFor();
+          assert.deepEqual(bookingStatusRequests.at(-1), { bookingNo: "BK-TEST-11", status: "cancelled", reason: "" });
+          const scrolled = await page.evaluate(() => Math.max(window.scrollY, document.querySelector(".admin-main").scrollTop));
+          const toastBox = await cancelToast.boundingBox();
+          assert.ok(scrolled > 0 && toastBox.y >= 0 && toastBox.y + toastBox.height <= viewport.height && toastBox.x + toastBox.width <= viewport.width, `the result is on screen though the page is scrolled: ${JSON.stringify({ scrolled, toastBox })}`);
+          await page.screenshot({ path: `${outDir}/toast-success-1440.png` });
+          await cancelToast.waitFor({ state: "detached", timeout: 9000 });
         }
+      }
+      if (tab === "staff" && viewport.width === 1440) {
+        const staffDelete = () => page.locator(".admin-staff-cards article").first().getByRole("button", { name: "ลบ", exact: true }).click();
+        await staffDelete();
+        const staffConfirm = page.getByRole("alertdialog", { name: "ลบบัญชีพนักงานนี้?" });
+        await staffConfirm.waitFor();
+        assert.match(await staffConfirm.innerText(), /test-admin/);
+        await page.screenshot({ path: `${outDir}/confirm-danger-1440.png` });
+        await staffConfirm.getByRole("button", { name: "กลับ", exact: true }).click();
+        assert.deepEqual(deleteRequests, [], "going back deletes nothing");
+        await staffDelete();
+        await staffConfirm.getByRole("button", { name: "ลบบัญชีพนักงาน", exact: true }).click();
+        const deleteError = page.locator(".admin-toasts .admin-notice.error").filter({ hasText: "Read-only UI fixture" });
+        await deleteError.waitFor();
+        assert.deepEqual(deleteRequests, ["/api/admin/staff"]);
+        assert.equal(await deleteError.getAttribute("role"), "alert");
+        // Contrast of the kind's word and of the message on each tint, and the four tints apart.
+        const tones = await page.evaluate(() => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 1; canvas.height = 1;
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          const rgb = (css) => {
+            context.clearRect(0, 0, 1, 1);
+            context.fillStyle = "#010203";
+            context.fillStyle = css;
+            if (context.fillStyle === "#010203") throw new Error(`canvas cannot read ${css}`);
+            context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+          };
+          const linear = (value) => { const v = value / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+          const luminance = (color) => { const [r, g, b] = rgb(color).map(linear); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+          const contrast = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+          const oklab = (color) => {
+            const [r, g, b] = rgb(color).map(linear);
+            const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+            return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+          };
+          const host = document.querySelector(".admin-console");
+          const report = {};
+          for (const theme of ["light", "dark"]) {
+            host.dataset.theme = theme;
+            const tints = {};
+            for (const tone of ["success", "error", "warning", "info"]) {
+              const notice = document.createElement("div");
+              notice.className = `admin-notice ${tone}`;
+              notice.innerHTML = '<div class="admin-notice-body"><b class="admin-notice-label">x</b><div class="admin-notice-text">y</div></div>';
+              host.append(notice);
+              const background = getComputedStyle(notice).backgroundColor;
+              tints[tone] = oklab(background);
+              report[`${theme} ${tone}`] = { label: contrast(getComputedStyle(notice.querySelector(".admin-notice-label")).color, background), text: contrast(getComputedStyle(notice.querySelector(".admin-notice-text")).color, background) };
+              notice.remove();
+            }
+            const names = Object.keys(tints);
+            for (const [i, a] of names.entries()) for (const b of names.slice(i + 1)) report[`${theme} ${a}/${b} apart`] = Math.hypot(...tints[a].map((value, index) => (value - tints[b][index]) * 100));
+          }
+          host.dataset.theme = "light";
+          return report;
+        });
+        for (const [name, value] of Object.entries(tones)) {
+          if (name.endsWith("apart")) assert.ok(value >= 4, `${name}: the tints must look different (ΔE ${value.toFixed(1)})`);
+          else assert.ok(value.label >= 4.5 && value.text >= 4.5, `${name} contrast ${JSON.stringify(value)}`);
+        }
+        await deleteError.getByRole("button", { name: "ปิดการแจ้งเตือน", exact: true }).click();
+        assert.equal(await deleteError.count(), 0, "an error stays until closed, then goes");
       }
       results.push({ area: "admin", tab, viewport, metrics });
     }
@@ -705,7 +853,7 @@ try {
   await page.goto(`${base}/__responsive__/admin?tab=scanner`);
   await page.getByLabel("QR URL หรือรหัสจากเครื่องอ่าน").fill("invalid");
   await page.getByRole("button", { name: "ตรวจสอบ QR", exact: true }).click();
-  await page.getByText("QR token ไม่ถูกต้อง", { exact: true }).waitFor();
+  await page.locator(".qr-scanner .admin-notice.error").filter({ hasText: "QR token ไม่ถูกต้อง" }).waitFor();
   assert.equal(await page.getByRole("button", { name: "ยืนยันเข้าใช้บริการ", exact: true }).count(), 0);
   await page.getByLabel("QR URL หรือรหัสจากเครื่องอ่าน").fill("a".repeat(43));
   await page.getByRole("button", { name: "ตรวจสอบ QR", exact: true }).click();
@@ -713,7 +861,7 @@ try {
   assert.equal(scanRequests.at(-1).consume, false);
   assert.match(await page.locator(".qr-scanner-result").innerText(), /แพ็กเกจสมาชิก[\s\S]*Fitness \(12 เดือน\)[\s\S]*ใช้ได้ถึง 2027-11-02/, "staff see what the QR grants before confirming");
   await page.getByRole("button", { name: "ยืนยันเข้าใช้บริการ", exact: true }).click();
-  await page.getByText("บันทึกการใช้สิทธิ์เรียบร้อยแล้ว", { exact: true }).waitFor();
+  await page.locator(".qr-scanner .admin-notice.success").filter({ hasText: "บันทึกการใช้สิทธิ์เรียบร้อยแล้ว" }).waitFor();
   assert.equal(await page.getByLabel("QR URL หรือรหัสจากเครื่องอ่าน").inputValue(), "", "the field is empty for the next scan");
   assert.equal(scanRequests.filter((request) => request.consume).length, 1);
   assert.equal(await page.getByRole("button", { name: "ยืนยันเข้าใช้บริการ", exact: true }).count(), 0);
@@ -763,12 +911,25 @@ try {
   assert.equal(paymentRequests.length, 0, "a blank written reason is not submitted");
   await page.getByRole("button", { name: "กลับ", exact: true }).click();
   assert.equal(await approvePayment.isEnabled(), true, "Session-authenticated staff need no legacy admin key");
+  // Confirming money received asks first, in the app, showing what is being confirmed.
+  const paidConfirm = page.getByRole("alertdialog", { name: "ยืนยันว่าได้รับเงินแล้ว?" });
   await approvePayment.click();
-  await page.getByText("Payment fixture conflict", { exact: true }).waitFor();
+  await paidConfirm.waitFor();
+  assert.match(await paidConfirm.innerText(), /PAY-UI-TEST[\s\S]*Payment Test[\s\S]*100 ฿/);
+  assert.match(await paidConfirm.innerText(), /ยังไม่มีสลิป/, "a payment without a slip says so before confirming");
+  await paidConfirm.getByRole("button", { name: "กลับ", exact: true }).click();
+  await paidConfirm.waitFor({ state: "detached" });
+  assert.equal(paymentRequests.length, 0, "going back sends nothing");
+  await approvePayment.click();
+  await paidConfirm.getByRole("button", { name: "ยืนยันได้รับเงินแล้ว", exact: true }).click();
+  const paymentError = page.locator(".admin-toasts .admin-notice.error").filter({ hasText: "Payment fixture conflict" });
+  await paymentError.waitFor();
   assert.equal(await approvePayment.isEnabled(), true, "Failed approval remains retryable");
   failPayment = false;
   await approvePayment.click();
-  await page.getByText("อัปเดต payment แล้ว", { exact: true }).waitFor();
+  await paidConfirm.getByRole("button", { name: "ยืนยันได้รับเงินแล้ว", exact: true }).click();
+  await page.locator(".admin-toasts .admin-notice.success").filter({ hasText: "ยืนยันการชำระเงินแล้ว" }).waitFor();
+  assert.equal(await paymentError.count(), 1, "the earlier error stays until it is closed");
   assert.equal(await approvePayment.count(), 0, "A confirmed payment leaves the queue and cannot be approved again");
   await page.locator(".dash-action").filter({ hasText: "รอชำระ ยังไม่ส่งสลิป" }).locator("strong").filter({ hasText: /^0$/ }).waitFor();
   assert.deepEqual(paymentRequests, [1, 2].map(() => ({ paymentNo: "PAY-UI-TEST", status: "paid" })));
@@ -793,6 +954,16 @@ try {
     await page.screenshot({ path: `${outDir}/receipt-${viewport.width}.png` });
   }
   assert.deepEqual(receiptRequests.at(-1), { paymentNo: "PAY-CAL-1" });
+  // The four kinds of notice and a red confirmation, as staff see them, in both themes.
+  await page.setViewportSize({ width: 1200, height: 900 });
+  for (const theme of ["light", "dark"]) {
+    await page.goto(`${base}/__responsive__/notices?theme=${theme}`);
+    await page.locator(".admin-notice.info").waitFor();
+    await page.screenshot({ path: `${outDir}/notices-${theme}.png` });
+    await page.goto(`${base}/__responsive__/notices?theme=${theme}&confirm=1`);
+    await page.locator("dialog[open] .admin-confirm").waitFor();
+    await page.screenshot({ path: `${outDir}/confirm-${theme}.png` });
+  }
   // Daily cash-up: drawer cash first, totals by channel and staff, print shows only the sheet.
   for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
     await page.setViewportSize(viewport);
