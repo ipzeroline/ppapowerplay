@@ -227,7 +227,7 @@ try {
       const input = route.request().postDataJSON();
       scanRequests.push(input);
       if (input.token === "invalid") return route.fulfill({ status: 400, json: { message: "QR token ไม่ถูกต้อง" } });
-      return route.fulfill({ json: { valid: true, consumed: Boolean(input.consume), qr: { displayName: "Scanner Test", memberCode: "PPA-TEST", purpose: "member", refId: "1" } } });
+      return route.fulfill({ json: { valid: true, consumed: Boolean(input.consume), qr: { displayName: "Scanner Test", memberCode: "PPA-TEST", purpose: "member", refId: "1" }, ...(input.consume ? {} : { detail: { title: "Fitness (12 เดือน)", expiresAt: "2027-11-02" } }) } });
     }
     if (url.pathname === "/api/wallet/topup" && route.request().method() === "POST") {
       topupRequests.push(route.request().postDataJSON());
@@ -706,15 +706,17 @@ try {
   await page.getByLabel("QR URL หรือรหัสจากเครื่องอ่าน").fill("invalid");
   await page.getByRole("button", { name: "ตรวจสอบ QR", exact: true }).click();
   await page.getByText("QR token ไม่ถูกต้อง", { exact: true }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "ยืนยันใช้สิทธิ์ / เช็คอิน", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "ยืนยันเข้าใช้บริการ", exact: true }).count(), 0);
   await page.getByLabel("QR URL หรือรหัสจากเครื่องอ่าน").fill("a".repeat(43));
   await page.getByRole("button", { name: "ตรวจสอบ QR", exact: true }).click();
   await page.getByText("Scanner Test", { exact: true }).waitFor();
   assert.equal(scanRequests.at(-1).consume, false);
-  await page.getByRole("button", { name: "ยืนยันใช้สิทธิ์ / เช็คอิน", exact: true }).click();
+  assert.match(await page.locator(".qr-scanner-result").innerText(), /แพ็กเกจสมาชิก[\s\S]*Fitness \(12 เดือน\)[\s\S]*ใช้ได้ถึง 2027-11-02/, "staff see what the QR grants before confirming");
+  await page.getByRole("button", { name: "ยืนยันเข้าใช้บริการ", exact: true }).click();
   await page.getByText("บันทึกการใช้สิทธิ์เรียบร้อยแล้ว", { exact: true }).waitFor();
+  assert.equal(await page.getByLabel("QR URL หรือรหัสจากเครื่องอ่าน").inputValue(), "", "the field is empty for the next scan");
   assert.equal(scanRequests.filter((request) => request.consume).length, 1);
-  assert.equal(await page.getByRole("button", { name: "ยืนยันใช้สิทธิ์ / เช็คอิน", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "ยืนยันเข้าใช้บริการ", exact: true }).count(), 0);
   await page.screenshot({ path: `${outDir}/scanner-success.png` });
   await page.getByRole("button", { name: "เปิดกล้องสแกน", exact: true }).click();
   await page.getByText(/เปิดกล้องไม่ได้/).waitFor();
@@ -725,16 +727,28 @@ try {
     await image.decode();
     const canvas = document.createElement("canvas");
     canvas.width = 660; canvas.height = 660;
-    canvas.getContext("2d").drawImage(image, 0, 0, 660, 660);
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#0a0a0c";
+    context.fillRect(0, 0, 660, 660);
+    context.fillStyle = "#ffffff";
+    context.fillRect(170, 170, 320, 320);
+    context.drawImage(image, 190, 190, 280, 280);
     const media = canvas.captureStream(10);
     window.__scannerTestStream = media;
     Object.defineProperty(navigator.mediaDevices, "getUserMedia", { configurable: true, value: async () => media });
-  }, await QRCode.toString(`https://example.invalid/api/qr/verify?token=${"b".repeat(43)}`, { type: "svg", margin: 4, width: 660 }));
+  }, await QRCode.toString(`https://example.invalid/q/${"b".repeat(43)}`, { type: "svg", margin: 1, width: 220, errorCorrectionLevel: "M" }));
   await page.getByRole("button", { name: "เปิดกล้องสแกน", exact: true }).click();
   await page.getByText("Scanner Test", { exact: true }).waitFor();
   assert.ok(scanRequests.at(-1).token.endsWith("b".repeat(43)), "Camera must decode the generated QR frame");
   assert.equal(scanRequests.at(-1).consume, false, "Camera scan only previews the right");
   assert.equal(await page.evaluate(() => window.__scannerTestStream.getTracks().every((track) => track.readyState === "ended")), true, "Camera stops after detection");
+  // A member QR opened from a phone camera lands on the scanner with ?token=: checked at once.
+  await page.goto(`${base}/__responsive__/admin?tab=scanner&token=${"c".repeat(43)}`);
+  await page.getByText("Scanner Test", { exact: true }).waitFor();
+  assert.equal(scanRequests.at(-1).token, "c".repeat(43));
+  assert.equal(scanRequests.at(-1).consume, false, "opening the address only previews");
+  assert.doesNotMatch(page.url(), /token=/, "the code leaves the address, so a reload does not check it again");
+  await page.screenshot({ path: `${outDir}/scanner-preview.png` });
   await page.goto(`${base}/__responsive__/admin?tab=dashboard`);
   const approvePayment = page.getByRole("button", { name: "ยืนยันชำระ", exact: true });
   await approvePayment.waitFor();

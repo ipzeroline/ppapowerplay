@@ -451,3 +451,30 @@ No migration.
   and Chinese (13 server messages were Thai only, such as "ยอดเงินใน Wallet ไม่พอ"). Tests now fail if
   a new untranslated string appears. Still Thai only: text the club enters (booking titles with Thai
   sport names, package names without translations in App Content) and in-app notification bodies.
+
+### Update 2026-11-03 (c): QR codes checked end to end
+
+No migration. Member QR codes (membership, booking, coupon, reward), the staff scanner and the
+PromptPay QR were checked; these changes make them dependable at a busy counter:
+
+- **Confirming after a preview:** the member's screen shows a new QR every 20 seconds (a membership
+  QR lasts 30). Staff who previewed a code can now confirm it up to 2 minutes after it expired, so a
+  slow confirm no longer fails with "QR หมดอายุ". A code first scanned after it expired is still refused.
+- **Many members on the club Wi-Fi:** QR requests are limited per member (40 a minute) instead of
+  per internet address, which everyone on the same Wi-Fi shares.
+- **What staff see:** the kind of QR in words (แพ็กเกจสมาชิก, การจองสนาม, คูปอง, สิทธิ์/รางวัล), the plan,
+  booking time or coupon uses left, and a button named for the action (ยืนยันเข้าใช้บริการ, เช็คอินการจอง,
+  ใช้คูปอง 1 ครั้ง, ใช้สิทธิ์ / รับรางวัล).
+- **Bookings check in on their own day only:** a QR for a later day says when it can be checked in.
+- **USB / Bluetooth scanners:** codes typed while the PC keyboard is set to Thai are read correctly,
+  and the field is cleared and selected for the next scan.
+- **Short QR address:** member QR codes now hold `https://<domain>/q/<code>` (fewer squares, read from
+  further away: 96% against 89% in a size test). Opening it on a phone camera goes to the staff
+  scanner with the code filled in (staff must be signed in on that phone). `APP_BASE_URL` sets the
+  domain. Codes in the old format keep working.
+- **PromptPay:** the payload checksum was confirmed against an independent CRC-16/CCITT-FALSE
+  implementation, and the QR decodes back to the payload. Still do one small real transfer from a
+  Thai banking app before opening.
+
+On the server, `npm run test:qr:integration` checks issuing and redeeming QR codes against the real
+database inside a transaction that is rolled back; run it on staging first.

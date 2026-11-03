@@ -1,18 +1,37 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import jsQR from "jsqr";
 
-type Result = { valid: boolean; consumed: boolean; qr: { displayName: string; memberCode: string; purpose: string; refId: string | null } };
+type Purpose = "member" | "booking" | "coupon" | "entitlement" | "payment";
+type Detail = { title?: string; startsAt?: string; endsAt?: string; checkInOpen?: boolean; remainingUses?: number | null; expiresAt?: string | null; amount?: number; status?: string };
+type Result = { valid: boolean; consumed: boolean; qr: { displayName: string; memberCode: string; purpose: Purpose; refId: string | null }; detail?: Detail };
+
+// What each QR grants and what confirming does, in the staff member's language.
+const purposeLabels: Record<Purpose, [string, string]> = {
+  member: ["แพ็กเกจสมาชิก", "Membership"],
+  booking: ["การจองสนาม", "Court booking"],
+  coupon: ["คูปอง", "Coupon"],
+  entitlement: ["สิทธิ์/รางวัล", "Reward or right"],
+  payment: ["การชำระเงิน", "Payment"],
+};
+const confirmLabels: Record<Exclude<Purpose, "payment">, [string, string]> = {
+  member: ["ยืนยันเข้าใช้บริการ", "Confirm entry"],
+  booking: ["เช็คอินการจอง", "Check in booking"],
+  coupon: ["ใช้คูปอง 1 ครั้ง", "Use 1 coupon"],
+  entitlement: ["ใช้สิทธิ์ / รับรางวัล", "Use right / hand over reward"],
+};
 
 export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
   const th = lang === "th";
+  const say = ([thai, english]: [string, string]) => (th ? thai : english);
   const [token, setToken] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [camera, setCamera] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
+  const field = useRef<HTMLInputElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const generation = useRef(0);
   const lock = useRef(false);
@@ -24,10 +43,20 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
     setCamera(false);
   }
 
+  // Ready for the next scan: a USB scanner types into the field, replacing what is there.
+  function focusField() {
+    window.setTimeout(() => {
+      if (!field.current || !window.matchMedia("(pointer: fine)").matches) return;
+      field.current.focus();
+      field.current.select();
+    }, 0);
+  }
+
   useEffect(() => {
     const lifecycle = generation;
     const stop = () => { if (document.hidden) stopCamera(); };
     document.addEventListener("visibilitychange", stop);
+    focusField();
     return () => {
       lifecycle.current++;
       stream.current?.getTracks().forEach((track) => track.stop());
@@ -42,6 +71,7 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
     setMessage("");
     setResult(null);
     stopCamera();
+    let done = false;
     try {
       const response = await fetch("/api/admin/qr/verify", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -50,14 +80,35 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || (th ? "ตรวจสอบไม่สำเร็จ" : "Verification failed"));
       setResult(data);
-      if (data.consumed) setMessage(th ? "บันทึกการใช้สิทธิ์เรียบร้อยแล้ว" : "Redemption recorded successfully");
+      if (data.consumed) {
+        done = true;
+        setMessage(th ? "บันทึกการใช้สิทธิ์เรียบร้อยแล้ว" : "Redemption recorded successfully");
+      }
     } catch (error) {
       setMessage(error instanceof Error && error.name === "Error" ? error.message : th ? "เชื่อมต่อไม่สำเร็จ หากกดยืนยันแล้ว กรุณาตรวจประวัติก่อนลองใหม่" : "Connection failed. If you confirmed redemption, check the audit log before retrying.");
     } finally {
       lock.current = false;
       setBusy(false);
+      if (done) setToken("");
+      focusField();
     }
   }
+
+  // A member QR opened from a phone camera lands here with ?token=: check it at once, and take the
+  // code out of the address so a reload does not check it again.
+  const verifyFromAddress = useEffectEvent((value: string) => {
+    setToken(value);
+    void verify(value);
+  });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromAddress = params.get("token");
+    if (!fromAddress) return;
+    params.delete("token");
+    window.history.replaceState(null, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+    const timer = window.setTimeout(() => verifyFromAddress(fromAddress), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   async function startCamera() {
     stopCamera();
@@ -97,6 +148,11 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
     }
   }
 
+  const purpose = result?.qr.purpose;
+  const detail = result?.detail;
+  const notToday = purpose === "booking" && detail?.checkInOpen === false;
+  const usesLeft = typeof detail?.remainingUses === "number" ? detail.remainingUses : null;
+
   return <section className="admin-panel qr-scanner" aria-label={th ? "สแกน QR" : "QR scanner"}>
     <h2>{th ? "สแกน QR เข้าใช้บริการ" : "Scan access QR"}</h2>
     <p>{th ? "สแกน QR จากหน้าจอสมาชิก ตรวจสอบชื่อและสิทธิ์ แล้วกดยืนยันหนึ่งครั้ง" : "Scan the member’s QR, review their identity and access, then confirm once."}</p>
@@ -106,15 +162,21 @@ export function AdminQrScanner({ lang }: { lang: "th" | "en" }) {
     <video ref={video} hidden={!camera} muted playsInline aria-label={th ? "ภาพจากกล้อง" : "Camera preview"} />
     <form onSubmit={(event) => { event.preventDefault(); void verify(token); }}>
       <label htmlFor="scan-token">{th ? "QR URL หรือรหัสจากเครื่องอ่าน" : "QR URL or scanner code"}</label>
-      <input id="scan-token" autoComplete="off" maxLength={500} value={token} disabled={busy || camera} onChange={(event) => { setToken(event.target.value); setResult(null); setMessage(""); }} />
+      <input id="scan-token" ref={field} autoComplete="off" maxLength={500} value={token} disabled={busy || camera} onChange={(event) => { setToken(event.target.value); setResult(null); setMessage(""); }} />
       <button className="primary" disabled={busy || camera || !token.trim()}>{busy ? (th ? "กำลังตรวจสอบ…" : "Checking…") : (th ? "ตรวจสอบ QR" : "Verify QR")}</button>
     </form>
     {message && <p role="status">{message}</p>}
-    {result && <div className="qr-scanner-result">
-      <h3>{result.qr.displayName}</h3><p>{result.qr.memberCode}</p>
-      <p>{result.qr.purpose} · {result.qr.refId}</p>
-      {result.valid && !result.consumed && result.qr.purpose !== "payment" && <button className="primary" disabled={busy} onClick={() => void verify(token, true)}>{th ? "ยืนยันใช้สิทธิ์ / เช็คอิน" : "Confirm redemption / check-in"}</button>}
-      {result.qr.purpose === "payment" && <p>{th ? "QR การชำระเงินไม่ใช่สิทธิ์เข้าใช้บริการ กรุณาตรวจรายการในระบบการเงิน" : "Payment QR is not an access pass. Review it in payments."}</p>}
+    {result && purpose && <div className="qr-scanner-result">
+      <span className="admin-badge neutral">{say(purposeLabels[purpose] || [purpose, purpose])}</span>
+      <h3>{result.qr.displayName}</h3>
+      <p>{result.qr.memberCode}</p>
+      {detail?.title ? <p className="qr-scanner-grant">{detail.title}</p> : null}
+      {purpose === "booking" && detail?.startsAt ? <p>{th ? "เวลา" : "Time"} {detail.startsAt}{detail.endsAt ? `–${detail.endsAt}` : ""} {th ? "น." : ""}</p> : null}
+      {usesLeft !== null ? <p>{th ? `เหลือ ${usesLeft} ครั้ง` : `${usesLeft} uses left`}</p> : null}
+      {detail?.expiresAt && purpose !== "booking" ? <p>{th ? "ใช้ได้ถึง" : "Valid until"} {detail.expiresAt}</p> : null}
+      {notToday ? <p className="qr-scanner-warning" role="alert">{th ? "เช็คอินได้ในวันที่จอง" : "Check-in opens on the booking day"}</p> : null}
+      {result.valid && !result.consumed && purpose !== "payment" && !notToday && <button className="primary" disabled={busy} onClick={() => void verify(token, true)}>{say(confirmLabels[purpose])}</button>}
+      {purpose === "payment" && <p>{th ? "QR การชำระเงินไม่ใช่สิทธิ์เข้าใช้บริการ กรุณาตรวจรายการในระบบการเงิน" : "Payment QR is not an access pass. Review it in payments."}</p>}
     </div>}
   </section>;
 }

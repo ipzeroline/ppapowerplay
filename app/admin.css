@@ -2075,6 +2075,26 @@ dialog.admin-modal-backdrop::backdrop {
   margin-top: 12px;
 }
 
+.qr-scanner-result .admin-badge {
+  margin-bottom: 8px;
+}
+
+/* What the QR grants (plan, booking, coupon), the line staff read before confirming. */
+.qr-scanner-result p.qr-scanner-grant {
+  margin-top: 10px;
+  color: var(--admin-heading);
+  font-weight: 600;
+}
+
+.qr-scanner-result p.qr-scanner-warning {
+  margin-top: 10px;
+  border: 1px solid color-mix(in oklch, var(--admin-warn) 45%, transparent);
+  border-radius: var(--admin-radius);
+  background: var(--admin-warn-soft);
+  padding: 8px 12px;
+  color: var(--admin-heading);
+}
+
 /* ---------- Members (components/admin-members.tsx) ---------- */
 
 .member-toolbar {

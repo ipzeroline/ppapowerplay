@@ -15,14 +15,18 @@ type RefCheck = {
 };
 
 export async function GET(req: NextRequest) {
-  const limited = checkRateLimit({ key: `qr:${await clientIp()}`, limit: 40, windowMs: 60_000 });
-  if (limited) return limited;
+  // Members at the club share one Wi-Fi address: a loose limit per address, the real one per member
+  // (the screen asks for a new QR every 20 s, 3 a minute).
+  const crowded = checkRateLimit({ key: `qr:${await clientIp()}`, limit: 600, windowMs: 60_000 });
+  if (crowded) return crowded;
   let user;
   try {
     user = await assertApiUser();
   } catch (error) {
     return authErrorResponse(error);
   }
+  const limited = checkRateLimit({ key: `qr:member:${user.id}`, limit: 40, windowMs: 60_000 });
+  if (limited) return limited;
 
   const purpose = purposeSchema.safeParse(req.nextUrl.searchParams.get("purpose") || "member");
   if (!purpose.success) return secureResponse(NextResponse.json({ message: "ประเภท QR ไม่ถูกต้อง" }, { status: 400 }));
@@ -52,7 +56,11 @@ async function issueQr(req: NextRequest, userId: number, purpose: z.infer<typeof
   const token = createQrToken();
   const tokenHash = hashQrToken(token);
   const ttl = ttlSeconds(purpose);
-  const verifyUrl = `${req.nextUrl.origin}/api/qr/verify?token=${encodeURIComponent(token)}`;
+  // A short address (fewer QR squares, read from further away) that opens the staff scanner with the
+  // code filled in, so staff can also scan with any phone camera. The public address (APP_BASE_URL)
+  // is used: behind the proxy the request sees an inside one.
+  const base = (process.env.APP_BASE_URL || req.nextUrl.origin).replace(/\/+$/, "");
+  const verifyUrl = `${base}/q/${token}`;
 
   const conn = await pool.getConnection();
   try {

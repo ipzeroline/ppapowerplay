@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { assertAdminRequest, getAdminIdentity, adminSessionCookieName, hasAdminPermission } from "@/lib/admin-auth";
-import { hashQrToken } from "@/lib/qr";
+import { extractQrToken, hashQrToken } from "@/lib/qr";
 import { pool } from "@/lib/db";
 import { MEMBERSHIP_NOT_PAUSED } from "@/lib/renewals";
 import { parseJsonBody, secureResponse, validationErrorResponse } from "@/lib/security";
@@ -19,8 +19,18 @@ type QrRow = {
   expiresAt: string;
   usedAt: string | null;
   expired: number;
+  consumeExpired?: number;
   displayName: string;
   memberCode: string;
+};
+
+// What the QR grants, shown to staff before they confirm (read without locks, preview only).
+const details: Record<string, string> = {
+  booking: "SELECT title, DATE_FORMAT(starts_at, '%Y-%m-%d %H:%i') startsAt, DATE_FORMAT(ends_at, '%H:%i') endsAt, starts_at < CURDATE() + INTERVAL 1 DAY checkInToday FROM bookings WHERE booking_no = ? AND user_id = ? LIMIT 1",
+  coupon: "SELECT c.name title, uc.remaining_uses remainingUses, DATE_FORMAT(uc.expires_at, '%Y-%m-%d') expiresAt FROM user_coupons uc JOIN coupons c ON c.id = uc.coupon_id WHERE uc.id = ? AND uc.user_id = ? LIMIT 1",
+  entitlement: "SELECT title, remaining_uses remainingUses, DATE_FORMAT(ends_at, '%Y-%m-%d') expiresAt FROM user_entitlements WHERE id = ? AND user_id = ? LIMIT 1",
+  member: `SELECT plan_name title, DATE_FORMAT(ends_at, '%Y-%m-%d') expiresAt FROM memberships WHERE id = ? AND user_id = ? AND ${MEMBERSHIP_NOT_PAUSED} LIMIT 1`,
+  payment: "SELECT payment_no title, amount, status FROM payments WHERE payment_no = ? AND user_id = ? LIMIT 1",
 };
 
 // Label stored with each visit (payment QRs are never consumed, so they have no visit).
@@ -44,7 +54,7 @@ export async function POST(req: NextRequest) {
     return validationErrorResponse(error);
   }
 
-  const token = extractToken(input.token);
+  const token = extractQrToken(input.token);
   if (!token) return secureResponse(NextResponse.json({ message: "QR token ไม่ถูกต้อง" }, { status: 400 }));
 
   let conn: Awaited<ReturnType<typeof pool.getConnection>> | undefined;
@@ -52,7 +62,9 @@ export async function POST(req: NextRequest) {
     conn = await pool.getConnection();
     await conn.beginTransaction();
     const [rows] = await conn.execute(
-      "SELECT qt.id, qt.user_id userId, qt.purpose, qt.ref_id refId, qt.expires_at expiresAt, qt.used_at usedAt, qt.expires_at <= NOW() expired, u.display_name displayName, u.member_code memberCode FROM qr_tokens qt JOIN users u ON u.id = qt.user_id WHERE qt.token_hash = ? AND u.status = 'active' FOR UPDATE",
+      // The member's screen shows a new QR every 20 s; staff who previewed one may confirm it for two
+      // more minutes after it expired. A QR first shown after it expired is refused.
+      "SELECT qt.id, qt.user_id userId, qt.purpose, qt.ref_id refId, qt.expires_at expiresAt, qt.used_at usedAt, qt.expires_at <= NOW() expired, qt.expires_at <= NOW() - INTERVAL 2 MINUTE consumeExpired, u.display_name displayName, u.member_code memberCode FROM qr_tokens qt JOIN users u ON u.id = qt.user_id WHERE qt.token_hash = ? AND u.status = 'active' FOR UPDATE",
       [hashQrToken(token)],
     );
     const qr = (rows as QrRow[])[0];
@@ -60,7 +72,8 @@ export async function POST(req: NextRequest) {
       await conn.rollback();
       return secureResponse(NextResponse.json({ message: "ไม่พบ QR" }, { status: 404 }));
     }
-    if (qr.usedAt || Boolean(qr.expired)) {
+    const tooOld = input.consume ? Number(qr.consumeExpired ?? qr.expired) : Number(qr.expired);
+    if (qr.usedAt || tooOld) {
       await conn.rollback();
       return secureResponse(NextResponse.json({ message: "QR หมดอายุหรือถูกใช้แล้ว", qr }, { status: 409 }));
     }
@@ -92,8 +105,17 @@ export async function POST(req: NextRequest) {
       let affectedRows = 0;
       await conn.execute("UPDATE qr_tokens SET used_at = NOW() WHERE id = ?", [qr.id]);
       if (qr.purpose === "booking" && qr.refId) {
-        const [result] = await conn.execute("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE booking_no = ? AND user_id = ? AND status = 'paid' AND ends_at > NOW()", [qr.refId, qr.userId]);
+        // Only on the booking's own day: a QR for next week's booking is not checked in today.
+        const [result] = await conn.execute("UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE booking_no = ? AND user_id = ? AND status = 'paid' AND ends_at > NOW() AND starts_at < CURDATE() + INTERVAL 1 DAY", [qr.refId, qr.userId]);
         affectedRows = (result as { affectedRows: number }).affectedRows;
+        if (!affectedRows) {
+          const [later] = await conn.execute("SELECT DATE_FORMAT(starts_at, '%e/%c %H:%i') startsAt FROM bookings WHERE booking_no = ? AND user_id = ? AND status = 'paid' AND ends_at > NOW() LIMIT 1", [qr.refId, qr.userId]);
+          const startsAt = (later as { startsAt: string }[])[0]?.startsAt;
+          if (startsAt) {
+            await conn.rollback();
+            return secureResponse(NextResponse.json({ message: `การจองนี้เริ่ม ${startsAt} น. เช็คอินได้ในวันที่จอง` }, { status: 409 }));
+          }
+        }
       }
       if (qr.purpose === "coupon" && qr.refId) {
         const [result] = await conn.execute(
@@ -131,8 +153,17 @@ export async function POST(req: NextRequest) {
       consumed = true;
     }
 
+    let detail: Record<string, unknown> | undefined;
+    if (!input.consume && details[qr.purpose]) {
+      const [found] = await conn.execute(details[qr.purpose], [qr.refId, qr.userId]);
+      const row = (found as Record<string, unknown>[])[0];
+      if (row) {
+        const { checkInToday, ...rest } = row;
+        detail = qr.purpose === "booking" && checkInToday !== undefined ? { ...rest, checkInOpen: Boolean(Number(checkInToday)) } : rest;
+      }
+    }
     await conn.commit();
-    return secureResponse(NextResponse.json({ valid: true, consumed, qr }));
+    return secureResponse(NextResponse.json({ valid: true, consumed, qr, detail }));
   } catch {
     await conn?.rollback().catch(() => {});
     return secureResponse(NextResponse.json({ message: "บริการ QR ไม่พร้อมใช้งาน กรุณาตรวจประวัติก่อนลองใหม่" }, { status: 503 }));
@@ -141,12 +172,3 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function extractToken(value: string) {
-  try {
-    const url = new URL(value);
-    const token = url.searchParams.get("token") || "";
-    return /^[A-Za-z0-9_-]{43}$/.test(token) ? token : "";
-  } catch {
-    return /^[A-Za-z0-9_-]{43}$/.test(value.trim()) ? value.trim() : "";
-  }
-}

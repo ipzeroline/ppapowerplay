@@ -805,3 +805,12 @@ html, body {
   font-size: 15px;
   font-weight: 600;
 }
+
+/* QR loading inside the white QR box: a light placeholder and dark text, readable on white. */
+.qr-box .sk {
+  background: #e6e6ea;
+}
+
+.qr-box .member-loading-note {
+  color: #45454f;
+}
