@@ -216,8 +216,7 @@ button:disabled {
 .top,
 .section-title,
 .summary > div,
-.wallet,
-.pay-method {
+.wallet {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -330,7 +329,6 @@ button:disabled {
 .hero-deal span,
 .summary span,
 .wallet span,
-.pay-card span,
 .profile-card small,
 .list small,
 .service-grid small,
@@ -665,7 +663,6 @@ button:disabled {
 
 .hero-deal button,
 .primary,
-.pay-method,
 .ghost {
   width: 100%;
   border-radius: 13px;
@@ -728,7 +725,6 @@ button:disabled {
 .list button,
 .slot-list article,
 .summary,
-.pay-card,
 .profile-card,
 .wallet,
 .empty,
@@ -902,8 +898,7 @@ button:disabled {
 }
 
 .slot-list button:disabled,
-.primary:disabled,
-.pay-method:disabled {
+.primary:disabled {
   cursor: not-allowed;
   opacity: 0.42;
 }
@@ -917,7 +912,6 @@ button:disabled {
 }
 
 .summary,
-.pay-card,
 .profile-card,
 .wallet {
   padding: 14px;
@@ -958,80 +952,6 @@ button:disabled {
 .summary strong,
 .wallet strong {
   font-weight: 500;
-}
-
-.pay-card {
-  display: grid;
-  gap: 8px;
-  margin: 18px 0;
-  text-align: center;
-}
-
-.pay-screen {
-  min-height: 100%;
-  padding: 0;
-  display: flex;
-  align-items: flex-end;
-}
-
-.pay-backdrop {
-  position: absolute;
-  inset: 48px 0 78px;
-  background:
-    radial-gradient(ellipse 90% 40% at 50% 15%, var(--lime-glow), transparent),
-    rgb(0 0 0 / 44%);
-}
-
-.pay-sheet {
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 24px 24px 0 0;
-  background: #101013;
-  padding: 10px 20px 22px;
-  box-shadow: 0 -24px 60px rgb(0 0 0 / 60%);
-}
-
-.sheet-handle {
-  width: 42px;
-  height: 4px;
-  border-radius: 999px;
-  background: #3a3a42;
-  margin: 0 auto 16px;
-}
-
-.pay-sheet h2 {
-  margin: 4px 0 12px;
-  font-size: 20px;
-  font-weight: 500;
-}
-
-.primary-pay {
-  border-color: rgb(183 255 42 / 48%);
-  background: linear-gradient(120deg, #18240d, #14161a 70%);
-}
-
-.pay-card strong {
-  color: var(--orange);
-  font-family: var(--font-inter), var(--font-aura), sans-serif;
-  font-size: 34px;
-  font-weight: 700;
-}
-
-.pay-method {
-  margin-bottom: 9px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 300;
-}
-
-.pay-method span {
-  color: var(--orange);
-  font-family: var(--font-inter), var(--font-aura), sans-serif;
-  font-size: 12px;
 }
 
 .ghost {

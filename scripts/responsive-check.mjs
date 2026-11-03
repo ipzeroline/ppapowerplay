@@ -172,6 +172,7 @@ try {
   const rewardRequests = [];
   const bookingRequests = [];
   const calendarRequests = { bookings: [], blocks: [] };
+  const topupRequests = [];
   const receiptRequests = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -227,6 +228,10 @@ try {
       scanRequests.push(input);
       if (input.token === "invalid") return route.fulfill({ status: 400, json: { message: "QR token ไม่ถูกต้อง" } });
       return route.fulfill({ json: { valid: true, consumed: Boolean(input.consume), qr: { displayName: "Scanner Test", memberCode: "PPA-TEST", purpose: "member", refId: "1" } } });
+    }
+    if (url.pathname === "/api/wallet/topup" && route.request().method() === "POST") {
+      topupRequests.push(route.request().postDataJSON());
+      return route.fulfill({ json: { status: "created", paymentNo: "PAY-TOPUP-UI" } });
     }
     if (url.pathname === "/api/courts/availability" && availabilityDelayMs) await new Promise((resolve) => setTimeout(resolve, availabilityDelayMs));
     if (url.pathname === "/api/bootstrap" && bootstrapDelayMs) await new Promise((resolve) => setTimeout(resolve, bootstrapDelayMs));
@@ -528,6 +533,7 @@ try {
   assert.equal(await page.locator('.booking-row-ui').count(), 0, 'Empty accounts must not see demo bookings');
   await page.locator('.tabbar button').nth(4).click();
   await page.getByRole('button', { name: /ออกจากระบบ/ }).click();
+  await page.getByRole('dialog', { name: 'ออกจากระบบ?' }).getByRole('button', { name: 'ออกจากระบบ', exact: true }).click();
   await page.locator('.line-gate').waitFor();
   assert.equal(await page.locator('.status-member-chip').count(), 0, 'Logout must remove member data from screen');
   emptyMember = false;
@@ -612,8 +618,8 @@ try {
   await page.goto(`${base}/__responsive__/member?screen=home`);
   await page.locator(".home-bubble.reward").click();
   failBootstrap = true;
-  page.once("dialog", (dialog) => void dialog.accept());
   await page.locator(".coin-reward-list").last().locator("button").first().click();
+  await page.getByRole("dialog", { name: "แลกรางวัลนี้?" }).getByRole("button", { name: "แลกรางวัล", exact: true }).click();
   await page.locator(".scan-title").waitFor({ timeout: 5000 });
   failBootstrap = false;
   assert.deepEqual(rewardRequests.map((input) => input.contentId), [501], "one redemption for the reward tapped");
@@ -849,6 +855,58 @@ try {
   availabilityDelayMs = 0;
   await page.locator(".slot-list button:enabled").first().waitFor();
   assert.equal(await page.locator(".slot-skeleton").count(), 0);
+  // Payment: the amount first, each method named, nothing charged before the member confirms.
+  const contentBeforePayment = member.contentItems;
+  member.contentItems = [...packageCatalog, ...launchContent];
+  await page.goto(`${base}/__responsive__/member?screen=plans`);
+  await page.locator(".plan-card-cta").first().click();
+  await page.locator(".pay-page").waitFor();
+  const walletOption = page.locator(".pay-option").filter({ hasText: "จ่ายด้วยเครดิตในแอป" });
+  assert.equal(await walletOption.isDisabled(), true, "credit below the price cannot be chosen");
+  assert.match(await walletOption.innerText(), /เครดิตไม่พอ คงเหลือ 2,000 ฿/, "it says why");
+  assert.equal(await page.locator(".pay-option.recommended").filter({ hasText: "โอนผ่านพร้อมเพย์" }).count(), 1, "the method that can pay is highlighted");
+  assert.match(await page.locator(".pay-total").innerText(), /19,200 ฿/);
+  await page.screenshot({ path: `${outDir}/payment-390.png` });
+  await page.locator(".pay-option").filter({ hasText: "โอนผ่านพร้อมเพย์" }).click();
+  const payConfirm = page.getByRole("dialog", { name: "ยืนยันการชำระเงิน" });
+  await payConfirm.waitFor();
+  assert.match(await payConfirm.innerText(), /Fitness \(12 เดือน\)[\s\S]*19,200 ฿[\s\S]*พร้อมเพย์/, "what, how much and how");
+  await page.screenshot({ path: `${outDir}/payment-confirm-390.png` });
+  await payConfirm.getByRole("button", { name: "ยกเลิก", exact: true }).click();
+  await payConfirm.waitFor({ state: "detached" });
+  assert.equal(await page.locator(".pay-page").count(), 1, "cancel keeps the member on the payment screen");
+  await page.goto(`${base}/__responsive__/member?screen=wallet`);
+  await page.locator(".wallet-actions button").click();
+  await page.locator(".pay-option").filter({ hasText: "โอนผ่านพร้อมเพย์" }).click();
+  await page.getByRole("dialog", { name: "ยืนยันการชำระเงิน" }).getByRole("button", { name: "สร้าง QR ชำระเงิน", exact: true }).click();
+  await page.locator(".pay-qr-image").waitFor();
+  assert.equal(topupRequests.length, 1, "one request after one confirmation");
+  // Booking summary: the total and the confirm button stay on screen.
+  await page.goto(`${base}/__responsive__/member?screen=sports`);
+  await page.locator(".prototype-list button").first().click();
+  await page.locator(".slot-list button:enabled").first().click();
+  await page.locator(".sticky-summary .primary").click();
+  await page.getByRole("button", { name: /ไปหน้าสรุป/ }).click();
+  const confirmBooking = page.getByRole("button", { name: /ยืนยันและชำระเงิน/ });
+  await confirmBooking.waitFor();
+  const confirmBox = await confirmBooking.boundingBox();
+  assert.ok(confirmBox && confirmBox.y + confirmBox.height <= viewports[1].height - 60, "the booking confirmation is on screen without scrolling");
+  assert.match(await page.locator(".summary-total").innerText(), /\d+ ฿/);
+  await page.screenshot({ path: `${outDir}/booking-summary-390.png` });
+  // The confirmation in English and Chinese: nothing left in Thai.
+  for (const [locale, title, cancel] of [["en", "Confirm payment", "Cancel"], ["zh", "确认付款", "取消"]]) {
+    await page.locator(".language-switcher select").selectOption(locale);
+    await page.goto(`${base}/__responsive__/member?screen=wallet`);
+    await page.locator(".wallet-actions button").click();
+    await page.locator(".pay-option").last().click();
+    const translated = page.getByRole("dialog", { name: title });
+    await translated.waitFor();
+    assert.doesNotMatch((await translated.innerText()).replaceAll("฿", ""), /[\u0e00-\u0e7f]/, `${locale}: the payment confirmation is fully translated`);
+    if (locale === "en") await page.screenshot({ path: `${outDir}/payment-confirm-en-390.png` });
+    await translated.getByRole("button", { name: cancel, exact: true }).click();
+  }
+  await page.locator(".language-switcher select").selectOption("th");
+  member.contentItems = contentBeforePayment;
   const live = await context.newPage();
   for (const viewport of [viewports[0], viewports[1], viewports[2], viewports[4], viewports[6]]) {
     await live.setViewportSize(viewport);

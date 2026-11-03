@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { money, Top } from "@/components/member-ui";
+import { money, Top, LoadingNote } from "@/components/member-ui";
 import { localeTag, t } from "@/lib/i18n";
 
 type PromptPayQr = { paymentNo: string; amount: number; itemName?: string | null; qr: string; payee: { name: string; account: string }; slipUploadedAt?: string | null; holdSeconds?: number | null };
@@ -82,11 +82,11 @@ export function PromptPayScreen({ paymentNo, onBack, onDone }: { paymentNo: stri
     <div className="page pay-qr-page">
       <Top title={t("ชำระเงินด้วยพร้อมเพย์")} onBack={onBack} />
       {state.status === "loading" ? (
-        <div className="pay-qr-card pay-qr-loading" role="status">
+        <div className="pay-qr-card pay-qr-loading">
           <i className="sk sk-line" aria-hidden="true" />
           <i className="sk sk-line title" aria-hidden="true" />
           <i className="sk sk-qr pay" aria-hidden="true" />
-          <span className="member-sr-only">{t("กำลังโหลด QR...")}</span>
+          <LoadingNote text={t("กำลังโหลด QR...")} />
         </div>
       ) : null}
       {state.status === "ready" ? (

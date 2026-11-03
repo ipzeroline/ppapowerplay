@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import { Bell, House, Dumbbell, QrCode, CalendarDays, UserRound, ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
+import { Bell, House, Dumbbell, QrCode, CalendarDays, UserRound, ChevronLeft, ChevronRight, Pause, Play, Wallet } from "lucide-react";
 import { safeImageSource } from "@/lib/media";
 import { qrErrorKey } from "@/lib/qr-presentation";
 import { bangkokToday, type AvailabilityStatus } from "@/lib/court-availability";
@@ -10,7 +10,8 @@ import { clearMemberCache, readMemberCache, writeMemberCache } from "@/lib/membe
 import { upcomingBooking, bookingStatusLabel } from "@/lib/booking-presentation";
 import { t, localeTag, localizedContent, courtName } from "@/lib/i18n";
 import { LanguageSwitcher, MemberLocaleSync, useMemberLocale } from "@/components/language-switcher";
-import { Empty, money, SectionTitle, Top } from "@/components/member-ui";
+import { Empty, LoadingNote, money, SectionTitle, Spinner, Top } from "@/components/member-ui";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/member-confirm";
 import { CouponPacks, PackagePlansScreen, type PlanTab, type RenewTab } from "@/components/member-packages";
 import { MyCouponList } from "@/components/member-coupons";
 import { FindYourGameRow, GroupsScreen, type NewGroup } from "@/components/member-groups";
@@ -156,6 +157,8 @@ function MemberApp() {
   const memberKey = useRef("");
   const savedShown = useRef(false);
   const [fromCache, setFromCache] = useState(false);
+  // Important actions ask first (components/member-confirm.tsx).
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [couponStore, setCouponStore] = useState<Coupon[]>([]);
   const [selectedSport, setSelectedSport] = useState<Sport | null>(null);
   const [date, setDate] = useState(today());
@@ -470,8 +473,8 @@ function MemberApp() {
     }
   }
 
-  async function redeemReward(reward: ContentItem, cost: number) {
-    if (busy || !window.confirm(t("ใช้ {{value0}} Coin แลก {{value1}}?", { value0: cost, value1: t(reward.title) }))) return;
+  async function redeemReward(reward: ContentItem) {
+    if (busy) return;
     setBusy(true);
     // A retry of the same reward after an unknown outcome reuses the request id, so it cannot redeem twice.
     const requestId = rewardAttempt.current?.contentId === reward.id ? rewardAttempt.current.requestId : newRequestId();
@@ -494,8 +497,55 @@ function MemberApp() {
     }
   }
 
+  // Payment: item, amount and method before money moves (wallet) or a PromptPay request is made.
+  function askPay(method: "wallet" | "promptpay") {
+    if (busy || (!pendingBooking && !pendingItem)) return;
+    const title = t(pendingBooking?.title || pendingItem?.title || "-");
+    const amount = Number(pendingBooking?.amount ?? pendingItem?.amount ?? 0);
+    const wallet = Number(data?.wallet.balance ?? 0);
+    setConfirmRequest({
+      title: t("ยืนยันการชำระเงิน"),
+      details: [
+        [t("รายการชำระ"), title],
+        [t("ยอดชำระ"), `${money(amount)} ฿`],
+        [t("วิธีชำระ"), method === "wallet" ? t("เครดิตในแอป") : t("พร้อมเพย์")],
+        ...(method === "wallet" ? [[t("คงเหลือหลังชำระ"), `${money(wallet - amount)} ฿`] as [string, string]] : []),
+      ],
+      note: method === "wallet" ? t("ระบบจะหักเครดิตทันทีเมื่อกดยืนยัน") : t("ระบบจะแสดง QR พร้อมเพย์ยอด {{value0}} ฿ ให้สแกนโอน แล้วแนบสลิป", { value0: money(amount) }),
+      confirmLabel: method === "wallet" ? t("ยืนยันชำระ {{value0}} ฿", { value0: money(amount) }) : t("สร้าง QR ชำระเงิน"),
+      cancelLabel: t("ยกเลิก"),
+      onConfirm: () => void pay(method),
+    });
+  }
+
+  function askRedeem(reward: ContentItem, cost: number) {
+    if (busy) return;
+    setConfirmRequest({
+      title: t("แลกรางวัลนี้?"),
+      message: t("ใช้ {{value0}} Coin แลก {{value1}}?", { value0: cost, value1: t(reward.title) }),
+      note: t("แลกแล้วจะได้ QR สำหรับรับรางวัลที่เคาน์เตอร์ ใช้ได้ 30 วัน"),
+      confirmLabel: t("แลกรางวัล"),
+      cancelLabel: t("ยกเลิก"),
+      onConfirm: () => void redeemReward(reward),
+    });
+  }
+
+  function askCancelPending(paymentNo: string) {
+    if (busy) return;
+    const pending = data?.pendingPayments.find((item) => item.paymentNo === paymentNo);
+    setConfirmRequest({
+      title: t("ยกเลิกรายการรอชำระนี้?"),
+      details: pending ? [[t("รายการชำระ"), t(pending.itemName || paymentNo)], [t("ยอดชำระ"), `${money(pending.amount)} ฿`]] : undefined,
+      note: t("ถ้าโอนเงินไปแล้ว อย่ายกเลิก ให้แนบสลิปหรือติดต่อเจ้าหน้าที่"),
+      confirmLabel: t("ยกเลิกรายการ"),
+      cancelLabel: t("เก็บไว้"),
+      danger: true,
+      onConfirm: () => void cancelPending(paymentNo),
+    });
+  }
+
   async function cancelPending(paymentNo: string) {
-    if (busy || !window.confirm(t("ยกเลิกรายการรอชำระนี้?"))) return;
+    if (busy) return;
     setBusy(true);
     try {
       await api("/api/payments/cancel", { method: "POST", body: JSON.stringify({ paymentNo }) });
@@ -600,6 +650,14 @@ function MemberApp() {
   }
 
   const joinGroup = (group: Group) => groupAction(() => api("/api/groups/join", { method: "POST", body: JSON.stringify({ groupId: group.id }) }), "เข้าร่วมก๊วนแล้ว");
+  function askLeaveGroup(group: Group) {
+    setConfirmRequest({ title: t("ออกจากก๊วนนี้?"), message: t(group.name), confirmLabel: t("ออกจากก๊วน"), cancelLabel: t("ยกเลิก"), danger: true, onConfirm: () => void leaveGroup(group) });
+  }
+
+  function askCloseGroup(group: Group) {
+    setConfirmRequest({ title: t("ปิดก๊วนนี้?"), message: t(group.name), note: t("สมาชิกในก๊วนจะเข้าร่วมไม่ได้อีก"), confirmLabel: t("ปิดก๊วน"), cancelLabel: t("ยกเลิก"), danger: true, onConfirm: () => void closeGroup(group) });
+  }
+
   const leaveGroup = (group: Group) => groupAction(() => api("/api/groups/join", { method: "DELETE", body: JSON.stringify({ groupId: group.id }) }), "ออกจากก๊วนแล้ว");
   const closeGroup = (group: Group) => groupAction(() => api(`/api/groups?id=${group.id}`, { method: "DELETE" }), "ปิดก๊วนแล้ว");
 
@@ -617,6 +675,11 @@ function MemberApp() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function askLogout() {
+    if (busy) return;
+    setConfirmRequest({ title: t("ออกจากระบบ?"), message: t("เปิดแอปจากแชต LINE ของ PPA Power Play เพื่อเข้าสู่ระบบอีกครั้ง"), confirmLabel: t("ออกจากระบบ"), cancelLabel: t("ยกเลิก"), danger: true, onConfirm: () => void logout() });
   }
 
   async function logout() {
@@ -699,7 +762,7 @@ function MemberApp() {
   return (
     <main className="phone-wrap">
       <section className="phone">
-        {fromCache ? <div className="member-updating"><span className="member-sr-only" role="status">{t("กำลังอัปเดตข้อมูล")}</span></div> : null}
+        {fromCache ? <div className="member-updating"><p className="member-updating-pill" role="status"><Spinner />{t("กำลังอัปเดตข้อมูล")}</p></div> : null}
         <div className="statusbar">
           <span>PPA</span>
           <LanguageSwitcher />
@@ -815,7 +878,7 @@ function MemberApp() {
                 ))}
               </div>
               {selectedSport && <BookingCalendar key={selectedSport.slug} sport={selectedSport.slug} value={date} revision={availabilityRevision} onChange={(nextDate) => { setSelectedSlot(null); setDate(nextDate); }} />}
-              <div className="slot-toolbar"><span>{new Date(`${date}T00:00:00+07:00`).toLocaleDateString(localeTag(), { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok" })}</span><strong>{slotsLoading ? t("กำลังตรวจสอบ…") : t("{{value0}} ช่วงเวลาว่าง", { value0: selectedSportSlots.filter(([, group]) => group.some((slot) => slot.available)).length })}</strong></div>
+              <div className="slot-toolbar"><span>{new Date(`${date}T00:00:00+07:00`).toLocaleDateString(localeTag(), { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok" })}</span><strong>{slotsLoading ? <><Spinner />{t("กำลังตรวจสอบ…")}</> : t("{{value0}} ช่วงเวลาว่าง", { value0: selectedSportSlots.filter(([, group]) => group.some((slot) => slot.available)).length })}</strong></div>
               {!slotsLoading && slotsResult?.error && <div role="alert" className="calendar-error">{t("โหลดเวลาว่างไม่สำเร็จ")}<button onClick={() => setAvailabilityRevision((value) => value + 1)}>{t("ลองใหม่")}</button></div>}
               <div className="slot-list">
                 {slotsLoading && selectedSport?.requiresBooking ? <SlotSkeleton /> : null}
@@ -858,14 +921,17 @@ function MemberApp() {
           )}
 
           {screen === "summary" && (
-            <div className="page">
+            <div className="page with-sticky-bar">
               <Top title={t("สรุปรายการ")} onBack={() => selectedSport?.requiresBooking ? go("courts") : go("sports")} />
               <Summary sport={selectedSport} slot={selectedSlot} players={players} date={date} />
               <div className="secure-note">
                 <strong>{t("ตรวจสอบก่อนชำระเงิน")}</strong>
                 <small>{t("ระบบจะกันสนามหลังสร้าง booking และ QR จะใช้งานได้เมื่อชำระเงินสำเร็จเท่านั้น")}</small>
               </div>
-              <button className="primary" disabled={busy || (Boolean(selectedSport?.requiresBooking) && (!selectedSlot || slotsLoading))} onClick={createBooking}>{t("🔐 ยืนยันและชำระเงิน")}</button>
+              <div className="sticky-summary summary-actions">
+                <div className="summary-total"><span>{t("ยอดชำระ")}</span><b>{money(selectedSlot?.rate ?? selectedSport?.baseRate ?? 0)} ฿</b></div>
+                <button className="primary" disabled={busy || (Boolean(selectedSport?.requiresBooking) && (!selectedSlot || slotsLoading))} onClick={createBooking}>{busy ? <><Spinner />{t("กำลังดำเนินการ…")}</> : t("ยืนยันและชำระเงิน")}</button>
+              </div>
             </div>
           )}
 
@@ -876,7 +942,7 @@ function MemberApp() {
               item={pendingItem}
               wallet={data.wallet.balance}
               onBack={() => go(pendingItem?.back || "summary")}
-              onPay={pay}
+              onPay={askPay}
             />
           )}
 
@@ -948,7 +1014,7 @@ function MemberApp() {
             <div className="page">
               <Top title={t("กระเป๋าเงิน")} onBack={() => go("profile")} />
               <BigBalance label={t("ยอดเงินคงเหลือ")} value={`${money(data.wallet.balance)}`} unit="฿" />
-              <WalletPanel coinBalance={data.wallet.coinBalance} pointBalance={data.wallet.pointBalance} ledger={data.walletLedger} pending={data.pendingPayments} promptPayEnabled={data.promptPayEnabled ?? true} busy={busy} onTopup={topup} onPayPending={(paymentNo) => { setPromptPayNo(paymentNo); go("paypromptpay"); }} onCancelPending={cancelPending} />
+              <WalletPanel coinBalance={data.wallet.coinBalance} pointBalance={data.wallet.pointBalance} ledger={data.walletLedger} pending={data.pendingPayments} promptPayEnabled={data.promptPayEnabled ?? true} busy={busy} onTopup={topup} onPayPending={(paymentNo) => { setPromptPayNo(paymentNo); go("paypromptpay"); }} onCancelPending={askCancelPending} />
             </div>
           )}
 
@@ -993,7 +1059,7 @@ function MemberApp() {
               myRewards={data.entitlements.filter((item) => item.entitlementType === "reward")}
               busy={busy}
               onBack={() => go("home")}
-              onRedeem={redeemReward}
+              onRedeem={askRedeem}
               onOpenQr={(right) => { setPendingBooking(null); setAccessQr({ purpose: "entitlement", entitlementId: right.id, title: right.title }); go("scan"); }}
             />
           )}
@@ -1180,7 +1246,7 @@ function MemberApp() {
           )}
 
           {screen === "groups" && (
-            <GroupsScreen groups={data.groups} sports={data.sports} now={now} busy={busy} onBack={() => go("home")} onCreate={createGroup} onJoin={joinGroup} onLeave={leaveGroup} onClose={closeGroup} />
+            <GroupsScreen groups={data.groups} sports={data.sports} now={now} busy={busy} onBack={() => go("home")} onCreate={createGroup} onJoin={joinGroup} onLeave={askLeaveGroup} onClose={askCloseGroup} />
           )}
 
           {screen === "notifications" && (
@@ -1260,7 +1326,7 @@ function MemberApp() {
                 <MenuItem icon="🎓" title={t("คู่มือการใช้งาน")} meta={t("Buffet Rank · ก๊วน · เหรียญ")} onClick={() => setTutorial(1)} />
                 <MenuItem icon="🔔" title={t("การแจ้งเตือน")} onClick={() => go("notifications")} />
                 <MenuItem icon="❓" title={t("ช่วยเหลือ & ติดต่อเรา")} onClick={() => go("help")} />
-                <MenuItem icon="🚪" title={t("ออกจากระบบ")} onClick={logout} />
+                <MenuItem icon="🚪" title={t("ออกจากระบบ")} onClick={askLogout} />
               </div>
             </div>
           )}
@@ -1319,6 +1385,7 @@ function MemberApp() {
             </button>
           ))}
         </nav>
+        {confirmRequest && <ConfirmDialog request={confirmRequest} onClose={() => setConfirmRequest(null)} />}
         {cancelTarget && <AdminDialog onClose={() => { if (!busy) setCancelTarget(null); }}><section className="member-confirm"><h2>{t("ยกเลิกการจองนี้?")}</h2><p>{t(cancelTarget.title)}</p><small>{t("รายการที่ชำระแล้ว กรุณาติดต่อเจ้าหน้าที่เพื่อตรวจสอบเงื่อนไขการคืนเงิน")}</small><div><button className="ghost" disabled={busy} onClick={() => setCancelTarget(null)}>{t("เก็บการจองไว้")}</button><button className="danger-action" disabled={busy} onClick={() => cancelBooking(cancelTarget)}>{busy ? t("กำลังยกเลิก…") : t("ยืนยันยกเลิก")}</button></div></section></AdminDialog>}
         {tutorial > 0 && <Tutorial step={tutorial} onNext={() => setTutorial(tutorial >= 4 ? 0 : tutorial + 1)} onSkip={() => setTutorial(0)} />}
         {policy && (consentDue || policyOpen) ? <PrivacyPolicyDialog policy={policy} contact={contact} busy={busy} onAccept={consentDue ? acceptPolicy : undefined} onClose={consentDue ? undefined : () => setPolicyOpen(false)} /> : null}
@@ -1366,7 +1433,7 @@ function MemberLoading() {
           <i className="sk sk-line" />
           <div className="sk-row"><i className="sk sk-card game" /><i className="sk sk-card game" /><i className="sk sk-card game" /></div>
         </div>
-        <span className="member-sr-only" role="status">{t("กำลังโหลดข้อมูลสมาชิก")}</span>
+        <LoadingNote className="member-loading-status" text={t("กำลังโหลดข้อมูลสมาชิก")} />
         <nav className="tabbar member-loading-tabs" aria-hidden="true">
           {tabs.map(([id, icon, label]) => <span className={id === "home" ? "on" : ""} key={id}><TabBarIcon name={icon} /><span>{t(label)}</span></span>)}
         </nav>
@@ -1661,18 +1728,33 @@ function PaymentScreen({
 }) {
   const title = booking?.title || item?.title || "-";
   const amount = Number(booking?.amount ?? item?.amount ?? 0);
+  const walletAllowed = item?.save !== "topup";
+  const walletEnough = wallet >= amount;
+  // The method that can pay now is the highlighted one: credit when it covers the amount.
+  const recommended = walletAllowed && walletEnough ? "wallet" : "promptpay";
   return (
-    <div className="page pay-screen">
-      <div className="pay-backdrop" />
-      <div className="pay-sheet">
-        <div className="sheet-handle" />
-        <span className="eyebrow">{t("CONFIRM PAYMENT")}</span>
-        <h2>{t("ยืนยันการชำระเงิน")}</h2>
-        <div className="pay-card"><span>🧾 {t(title)}</span><strong>{money(amount)} ฿</strong><small>{booking ? `Booking: ${bookingNo(booking)}` : t("PPA secure checkout")}</small></div>
-        {item?.save !== "topup" && <button className="pay-method primary-pay" onClick={() => onPay("wallet")} disabled={busy || wallet < amount}>{t("👛 จ่ายด้วย Wallet")} <span>{money(wallet)} ฿</span></button>}
-        <button className="pay-method" onClick={() => onPay("promptpay")} disabled={busy}>{t("payment.manual.request")} <span>{t("ยืนยันหลังชำระ")}</span></button>
-        <button className="ghost" onClick={onBack} disabled={busy}>{t("‹ ย้อนกลับ")}</button>
-      </div>
+    <div className="page pay-page">
+      <Top title={t("ชำระเงิน")} onBack={busy ? undefined : onBack} />
+      <section className="pay-summary">
+        <span>{t("รายการชำระ")}</span>
+        <strong>{t(title)}</strong>
+        {booking ? <small>{t("เลขที่การจอง {{value0}}", { value0: bookingNo(booking) })}</small> : null}
+        <div className="pay-total"><span>{t("ยอดชำระ")}</span><b>{money(amount)} ฿</b></div>
+      </section>
+      <h3 className="pay-heading">{t("เลือกวิธีชำระเงิน")}</h3>
+      {walletAllowed ? (
+        <button type="button" className={recommended === "wallet" ? "pay-option recommended" : "pay-option"} disabled={busy || !walletEnough} onClick={() => onPay("wallet")}>
+          <span className="pay-option-icon"><Wallet aria-hidden="true" /></span>
+          <span className="pay-option-text"><b>{t("จ่ายด้วยเครดิตในแอป")}</b><small>{walletEnough ? t("คงเหลือ {{value0}} ฿", { value0: money(wallet) }) : t("เครดิตไม่พอ คงเหลือ {{value0}} ฿", { value0: money(wallet) })}</small></span>
+          <ChevronRight className="pay-option-go" aria-hidden="true" />
+        </button>
+      ) : null}
+      <button type="button" className={recommended === "promptpay" ? "pay-option recommended" : "pay-option"} disabled={busy} onClick={() => onPay("promptpay")}>
+        <span className="pay-option-icon"><QrCode aria-hidden="true" /></span>
+        <span className="pay-option-text"><b>{t("โอนผ่านพร้อมเพย์")}</b><small>{t("สแกน QR แล้วแนบสลิป เจ้าหน้าที่ยืนยันให้")}</small></span>
+        <ChevronRight className="pay-option-go" aria-hidden="true" />
+      </button>
+      {busy ? <LoadingNote text={t("กำลังดำเนินการ…")} /> : <p className="pay-hint">{t("กดเลือกวิธีชำระ ระบบจะให้ตรวจสอบยอดอีกครั้งก่อนยืนยัน")}</p>}
     </div>
   );
 }
@@ -1739,7 +1821,7 @@ function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; b
           qrError ? (
             <div role="status"><p>{t(qrError)}</p><button className="ghost" onClick={() => setRevision((value) => value + 1)}>{t("ลองใหม่")}</button></div>
           ) : (
-            <div role="status"><i className="sk sk-qr" aria-hidden="true" /><span className="member-sr-only">{t("กำลังโหลด QR...")}</span></div>
+            <div><i className="sk sk-qr" aria-hidden="true" /><LoadingNote text={t("กำลังโหลด QR...")} /></div>
           )
         )}
       </div>

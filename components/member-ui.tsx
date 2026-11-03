@@ -1,5 +1,5 @@
 "use client";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, LoaderCircle } from "lucide-react";
 import { localeTag, t } from "@/lib/i18n";
 
 // Small presentational pieces shared by the member app screens.
@@ -77,4 +77,13 @@ export function SectionTitle({ title, action, onClick, icon }: { title: string; 
 
 export function Empty({ text }: { text: string }) {
   return <div className="empty small">∅ {t(text)}</div>;
+}
+
+// Loading in words with an icon: "กำลังโหลด…" next to a turning circle (still when motion is reduced).
+export function Spinner() {
+  return <LoaderCircle className="member-spinner" aria-hidden="true" />;
+}
+
+export function LoadingNote({ text, className = "" }: { text: string; className?: string }) {
+  return <p className={`member-loading-note ${className}`.trim()} role="status"><Spinner />{text}</p>;
 }

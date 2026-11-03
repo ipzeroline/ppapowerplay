@@ -432,3 +432,22 @@ No migration. What members see while the app loads:
 
 The privacy policy may mention that the app keeps the member's last data on their phone for up to
 24 hours to open faster.
+
+### Update 2026-11-03 (b): clear buttons, confirmations, loading text, languages
+
+No migration.
+
+- **Loading says so:** a turning icon with "กำลังโหลดข้อมูลสมาชิก" on first open, "กำลังอัปเดตข้อมูล"
+  when saved data refreshes, "กำลังโหลดวันว่าง" on the booking calendar, "กำลังโหลด QR..." for both
+  QR codes, and "กำลังดำเนินการ…" on booking and payment buttons while they work.
+- **Payment screen:** the item and amount first, then one button per method: "จ่ายด้วยเครดิตในแอป"
+  (shows the balance, or "เครดิตไม่พอ" when it does not cover the amount) and "โอนผ่านพร้อมเพย์". The
+  method that can pay is highlighted. The booking summary keeps the total and "ยืนยันและชำระเงิน" on
+  screen above the tab bar.
+- **Confirmations (in the app, not the browser box):** paying (item, amount, method, balance after),
+  redeeming a reward, cancelling a payment request, leaving or closing a group, and logging out.
+  Cancelling a booking already asked first.
+- **Languages:** every member screen string and every message a member API can return has English
+  and Chinese (13 server messages were Thai only, such as "ยอดเงินใน Wallet ไม่พอ"). Tests now fail if
+  a new untranslated string appears. Still Thai only: text the club enters (booking titles with Thai
+  sport names, package names without translations in App Content) and in-app notification bodies.

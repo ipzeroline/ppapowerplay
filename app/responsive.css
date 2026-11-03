@@ -346,7 +346,6 @@ html, body {
   inset: 0 0 auto;
   z-index: 6;
   height: 2px;
-  overflow: hidden;
   background: var(--lime-soft);
   pointer-events: none;
 }
@@ -498,4 +497,311 @@ html, body {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* ---------- Loading in words, confirmations, payment (member app) ---------- */
+
+.member-spinner {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .member-spinner {
+    animation: member-spin 0.9s linear infinite;
+  }
+}
+
+@keyframes member-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.member-loading-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.member-loading-note .member-spinner {
+  color: var(--orange);
+}
+
+/* First open: the note sits over the skeleton, in the middle of the screen. */
+.member-loading-status {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  z-index: 3;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  padding: 10px 18px;
+  color: var(--text);
+  font-size: 14px;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
+}
+
+/* Reopen: saved data on screen, a small note under the status bar while it refreshes. */
+.member-updating-pill {
+  position: absolute;
+  top: 54px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgb(20 20 23 / 96%);
+  padding: 6px 12px;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 40%);
+}
+
+.member-updating-pill .member-spinner {
+  flex-basis: 14px;
+  width: 14px;
+  height: 14px;
+  color: var(--orange);
+}
+
+.calendar-loading {
+  margin: 4px 0 10px;
+}
+
+.slot-toolbar strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Confirmation dialog details: what, how much, how. */
+.confirm-details {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card-2);
+  padding: 12px 14px;
+}
+
+.confirm-details div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.confirm-details dt {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.confirm-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+  text-align: right;
+}
+
+.member-confirm .primary,
+.member-confirm .danger-action {
+  font-weight: 600;
+}
+
+/* Payment: the amount first, then each method as one clear button. */
+.pay-page {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.pay-summary {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  padding: 16px;
+}
+
+.pay-summary > span,
+.pay-summary > small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pay-summary > strong {
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pay-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.pay-total span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pay-total b {
+  color: var(--orange);
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.pay-heading {
+  margin: 6px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pay-option {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 68px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 12px 14px;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pay-option.recommended {
+  border-color: var(--orange);
+  background: var(--orange);
+  color: #11180c;
+}
+
+.pay-option-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--card-2);
+}
+
+.pay-option.recommended .pay-option-icon {
+  background: rgb(17 24 12 / 12%);
+}
+
+.pay-option-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.pay-option-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pay-option-text b {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pay-option-text small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pay-option.recommended .pay-option-text small {
+  color: rgb(17 24 12 / 78%);
+}
+
+.pay-option-go {
+  width: 18px;
+  height: 18px;
+  opacity: 0.7;
+}
+
+.pay-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.pay-option:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.pay-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* Booking summary: the total and the confirm button stay on screen above the tab bar. */
+.with-sticky-bar {
+  padding-bottom: 150px;
+}
+
+.summary-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.summary-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summary-total span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.summary-total b {
+  color: var(--orange);
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.summary-actions .primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 600;
 }

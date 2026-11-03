@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { bangkokToday, datesInMonth, type CalendarDay } from "@/lib/court-availability";
 import { t, localeTag } from "@/lib/i18n";
 import { useMemberLocale } from "@/components/language-switcher";
+import { LoadingNote } from "@/components/member-ui";
 
 const labels = { available: "ว่าง", full: "เต็ม", past: "ผ่านแล้ว", closed: "ปิด" };
 
@@ -47,6 +48,7 @@ export function BookingCalendar({ sport, value, onChange, revision }: { sport: s
         <strong aria-live="polite">{new Date(`${month}-01T00:00:00+07:00`).toLocaleDateString(localeTag(), { month: "long", year: "numeric", timeZone: "Asia/Bangkok" })}</strong>
         <button type="button" title={t("เดือนถัดไป")} aria-label={t("เดือนถัดไป")} disabled={month === "9999-12"} onClick={() => moveMonth(1)}>›</button>
       </div>
+      {loading ? <LoadingNote className="calendar-loading" text={t("กำลังโหลดวันว่าง")} /> : null}
       <div className="booking-calendar-grid">
         {[t("อา"), t("จ"), t("อ"), t("พ"), t("พฤ"), t("ศ"), t("ส")].map((day) => <span className="calendar-weekday" key={day}>{day}</span>)}
         {Array.from({ length: new Date(`${month}-01T00:00:00Z`).getUTCDay() }, (_, i) => <span key={`empty-${i}`} />)}
