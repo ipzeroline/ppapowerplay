@@ -6,6 +6,7 @@ import { qrErrorKey } from "@/lib/qr-presentation";
 import { bangkokToday, type AvailabilityStatus } from "@/lib/court-availability";
 import { BookingCalendar } from "@/components/booking-calendar";
 import { AdminDialog } from "@/components/admin-dialog";
+import { clearMemberCache, readMemberCache, writeMemberCache } from "@/lib/member-cache";
 import { upcomingBooking, bookingStatusLabel } from "@/lib/booking-presentation";
 import { t, localeTag, localizedContent, courtName } from "@/lib/i18n";
 import { LanguageSwitcher, MemberLocaleSync, useMemberLocale } from "@/components/language-switcher";
@@ -27,7 +28,7 @@ import type { Booking, Bootstrap, ContentItem, Coupon, Group, Screen, Sport, Tra
 
 import liff from "@line/liff";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ComponentProps } from "react";
 
 type Slot = {
   courtId: number;
@@ -151,6 +152,10 @@ function MemberApp() {
   const [lineBlocked, setLineBlocked] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [data, setData] = useState<Bootstrap | null>(null);
+  // Last data of this LINE account, shown at once on reopen while fresh data loads (lib/member-cache).
+  const memberKey = useRef("");
+  const savedShown = useRef(false);
+  const [fromCache, setFromCache] = useState(false);
   const [couponStore, setCouponStore] = useState<Coupon[]>([]);
   const [selectedSport, setSelectedSport] = useState<Sport | null>(null);
   const [date, setDate] = useState(today());
@@ -190,11 +195,15 @@ function MemberApp() {
   const [bookingTab, setBookingTab] = useState<"up" | "his">("up");
 
   const requireLine = process.env.NEXT_PUBLIC_REQUIRE_LINE === "true" || process.env.NODE_ENV === "production";
+  // Startup steps that use the latest state without restarting the effects below.
+  const onSignedIn = useEffectEvent((member: string) => showSaved(member));
+  const onLineReady = useEffectEvent(() => Promise.all([refresh(), loadCoupons()]));
 
   useEffect(() => {
     async function bootLine() {
       if (!process.env.NEXT_PUBLIC_LINE_LIFF_ID) {
         if (requireLine) setLineBlocked(true);
+        else onSignedIn("local");
         setLineReady(true);
         return;
       }
@@ -207,11 +216,12 @@ function MemberApp() {
         liff.login();
         return;
       }
-      const idToken = liff.getIDToken();
-      if (idToken) await api("/api/auth/line", { method: "POST", body: JSON.stringify({ idToken }) });
       // liff.init() may rewrite the URL from liff.state; open the rich-menu screen it carries.
       const deepLink = screenFromSearch(window.location.search, richMenuScreens) as Screen | null;
       if (deepLink) setScreen(deepLink);
+      onSignedIn(liff.getDecodedIDToken()?.sub || "");
+      const idToken = liff.getIDToken();
+      if (idToken) await api("/api/auth/line", { method: "POST", body: JSON.stringify({ idToken }) });
       setLineReady(true);
     }
     bootLine().catch(() => { setLineBlocked(requireLine); setLineReady(true); });
@@ -219,12 +229,15 @@ function MemberApp() {
 
   useEffect(() => {
     if (!lineReady) return;
-    Promise.all([refresh(), loadCoupons()]).catch((error) => {
+    onLineReady().catch((error) => {
       if ((error as Error & { status?: number }).status === 401 && requireLine) {
+        clearMemberCache();
         setLineBlocked(true);
         return;
       }
-      notice((error as Error).message);
+      notice(savedShown.current ? "ยังอัปเดตข้อมูลไม่ได้ กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้" : (error as Error).message);
+      savedShown.current = false;
+      setFromCache(false);
       setLoadError(true);
     });
   }, [lineReady, requireLine]);
@@ -312,9 +325,26 @@ function MemberApp() {
       sports: [], bookings: [], coupons: [], expiredCoupons: [], trainers: [], groups: [], notifications: [], contentItems: [], memberships: [], membershipPauses: [], entitlements: [], pendingPayments: [], walletLedger: [], visits: [],
       ...loaded,
     };
+    applyData(next);
+    savedShown.current = false;
+    setFromCache(false);
+    writeMemberCache(memberKey.current, next);
+  }
+
+  function applyData(next: Bootstrap) {
     setData(next);
     setSelectedTrainer((current) => current || next.trainers[0] || null);
     setSelectedSport((current) => current || next.sports.find((s) => s.requiresBooking) || next.sports[0] || null);
+  }
+
+  // Same LINE account as the saved data: show it now; refresh() replaces it in a moment.
+  function showSaved(member: string) {
+    memberKey.current = member;
+    const saved = readMemberCache<Bootstrap>(member);
+    if (!saved?.user || !saved.wallet) return;
+    applyData(saved);
+    savedShown.current = true;
+    setFromCache(true);
   }
 
   async function loadCoupons() {
@@ -594,6 +624,10 @@ function MemberApp() {
     setBusy(true);
     try {
       await api("/api/auth/line", { method: "DELETE" });
+      clearMemberCache();
+      memberKey.current = "";
+      savedShown.current = false;
+      setFromCache(false);
       setLineBlocked(true);
       setData(null);
       setPendingBooking(null);
@@ -638,16 +672,15 @@ function MemberApp() {
     }
   }
 
-  if (lineBlocked || (requireLine && !lineReady)) {
-    return (
-      <LineGate blocked={lineBlocked} liffId={process.env.NEXT_PUBLIC_LINE_LIFF_ID || ""} />
-    );
+  if (lineBlocked) {
+    return <LineGate blocked liffId={process.env.NEXT_PUBLIC_LINE_LIFF_ID || ""} />;
   }
 
   if (!data) {
+    if (!loadError) return <MemberLoading />;
     return (
       <main className="phone-wrap">
-        <LineGate embedded error={loadError} onRetry={() => { setLoadError(false); refresh().catch(() => setLoadError(true)); }} />
+        <LineGate embedded error onRetry={() => { setLoadError(false); refresh().catch(() => setLoadError(true)); }} />
       </main>
     );
   }
@@ -666,6 +699,7 @@ function MemberApp() {
   return (
     <main className="phone-wrap">
       <section className="phone">
+        {fromCache ? <div className="member-updating"><span className="member-sr-only" role="status">{t("กำลังอัปเดตข้อมูล")}</span></div> : null}
         <div className="statusbar">
           <span>PPA</span>
           <LanguageSwitcher />
@@ -784,6 +818,7 @@ function MemberApp() {
               <div className="slot-toolbar"><span>{new Date(`${date}T00:00:00+07:00`).toLocaleDateString(localeTag(), { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok" })}</span><strong>{slotsLoading ? t("กำลังตรวจสอบ…") : t("{{value0}} ช่วงเวลาว่าง", { value0: selectedSportSlots.filter(([, group]) => group.some((slot) => slot.available)).length })}</strong></div>
               {!slotsLoading && slotsResult?.error && <div role="alert" className="calendar-error">{t("โหลดเวลาว่างไม่สำเร็จ")}<button onClick={() => setAvailabilityRevision((value) => value + 1)}>{t("ลองใหม่")}</button></div>}
               <div className="slot-list">
+                {slotsLoading && selectedSport?.requiresBooking ? <SlotSkeleton /> : null}
                 {selectedSportSlots.map(([time, group]) => (
                   <article key={time}>
                     <strong>{time}</strong>
@@ -1293,45 +1328,64 @@ function MemberApp() {
   );
 }
 
+// Opened outside LINE, or the first load failed: one calm page with the one action that helps.
 function LineGate({ blocked = false, embedded = false, liffId = "", error = false, onRetry }: { blocked?: boolean; embedded?: boolean; liffId?: string; error?: boolean; onRetry?: () => void }) {
   const openUrl = liffId ? `https://liff.line.me/${liffId}` : "";
   return (
     <main className={embedded ? "phone line-gate embedded" : "line-gate"}>
       <div className="gate-language"><LanguageSwitcher /></div>
-      <div className="gate-grid" />
-      <div className="gate-glow one" />
-      <div className="gate-glow two" />
-      <section className="gate-panel">
-        <div className="gate-mark">
-          <div className="gate-rings">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="gate-logo">PPA<span>.</span></div>
-        </div>
-        <div className="gate-copy">
-          <span className="gate-kicker">{blocked ? t("LINE SECURE ACCESS") : t("SPORT COMPLEX LOADING")}</span>
-          <h1>{error ? t("โหลดข้อมูลไม่สำเร็จ") : blocked ? t("เปิดผ่าน LINE เพื่อเข้าสู่ระบบสมาชิก") : t("กำลังเตรียมสนามและข้อมูลสมาชิก")}</h1>
-          <p>
-            {blocked
-              ? t("ยืนยันตัวตนด้วย LINE LIFF เพื่อเรียกข้อมูลเดิมของสมาชิกอย่างปลอดภัย แม้เปลี่ยนเครื่องก็ใช้บัญชีเดิมได้")
-              : t("เชื่อมต่อโปรไฟล์ Wallet การจอง และสิทธิพิเศษของคุณแบบปลอดภัย")}
-          </p>
-        </div>
-        <div className="gate-status">
-          <div><b>LINE</b><small>{blocked ? t("Required") : t("Verifying")}</small></div>
-          <div><b>{t("MEMBER")}</b><small>{blocked ? t("Protected") : t("Syncing")}</small></div>
-          <div><b>{t("DATA")}</b><small>{blocked ? t("Safe") : t("Loading")}</small></div>
-        </div>
-        {!error && <div className="gate-progress"><span /></div>}
-        <div className="gate-actions">
-          {error ? <button type="button" className="primary" onClick={onRetry}>{t("ลองอีกครั้ง")}</button> : null}
-          {blocked && openUrl ? <a href={openUrl}>{t("เปิดใน LINE")}</a> : null}
-          <small>{blocked ? t("หากเปิดจาก Rich Menu แล้วยังเห็นหน้านี้ ให้ปิดหน้านี้แล้วเปิดจากแชต LINE OA อีกครั้ง") : t("Secure member access in progress")}</small>
-        </div>
+      <section className="member-gate">
+        <div className="member-gate-logo">PPA<span>.</span></div>
+        <h1>{error ? t("โหลดข้อมูลไม่สำเร็จ") : t("เปิดผ่าน LINE เพื่อเข้าสู่ระบบสมาชิก")}</h1>
+        <p>{error ? t("ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต แล้วลองอีกครั้ง") : t("แอปสมาชิกเปิดจากแชต LINE ของ PPA Power Play เพื่อยืนยันตัวตนและแสดงข้อมูลของคุณ")}</p>
+        {error ? <button type="button" className="primary" onClick={onRetry}>{t("ลองอีกครั้ง")}</button> : null}
+        {blocked && openUrl ? <a className="primary" href={openUrl}>{t("เปิดใน LINE")}</a> : null}
+        {blocked ? <small>{t("ถ้าเปิดจากเมนูในแชตแล้วยังเห็นหน้านี้ ให้ปิดหน้านี้แล้วเปิดจากแชต PPA Power Play อีกครั้ง")}</small> : null}
       </section>
     </main>
+  );
+}
+
+// First open, while LINE signs the member in and their data loads: the app frame (status bar and
+// tab bar) with blocks shaped like the home screen. The status is announced once, nothing spins.
+function MemberLoading() {
+  return (
+    <main className="phone-wrap">
+      <section className="phone member-loading" aria-busy="true">
+        <div className="statusbar">
+          <span>PPA</span>
+          <LanguageSwitcher />
+          <i className="sk sk-chip" aria-hidden="true" />
+        </div>
+        <div className="member-loading-body" aria-hidden="true">
+          <i className="sk sk-line" />
+          <i className="sk sk-line title" />
+          <i className="sk sk-card member" />
+          <i className="sk sk-card slide" />
+          <div className="sk-row"><i className="sk sk-tile" /><i className="sk sk-tile" /><i className="sk sk-tile" /></div>
+          <i className="sk sk-line" />
+          <div className="sk-row"><i className="sk sk-card game" /><i className="sk sk-card game" /><i className="sk sk-card game" /></div>
+        </div>
+        <span className="member-sr-only" role="status">{t("กำลังโหลดข้อมูลสมาชิก")}</span>
+        <nav className="tabbar member-loading-tabs" aria-hidden="true">
+          {tabs.map(([id, icon, label]) => <span className={id === "home" ? "on" : ""} key={id}><TabBarIcon name={icon} /><span>{t(label)}</span></span>)}
+        </nav>
+      </section>
+    </main>
+  );
+}
+
+// Court times while availability loads: rows shaped like the real list, three courts each.
+function SlotSkeleton() {
+  return (
+    <>
+      {[0, 1, 2].map((row) => (
+        <article className="slot-skeleton" key={row} aria-hidden="true">
+          <i className="sk sk-time" />
+          <div><i className="sk sk-slot" /><i className="sk sk-slot" /><i className="sk sk-slot" /></div>
+        </article>
+      ))}
+    </>
   );
 }
 
@@ -1682,7 +1736,11 @@ function ScanScreen({ data, booking, accessQr, onCheckin }: { data: Bootstrap; b
         {currentQr?.svg ? (
           <Image unoptimized width={220} height={220} alt={t("QR เข้าใช้บริการ")} className="qr-svg" src={`data:image/svg+xml,${encodeURIComponent(currentQr.svg)}`} />
         ) : (
-          <div role="status"><p>{qrError ? t(qrError) : t("กำลังโหลด QR...")}</p>{qrError && <button className="ghost" onClick={() => setRevision((value) => value + 1)}>{t("ลองใหม่")}</button>}</div>
+          qrError ? (
+            <div role="status"><p>{t(qrError)}</p><button className="ghost" onClick={() => setRevision((value) => value + 1)}>{t("ลองใหม่")}</button></div>
+          ) : (
+            <div role="status"><i className="sk sk-qr" aria-hidden="true" /><span className="member-sr-only">{t("กำลังโหลด QR...")}</span></div>
+          )
         )}
       </div>
       <h2>{bookingCode || data.user.memberCode}</h2>

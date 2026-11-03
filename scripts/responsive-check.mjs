@@ -151,8 +151,14 @@ const browser = await chromium.launch({ channel: "chrome", headless: true });
 const results = [];
 try {
   const context = await browser.newContext({ reducedMotion: "reduce" });
+  // Every check starts without saved member data, except the reopen check (?keepcache=1).
+  await context.addInitScript(() => {
+    if (!location.search.includes("keepcache")) try { localStorage.removeItem("ppa_member_cache_v1"); } catch { /* blocked storage */ }
+  });
   const page = await context.newPage();
   let failBootstrap = false;
+  let bootstrapDelayMs = 0;
+  let availabilityDelayMs = 0;
   let failAvailability = false;
   let emptyMember = false;
   let consentDue = false;
@@ -173,7 +179,7 @@ try {
     if (route.request().url().endsWith("bundle.js")) return route.fulfill({ contentType: "text/javascript", body: js });
     return route.fulfill({ contentType: "text/html", body: `<!doctype html><html lang="th" class="${fontClass}"><head><meta name="viewport" content="width=device-width,initial-scale=1">${/\/__responsive__\/(admin|receipt)/.test(route.request().url()) ? adminStyles : styles}</head><body><div id="root"></div><script src="/__responsive__/bundle.js"></script></body></html>` });
   });
-  await page.route("**/api/**", (route) => {
+  await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/admin/receipts" && route.request().method() === "POST") {
       receiptRequests.push(route.request().postDataJSON());
@@ -222,6 +228,8 @@ try {
       if (input.token === "invalid") return route.fulfill({ status: 400, json: { message: "QR token ไม่ถูกต้อง" } });
       return route.fulfill({ json: { valid: true, consumed: Boolean(input.consume), qr: { displayName: "Scanner Test", memberCode: "PPA-TEST", purpose: "member", refId: "1" } } });
     }
+    if (url.pathname === "/api/courts/availability" && availabilityDelayMs) await new Promise((resolve) => setTimeout(resolve, availabilityDelayMs));
+    if (url.pathname === "/api/bootstrap" && bootstrapDelayMs) await new Promise((resolve) => setTimeout(resolve, bootstrapDelayMs));
     if (url.pathname === "/api/bootstrap") return failBootstrap ? route.fulfill({ status: 503, json: { message: "Service unavailable" } }) : route.fulfill({ json: { ...(emptyMember ? { ...member, bookings: [], memberships: [] } : member), ...(consentDue ? { consent: { acceptedAt: null, version: null } } : {}) } });
     if (url.pathname === "/api/payments/promptpay") {
       if (promptPayMode === "expired") return route.fulfill({ status: 409, json: { code: "BOOKING_EXPIRED", message: "หมดเวลาชำระของการจองนี้แล้ว" } });
@@ -802,9 +810,45 @@ try {
   failBootstrap = true;
   await page.goto(`${base}/__responsive__/member?screen=home`);
   await page.getByRole("heading", { name: "โหลดข้อมูลไม่สำเร็จ" }).waitFor();
+  await page.screenshot({ path: `${outDir}/member-load-error-390.png` });
   failBootstrap = false;
   await page.getByRole("button", { name: "ลองอีกครั้ง" }).click();
   await page.locator(".phone > .content").waitFor();
+  // First open: the app frame with skeleton blocks, then the member's data. Reopen: the saved data at
+  // once with a thin line while it refreshes, and the saved data kept when the refresh fails.
+  await page.setViewportSize(viewports[1]);
+  await page.evaluate(() => localStorage.removeItem("ppa_member_cache_v1"));
+  bootstrapDelayMs = 1500;
+  await page.goto(`${base}/__responsive__/member?screen=home&keepcache=1`);
+  await page.locator(".member-loading").waitFor();
+  assert.equal(await page.locator(".phone > .content").count(), 0, "nothing interactive before the data arrives");
+  assert.equal(await page.getByRole("status").filter({ hasText: "กำลังโหลดข้อมูลสมาชิก" }).count(), 1, "the loading state is announced once");
+  await page.screenshot({ path: `${outDir}/member-loading-390.png` });
+  await page.locator(".phone > .content").waitFor();
+  await page.goto(`${base}/__responsive__/member?screen=home&keepcache=1`);
+  await page.locator(".phone > .content").waitFor({ timeout: 1000 });
+  assert.equal(await page.locator(".member-loading").count(), 0, "a reopen shows the saved data at once");
+  await page.locator(".member-updating").waitFor();
+  await page.screenshot({ path: `${outDir}/member-reopen-390.png` });
+  await page.locator(".member-updating").waitFor({ state: "detached" });
+  bootstrapDelayMs = 0;
+  failBootstrap = true;
+  await page.goto(`${base}/__responsive__/member?screen=home&keepcache=1`);
+  await page.getByText("ยังอัปเดตข้อมูลไม่ได้ กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("heading", { name: "โหลดข้อมูลไม่สำเร็จ" }).count(), 0, "saved data stays on screen when the refresh fails");
+  failBootstrap = false;
+  await page.evaluate(() => localStorage.removeItem("ppa_member_cache_v1"));
+  // Court times and calendar days show skeletons while availability loads.
+  availabilityDelayMs = 2000;
+  await page.goto(`${base}/__responsive__/member?screen=sports`);
+  await page.locator(".prototype-list button").first().click();
+  await page.locator(".slot-skeleton").first().waitFor();
+  assert.equal(await page.locator(".slot-list button").count(), 0, "no court can be chosen before its availability is known");
+  assert.ok(await page.locator(".booking-calendar-grid .sk-day").count() >= 28, "calendar days show skeletons while the month loads");
+  await page.screenshot({ path: `${outDir}/booking-loading-390.png` });
+  availabilityDelayMs = 0;
+  await page.locator(".slot-list button:enabled").first().waitFor();
+  assert.equal(await page.locator(".slot-skeleton").count(), 0);
   const live = await context.newPage();
   for (const viewport of [viewports[0], viewports[1], viewports[2], viewports[4], viewports[6]]) {
     await live.setViewportSize(viewport);

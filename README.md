@@ -404,8 +404,9 @@ while it runs):
   `admin_audit_logs (created_at)`.
 
 What changed for members:
-- The member page no longer downloads the back-office stylesheet or preloads the unused Inter
-  font: about 90 KB less on the first visit (CSS 18 KB, JS 281 KB, fonts 56 KB, gzipped).
+- The member page no longer downloads the back-office stylesheet: on the first visit CSS goes from
+  30 to 18 KB and JS from 312 to 281 KB (gzipped). Fonts are unchanged: Inter draws prices, numbers
+  and the PPA wordmark, so it stays preloaded.
 - Uploaded photos (trainers, home slides under `/uploads`) are served as resized WebP for each
   screen (a 738 KB photo becomes about 8 KB on a phone). A photo uploaded while the app runs
   shows at once (before, it appeared only after a restart).
@@ -413,3 +414,21 @@ What changed for members:
   server instead of on every app open; staff edits to content and trainers show at once.
 - Busy times: if many members open the app together, raise `DB_CONNECTION_LIMIT` (default 10)
   to 20, provided the database allows it (MariaDB `max_connections`, default 151).
+
+### Update 2026-11-03: loading screens in LINE
+
+No migration. What members see while the app loads:
+
+- **First open:** the app frame (PPA status bar and the tab bar) with blocks shaped like the home
+  screen until their data arrives; nothing spins and there is no progress bar.
+- **Reopening:** the data from their last visit shows at once, with a thin line at the top while
+  fresh data loads. It is saved on the member's phone only, for the LINE account that opened it
+  (another account on the same phone never sees it), for at most 24 hours, and is removed at logout.
+  If the refresh fails, the saved data stays on screen with a short notice instead of an error page.
+- **Opened outside LINE:** one page with the PPA wordmark, "เปิดผ่าน LINE เพื่อเข้าสู่ระบบสมาชิก" and
+  an "เปิดใน LINE" button. **First load failed:** "โหลดข้อมูลไม่สำเร็จ" with "ลองอีกครั้ง".
+- **Inside screens:** calendar days, court times and both QR codes (member QR, PromptPay) show
+  skeletons in their own shape while they load.
+
+The privacy policy may mention that the app keeps the member's last data on their phone for up to
+24 hours to open faster.

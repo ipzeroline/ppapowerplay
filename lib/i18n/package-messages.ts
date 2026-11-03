@@ -289,6 +289,14 @@ export const packageMessages: [string, string, string, string?][] = [
   ["รายการชำระหมดเวลา", "Payment request expired", "付款请求已过期"],
   ["ใกล้ถึงเวลาจองสนาม", "Your court booking starts soon", "您预订的场地即将开始"],
   ["แพ็กเกจใกล้หมดอายุ", "Your package ends soon", "您的套餐即将到期"],
+
+  // Loading and sign-in pages
+  ["กำลังโหลดข้อมูลสมาชิก", "Loading your member account", "正在加载会员账户"],
+  ["กำลังอัปเดตข้อมูล", "Updating", "正在更新"],
+  ["ยังอัปเดตข้อมูลไม่ได้ กำลังแสดงข้อมูลล่าสุดที่บันทึกไว้", "Couldn't update. Showing your last saved data.", "无法更新，正在显示上次保存的数据。"],
+  ["ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต แล้วลองอีกครั้ง", "Check your internet connection and try again.", "请检查网络连接后重试。"],
+  ["แอปสมาชิกเปิดจากแชต LINE ของ PPA Power Play เพื่อยืนยันตัวตนและแสดงข้อมูลของคุณ", "Open the member app from the PPA Power Play chat in LINE so we can confirm it's you and show your account.", "请从 LINE 中的 PPA Power Play 聊天打开会员应用，以便确认身份并显示您的账户。"],
+  ["ถ้าเปิดจากเมนูในแชตแล้วยังเห็นหน้านี้ ให้ปิดหน้านี้แล้วเปิดจากแชต PPA Power Play อีกครั้ง", "If you opened it from the chat menu and still see this page, close it and open it again from the PPA Power Play chat.", "如果从聊天菜单打开后仍看到此页面，请关闭并从 PPA Power Play 聊天重新打开。"],
   ["คำขอนี้ถูกใช้ไปแล้ว กรุณาลองใหม่", "This request was already used. Please try again.", "该请求已被使用，请重试。"],
   ["มีคำถามเรื่องข้อมูลส่วนบุคคล ติดต่อ", "Questions about your personal data? Contact", "如对个人数据有疑问，请联系"],
 ];

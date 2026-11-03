@@ -6,13 +6,12 @@ import "./styles.css";
 import "./responsive.css";
 // Back-office styles load only under /AdminConsole (app/AdminConsole/layout.tsx).
 
-// Noto Sans Thai covers Latin too and comes first in every font stack, so Inter is only a
-// fallback: not preloaded, fetched only if a character ever needs it.
+// Inter draws Latin text first in many member styles (prices, numbers, the PPA wordmark), so it is
+// preloaded with Noto Sans Thai: a late Inter would swap in visibly on the first visit.
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
-  preload: false,
 });
 
 const notoSansThai = Noto_Sans_Thai({

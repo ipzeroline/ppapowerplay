@@ -7,7 +7,6 @@
 .statusbar > .status-member-chip { flex: 1 1 0; min-width: 0; max-width: 240px; margin-left: auto; }
 .statusbar > .language-switcher { margin-left: auto; }
 .gate-language { position: absolute; top: max(12px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); z-index: 5; }
-.line-gate { position: relative; }
 html:lang(zh-CN) { --font-aura: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
 .booking-calendar-grid button small { white-space: nowrap; }
 .booking-row-ui .tag { white-space: normal; max-width: 105px; }
@@ -174,17 +173,6 @@ html, body {
 .page.centered { justify-content: safe center; }
 .greet-copy .g2 { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
 .phone .toast { z-index: 30; pointer-events: none; bottom: calc(82px + env(safe-area-inset-bottom)); }
-.line-gate {
-  height: 100vh;
-  height: 100dvh;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
-}
-.line-gate.embedded { width: min(100%, 960px); height: 100%; }
-.gate-panel { max-width: 560px; width: 100%; margin: auto; }
-.gate-copy h1 { font-size: 28px; }
 
 @media (max-width: 700px) {
   .page { padding-inline: 16px; }
@@ -196,7 +184,6 @@ html, body {
   .page { padding-inline: 12px; }
   .quick-booking-row { margin-inline: -12px; padding-inline: 12px; }
   .home-page .greet { grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 8px; }
-  .gate-copy h1 { font-size: 24px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -243,4 +230,272 @@ html, body {
   :where(.phone) :where(input, select, textarea) {
     font-size: 1rem;
   }
+}
+
+/* ---------- Loading and sign-in (member app) ----------
+   First open shows the app frame with blocks shaped like the home screen; saved data shows at once
+   with a thin line at the top while it refreshes. Outside LINE or after a failed load: one calm page. */
+
+.member-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sk {
+  display: block;
+  border-radius: 12px;
+  background: var(--card-2);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sk {
+    animation: sk-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes sk-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.member-loading-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+  padding: 18px 20px;
+}
+
+.sk-line {
+  width: 34%;
+  height: 14px;
+  border-radius: 7px;
+}
+
+.sk-line.title {
+  width: 68%;
+  height: 26px;
+  border-radius: 8px;
+}
+
+.sk-card {
+  height: 104px;
+  border-radius: 22px;
+}
+
+.sk-card.member {
+  height: 112px;
+}
+
+.sk-card.slide {
+  height: 150px;
+}
+
+.sk-card.game {
+  height: 128px;
+  border-radius: 16px;
+}
+
+.sk-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sk-tile {
+  height: 76px;
+  border-radius: 16px;
+}
+
+.sk-chip {
+  width: 128px;
+  height: 30px;
+  border-radius: 999px;
+}
+
+.member-loading-tabs > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 500;
+}
+
+.member-loading-tabs > span.on {
+  color: var(--orange);
+}
+
+/* Saved data on screen, fresh data on its way. */
+.member-updating {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 6;
+  height: 2px;
+  overflow: hidden;
+  background: var(--lime-soft);
+  pointer-events: none;
+}
+
+.member-updating::after {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--orange);
+  content: "";
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .member-updating::after {
+    animation: member-updating 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
+
+@keyframes member-updating {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* In-screen loading: calendar days, court times, QR codes. */
+.booking-calendar-grid .sk-day {
+  width: 60%;
+  height: 8px;
+  margin: 4px auto 0;
+  border-radius: 4px;
+}
+
+.slot-skeleton {
+  pointer-events: none;
+}
+
+.slot-skeleton .sk-time {
+  width: 46px;
+  height: 16px;
+  border-radius: 6px;
+}
+
+.slot-skeleton > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.slot-skeleton .sk-slot {
+  height: 52px;
+  border-radius: 12px;
+}
+
+.sk-qr {
+  width: 220px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  margin-inline: auto;
+  border-radius: 16px;
+}
+
+.sk-qr.pay {
+  width: 240px;
+}
+
+.pay-qr-loading {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+/* Opened outside LINE, or the first load failed. */
+.line-gate {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  background: var(--bg);
+  color: var(--text);
+}
+
+.line-gate.embedded {
+  width: min(100%, 960px);
+  height: 100%;
+}
+
+.member-gate {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(100%, 360px);
+  text-align: center;
+}
+
+.member-gate-logo {
+  margin-bottom: 10px;
+  color: #fff;
+  font-family: var(--font-inter), var(--font-aura), sans-serif;
+  font-size: 56px;
+  font-style: italic;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.member-gate-logo span {
+  color: var(--orange);
+}
+
+.member-gate h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
+.member-gate p {
+  max-width: 34ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+
+.member-gate .primary {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.member-gate small {
+  max-width: 36ch;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
 }

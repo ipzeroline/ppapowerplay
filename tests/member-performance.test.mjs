@@ -72,11 +72,11 @@ test("staff edits to content and trainers reach the app at once on this server",
   }
 });
 
-test("members do not download the back-office stylesheet or an unused font", () => {
+test("members do not download the back-office stylesheet", () => {
   const root = readFileSync("app/layout.tsx", "utf8");
   assert.doesNotMatch(root, /admin\.css/, "the member page loads only member styles");
   assert.match(readFileSync("app/AdminConsole/layout.tsx", "utf8"), /import "\.\.\/admin\.css"/);
-  assert.match(root, /Inter\(\{[^}]*preload: false/, "Noto Sans Thai covers Latin and comes first, so Inter is never preloaded");
+  assert.doesNotMatch(root, /preload: false/, "Inter draws prices, numbers and the PPA wordmark (member styles put it first), so it stays preloaded");
   const member = readFileSync("app/responsive.css", "utf8");
   assert.match(member, /:where\(\.phone\) :where\(div, section, article, form, label\) \{\s*min-width: 0;/, "the layout rule the member app took from admin.css");
   assert.match(member, /\.phone dialog\.admin-modal-backdrop \{/, "the member confirm dialog keeps its full-screen layer");
@@ -103,4 +103,38 @@ test("uploaded photos are served right after upload and optimized for phones", a
   const app = readFileSync("components/ppa-app.tsx", "utf8");
   assert.match(app, /function UploadImage/);
   assert.doesNotMatch(app, /<Image unoptimized width=\{160\} height=\{160\} alt=\{trainer\.name\}/, "trainer photos go through the optimizer");
+});
+
+test("on reopen the app shows the member's last data at once, only for the same LINE account and for a day", () => {
+  const { readMemberCache, writeMemberCache, clearMemberCache, memberCacheMaxAgeMs } = load("lib/member-cache.ts");
+  const store = new Map();
+  const storage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  const now = Date.parse("2026-11-03T10:00:00Z");
+  writeMemberCache("Uaaa", { user: { displayName: "A" } }, storage, now);
+  assert.deepEqual(readMemberCache("Uaaa", storage, now + 1000), { user: { displayName: "A" } });
+  assert.equal(readMemberCache("Ubbb", storage, now + 1000), null, "another LINE account on the same phone sees nothing");
+  assert.equal(readMemberCache("", storage, now), null);
+  assert.equal(readMemberCache("Uaaa", storage, now + memberCacheMaxAgeMs + 1), null, "nothing older than a day");
+  clearMemberCache(storage);
+  assert.equal(readMemberCache("Uaaa", storage, now), null, "logout removes it");
+  store.set("ppa_member_cache_v1", "{not json");
+  assert.equal(readMemberCache("Uaaa", storage, now), null);
+  writeMemberCache("Uaaa", { big: "x".repeat(1_600_000) }, storage, now);
+  assert.equal(store.has("ppa_member_cache_v1"), false, "too large to keep");
+  const blocked = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("full"); }, removeItem: () => { throw new Error("blocked"); } };
+  assert.equal(readMemberCache("Uaaa", blocked, now), null, "a blocked or full storage just loads normally");
+  writeMemberCache("Uaaa", {}, blocked, now);
+  clearMemberCache(blocked);
+});
+
+test("the first open shows the app frame with skeletons instead of a progress screen", () => {
+  const app = readFileSync("components/ppa-app.tsx", "utf8");
+  assert.match(app, /function MemberLoading/);
+  assert.doesNotMatch(app, /SPORT COMPLEX LOADING|gate-status|gate-progress|gate-rings/, "no loading theatre");
+  assert.match(app, /readMemberCache(<\w+>)?\(/);
+  assert.match(app, /writeMemberCache\(/);
+  assert.match(app, /getDecodedIDToken/, "saved data is matched to the signed-in LINE account");
+  const logout = app.slice(app.indexOf("async function logout"), app.indexOf("async function logout") + 700);
+  assert.match(logout, /clearMemberCache\(\)/, "logout removes the saved data");
+  assert.doesNotMatch(readFileSync("components/booking-calendar.tsx", "utf8"), /loading \? "…"/, "calendar days show a skeleton while loading");
 });

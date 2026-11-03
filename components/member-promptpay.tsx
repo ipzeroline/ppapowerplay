@@ -81,7 +81,14 @@ export function PromptPayScreen({ paymentNo, onBack, onDone }: { paymentNo: stri
   return (
     <div className="page pay-qr-page">
       <Top title={t("ชำระเงินด้วยพร้อมเพย์")} onBack={onBack} />
-      {state.status === "loading" ? <p className="center-text">{t("กำลังโหลด QR...")}</p> : null}
+      {state.status === "loading" ? (
+        <div className="pay-qr-card pay-qr-loading" role="status">
+          <i className="sk sk-line" aria-hidden="true" />
+          <i className="sk sk-line title" aria-hidden="true" />
+          <i className="sk sk-qr pay" aria-hidden="true" />
+          <span className="member-sr-only">{t("กำลังโหลด QR...")}</span>
+        </div>
+      ) : null}
       {state.status === "ready" ? (
         <>
           <div className="pay-qr-card">

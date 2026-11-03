@@ -52,10 +52,10 @@ export function BookingCalendar({ sport, value, onChange, revision }: { sport: s
         {Array.from({ length: new Date(`${month}-01T00:00:00Z`).getUTCDay() }, (_, i) => <span key={`empty-${i}`} />)}
         {days.map((date) => {
           const day = !loading ? result?.days.find((item) => item.date === date) : undefined;
-          const label = day ? t(labels[day.status]) : loading ? "…" : "—";
-          return <button type="button" key={date} data-date={date} data-status={day?.status} aria-label={`${date} ${t(label)}`} aria-pressed={value === date}
+          const label = day ? t(labels[day.status]) : loading ? t("กำลังตรวจสอบ…") : "—";
+          return <button type="button" key={date} data-date={date} data-status={day?.status} aria-label={`${date} ${label}`} aria-pressed={value === date}
             disabled={!day || day.status !== "available"} onClick={() => onChange(date)}>
-            <strong>{Number(date.slice(-2))}</strong><small>{t(label)}</small>
+            <strong>{Number(date.slice(-2))}</strong>{loading ? <i className="sk sk-day" aria-hidden="true" /> : <small>{label}</small>}
           </button>;
         })}
       </div>
